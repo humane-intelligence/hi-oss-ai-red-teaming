@@ -2,8 +2,6 @@
 
 <!-- What changes, and what problem it solves. One or two paragraphs. -->
 
-Ticket: <!-- tracker id if the work has one; contributions from outside the team can leave this blank -->
-
 ## Scope
 
 <!-- What is in, and — just as useful to a reviewer — what you deliberately left out. -->

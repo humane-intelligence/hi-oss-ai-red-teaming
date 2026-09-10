@@ -52,8 +52,8 @@ before pushing a frontend change**, or the push hook will reject it.
 
 - **Sign off every commit** with `git commit -s`. What that certifies, and how to fix a
   branch you forgot it on, is under [Licensing and sign-off](#licensing-and-sign-off).
-- **Branch off `main`.** Commit subjects are one line saying what changed; the team prefixes its
-  tracker id, contributions from outside do not need one. `main` squash-merges every PR, so the
+- **Branch off `main`.** Commit subjects are one line saying what changed. `main` squash-merges
+  every PR, so the
   PR title is what lands in the history — no `Co-Authored-By` trailers, though the DCO
   sign-off below is required on every commit.
 - **Keep production diffs around 400 lines.** Tests, docs, and generated artifacts (`uv.lock`, the
