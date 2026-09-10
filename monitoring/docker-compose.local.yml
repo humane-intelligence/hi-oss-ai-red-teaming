@@ -1,0 +1,45 @@
+# Override for running this stack against the local `make dev` stack instead of
+# the dev box — see ../README.md "Local testing". Only what differs from
+# docker-compose.yml: the external network's real name; publishing Grafana/
+# Prometheus on loopback for direct host access (the box has no such publish —
+# reached via Caddy or an SSM port-forward instead), reverting Grafana's and
+# GlitchTip's box-only domain config to match; and both GlitchTip's and
+# Grafana's own notification emails routed to the app stack's `mailpit` inbox
+# instead of vanishing into `consolemail://` logs / going nowhere (SMTP
+# disabled) — the box has no mail catcher at all yet, see ../README.md
+# "GlitchTip notifications"; and re-enabling GlitchTip self-signup (blocked
+# on the box's public endpoint).
+services:
+  grafana:
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Reverts docker-compose.yml's box-only subdomain config — locally
+      # Grafana is reached directly on :3000, no Caddy involved, no DNS.
+      GF_SERVER_ROOT_URL: "http://localhost:3000/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: mailpit:1025
+
+  prometheus:
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  glitchtip:
+    environment:
+      EMAIL_URL: smtp://mailpit:1025
+      # Local testing needs self-signup (no invitation path without an
+      # existing account) — reverts docker-compose.yml's public-endpoint block.
+      ENABLE_USER_REGISTRATION: "True"
+      # Reverts docker-compose.yml's box-only subdomain config — locally
+      # GlitchTip is reached directly on :8090, no Caddy involved, no DNS.
+      GLITCHTIP_DOMAIN: http://localhost:8090
+      CSRF_TRUSTED_ORIGINS: ""
+
+networks:
+  # `deploy_default` is the box's network name (from the `deploy` directory
+  # there); locally the root compose project pins `name: ai-red-teaming`
+  # (root docker-compose.yml), so its default network is `ai-red-teaming_default`.
+  deploy_default:
+    external: true
+    name: ai-red-teaming_default

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("Reset your password") }}
+{% call paragraph() %}Hi{% if recipient_name %} {{ recipient_name }}{% endif %},{% endcall %}
+{% call paragraph() %}{% if triggered_by_admin %}An administrator has started a password reset for your {{ brand.product }} account. Please use the button below to choose a new password.{% else %}We received a request to reset your {{ brand.product }} password. Please use the button below to choose a new one.{% endif %}{% endcall %}
+{{ button(reset_url, "Reset password") }}
+{% call note() %}This link expires on {{ expires_at | datetimefmt }}. {% if triggered_by_admin %}If you weren't expecting this, contact your administrator before using it.{% else %}If you didn't request a reset, you can safely ignore this email.{% endif %} Your password will not change until you set a new one.{% endcall %}
+{% endblock %}

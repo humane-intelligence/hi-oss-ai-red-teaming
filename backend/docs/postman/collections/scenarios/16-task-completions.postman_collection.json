@@ -1,0 +1,1152 @@
+{
+	"info": {
+		"name": "16 · Task completions",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Task check-off — a red-teamer marking a scenario's tasks done inside a conversation, plus the per-group roll-up.\n\n**Flow.** A) build the chain admin-side — group → **approve** → evaluation → scenario → task → model → assign → conversation group (posted to the scenario, yielding one conversation); B) **PUT** to check the task off (idempotent), list the conversation's completions, read the group roll-up, **DELETE** to uncheck, confirm it's gone; C) negatives — a `task_id` outside the scenario is **404**, a `viewer` (no `conversations:update`) is **403**, no-token is **401**.\n\n**Auth model.** Per-request: `{{admin_token}}` (holds `conversations:*` and owns the conversation) drives the flow, `{{viewer_token}}` for the 403, `noauth` for the 401. Self-contained — no `00-bootstrap`, no manual token, no SSE (the conversation is created directly, not via the streaming message endpoint).\n\n**Gotcha.** A fresh group is `pending_approval`; evaluations 409 until it's approved — folder A approves before creating the evaluation. Check-off requires the caller to **own** the conversation and the `task_id` to belong to its scenario.\n\n**Leftovers.** The evaluation group leaks (no group DELETE; `run_suffix` keeps it unique); the conversation, evaluation (+scenario/task/assignment) and model are deleted in Teardown.\n\n**Verified:** 28/28 checks green end-to-end against a live stack (`make up` + `make seedlocal`)."
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "run_suffix",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "viewer_email",
+			"value": "viewer@test.com"
+		},
+		{
+			"key": "viewer_password",
+			"value": "password123"
+		},
+		{
+			"key": "viewer_token",
+			"value": ""
+		},
+		{
+			"key": "tc_group_id",
+			"value": ""
+		},
+		{
+			"key": "tc_eval_id",
+			"value": ""
+		},
+		{
+			"key": "tc_scenario_id",
+			"value": ""
+		},
+		{
+			"key": "tc_task_id",
+			"value": ""
+		},
+		{
+			"key": "tc_model_id",
+			"value": ""
+		},
+		{
+			"key": "tc_assignment_id",
+			"value": ""
+		},
+		{
+			"key": "tc_conv_group_id",
+			"value": ""
+		},
+		{
+			"key": "tc_conv_id",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1 · Log in as admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded admin. Sets `run_suffix` (collision-free re-runs) and captures `admin_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('admin_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Log in as viewer (non-admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded `viewer` (a non-admin identity) for the RBAC/isolation checks. Captures `viewer_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "A · Build a scenario task + conversation",
+			"item": [
+				{
+					"name": "1 · Register a model (for the group's allowed-model subset)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"TC model {{run_suffix}}\",\n  \"model_alias\": \"tc-{{run_suffix}}\",\n  \"provider\": \"generic\",\n  \"provider_model_id\": \"openai/gpt-4o-mini\",\n  \"inference_endpoint\": \"https://openrouter.ai/api/v1\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/ai-models",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ai-models"
+							]
+						},
+						"description": "A group create requires a non-empty `allowed_model_ids`, so the model must exist before the group — and the same id is what step 7 assigns to the evaluation (the assign path re-checks the group's allowed subset). Captures `tc_model_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('tc_model_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Create an evaluation group",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Task check-off {{run_suffix}}\",\n  \"description\": \"Holds the conversation whose tasks get checked off.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-09-01\",\n  \"allowed_model_ids\": [\n    \"{{tc_model_id}}\"\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups"
+							]
+						},
+						"description": "A fresh group lands in `pending_approval`. Captures `tc_group_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('tc_group_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Approve the group (owner self-approve)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups/{{tc_group_id}}/approve",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups",
+								"{{tc_group_id}}",
+								"approve"
+							]
+						},
+						"description": "Evaluations can be added only to an **approved/published** group; the owner may approve their own. Without this, the next step 409s."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "4 · Create an evaluation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Eval {{run_suffix}}\",\n  \"description\": \"x\",\n  \"evaluation_group_id\": \"{{tc_group_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluations"
+							]
+						},
+						"description": "Captures `tc_eval_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('tc_eval_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "5 · Create a scenario",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Scenario {{run_suffix}}\",\n  \"description\": \"Owns the task to check off.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluations/{{tc_eval_id}}/scenarios",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluations",
+								"{{tc_eval_id}}",
+								"scenarios"
+							]
+						},
+						"description": "The conversation is bound to this scenario; a task check-off must target a task of it. Captures `tc_scenario_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('tc_scenario_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "6 · Create a task",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Task {{run_suffix}}\",\n  \"description\": \"The task to be checked off.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scenarios/{{tc_scenario_id}}/tasks",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"scenarios",
+								"{{tc_scenario_id}}",
+								"tasks"
+							]
+						},
+						"description": "Captures `tc_task_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('tc_task_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "7 · Assign the model",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"model_id\": \"{{tc_model_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluations/{{tc_eval_id}}/models",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluations",
+								"{{tc_eval_id}}",
+								"models"
+							]
+						},
+						"description": "Body is `{model_id}`. Captures the assignment id (`tc_assignment_id`) the conversation references."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('tc_assignment_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "8 · Create a conversation group (+ its conversation)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"CG {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{tc_assignment_id}}\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/scenarios/{{tc_scenario_id}}/conversation-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"scenarios",
+								"{{tc_scenario_id}}",
+								"conversation-groups"
+							]
+						},
+						"description": "Posting a group to the scenario with one `models` entry yields one conversation bound to it. Captures the embedded conversation id (`tc_conv_id`)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"const d = pm.response.json();",
+									"pm.test('one conversation created', () => pm.expect(d.conversations).to.be.an('array').with.length(1));",
+									"pm.collectionVariables.set('tc_conv_id', d.conversations[0].id);",
+									"pm.collectionVariables.set('tc_conv_group_id', d.id);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "B · Check off / roll up",
+			"item": [
+				{
+					"name": "1 · Check off the task",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks/{{tc_task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks",
+								"{{tc_task_id}}"
+							]
+						},
+						"description": "**FE note:** the red-teamer ticks a scenario task done inside a conversation they own. `task_id` must belong to the conversation's scenario. Requires `conversations:update`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json();",
+									"pm.test('completion links task + conversation', () => { pm.expect(d.task_id).to.eql(pm.collectionVariables.get('tc_task_id')); pm.expect(d.conversation_id).to.eql(pm.collectionVariables.get('tc_conv_id')); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Check off again (idempotent)",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks/{{tc_task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks",
+								"{{tc_task_id}}"
+							]
+						},
+						"description": "Idempotent — re-marking an already-checked task returns the existing completion (no duplicate)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · List the conversation's completed tasks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks"
+							]
+						},
+						"description": "Per-conversation list of checked-off tasks."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('includes the checked task', () => pm.expect(pm.response.json().map(c => c.task_id)).to.include(pm.collectionVariables.get('tc_task_id')));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "4 · Group roll-up",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversation-groups/{{tc_conv_group_id}}/completed-tasks",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversation-groups",
+								"{{tc_conv_group_id}}",
+								"completed-tasks"
+							]
+						},
+						"description": "Aggregates completed-task counts across the group's conversations (`{total_conversations, completed_counts:[{task_id, completed_count}]}`) — the FE progress roll-up."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json();",
+									"pm.test('roll-up shape', () => { pm.expect(d.total_conversations).to.be.at.least(1); pm.expect(d.completed_counts).to.be.an('array'); });",
+									"pm.test('task counted once', () => { const c = d.completed_counts.find(x => x.task_id === pm.collectionVariables.get('tc_task_id')); pm.expect(c && c.completed_count).to.eql(1); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "5 · Uncheck the task",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks/{{tc_task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks",
+								"{{tc_task_id}}"
+							]
+						},
+						"description": "Soft-deletes the completion. Idempotent — unchecking an unchecked task still succeeds."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "6 · List again is empty",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks"
+							]
+						},
+						"description": "Confirms the uncheck."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('task no longer listed', () => pm.expect(pm.response.json().map(c => c.task_id)).to.not.include(pm.collectionVariables.get('tc_task_id')));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "C · Negatives",
+			"item": [
+				{
+					"name": "1 · Bogus task (not in scenario) → 404",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks/11111111-1111-4111-8111-111111111111",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks",
+								"11111111-1111-4111-8111-111111111111"
+							]
+						},
+						"description": "A `task_id` that isn't part of the conversation's scenario is a 404 (same envelope as a missing conversation — no leak)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Viewer check-off → 403",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks/{{tc_task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks",
+								"{{tc_task_id}}"
+							]
+						},
+						"description": "`viewer` lacks `conversations:update`, so the write is forbidden before ownership is even checked."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · No token → 401",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/conversations/{{tc_conv_id}}/completed-tasks/{{tc_task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"conversations",
+								"{{tc_conv_id}}",
+								"completed-tasks",
+								"{{tc_task_id}}"
+							]
+						},
+						"description": "Unauthenticated writes are rejected."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Teardown",
+			"item": [
+				{
+					"name": "1 · Delete the conversation",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluations/{{tc_eval_id}}/conversations/{{tc_conv_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluations",
+								"{{tc_eval_id}}",
+								"conversations",
+								"{{tc_conv_id}}"
+							]
+						},
+						"description": "Depth-first cleanup: the conversation before its evaluation."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Delete the evaluation (cascades scenario/task/assignment)",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluations/{{tc_eval_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluations",
+								"{{tc_eval_id}}"
+							]
+						},
+						"description": "Removes the evaluation and its children."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Delete the model",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/ai-models/{{tc_model_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ai-models",
+								"{{tc_model_id}}"
+							]
+						},
+						"description": "The assignment went with the evaluation; the shared model row can now be removed."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,8 @@
+# Source is text, even if a stray control byte makes git guess otherwise. A literal NUL in
+# frontend/src/components/shared/data-table.tsx once made git diff it as binary, which hid every
+# change to that file from review.
+*.ts  text diff
+*.tsx text diff
+*.js  text diff
+*.jsx text diff
+*.py  text diff

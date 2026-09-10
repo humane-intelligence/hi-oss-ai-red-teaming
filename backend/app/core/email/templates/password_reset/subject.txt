@@ -1,0 +1,1 @@
+Reset your {{ brand.product }} password

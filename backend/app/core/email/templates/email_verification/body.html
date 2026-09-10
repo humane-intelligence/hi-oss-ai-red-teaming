@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("Verify your email address") }}
+{% call paragraph() %}Thanks for signing up for {{ brand.product }}. Confirm your email address to finish setting up your account.{% endcall %}
+{{ button(verify_url, "Verify email address") }}
+{% call note() %}This link expires on {{ expires_at | datetimefmt }}. If you didn't create an account, you can safely ignore this email.{% endcall %}
+{% endblock %}

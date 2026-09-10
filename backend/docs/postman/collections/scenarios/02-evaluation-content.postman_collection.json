@@ -1,0 +1,796 @@
+{
+  "info": {
+    "name": "02 · Evaluation content authoring",
+    "description": "CRUD over an evaluation's content tree: scenarios (+ reorder), tasks, and model assignments, plus evaluation edit/teardown.\n\n**Prereqs:** run `00-bootstrap` first with the `local` environment — this collection reuses `{{access_token}}`, `{{group_id}}`, and `{{model_id}}` from it. It then creates its **own** working evaluation (so bootstrap's seeded evaluation/conversation are untouched) and deletes it in teardown.\n\nFully unattended — no email/SSE friction. Run top-to-bottom: **Setup → Scenarios → Tasks → Model assignment → Read side → Lifecycle & duplicate → Teardown**.\n\n**Folder D — read side.** The evaluation detail plus the two flat cross-parent lists (`GET /evaluations`, `GET /scenarios`) and their `evaluation_group_id` / `evaluation_id` / `search` filters. Pagination caps `limit` at **100**. The filter assertions check that *every* returned row matches, not merely that ours is present, so a filter that stopped filtering would fail here.\n\n**Folder E — lifecycle & duplicate.** `POST /evaluations/{id}/approve|reject` are `evaluations:approve` (admin-only) and move `under_review → approved|rejected`. A created evaluation is `new`, so both assert a deterministic **409**. ⚠ **There is no `submit` route at the evaluation level** — unlike evaluation *groups*, whose whole chain is API-driven in `03` — so `under_review` is unreachable through the API and the 200 path needs a manual precondition: `make dbshell` then `UPDATE evaluations SET status='under_review' WHERE id='<content_eval_id>';`. Each request's description spells this out; the 409 is the honest unattended result, not a stand-in for an untested success path.\n\nThe folder also covers `POST /evaluations/{id}/duplicate` and `POST /evaluation-groups/{id}/duplicate` with `include_children=true` (a group copy always lands as a `draft` owned by the caller), and the scenario DELETE folder A left open. The **duplicated group leaks** — groups have no DELETE route.\n\nVerified green on a live stack: 51/51 assertions (Newman, chained after `00-bootstrap`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "content_eval_id", "value": "", "type": "string" },
+    { "key": "scenario_id_1", "value": "", "type": "string" },
+    { "key": "scenario_id_2", "value": "", "type": "string" },
+    { "key": "task_id", "value": "", "type": "string" },
+    { "key": "content_assignment_id", "value": "", "type": "string" },
+    { "key": "dup_eval_id", "value": "", "type": "string" },
+    { "key": "dup_group_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Setup · Create working evaluation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('evaluation → 201', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('content_eval_id', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/api/v1/evaluations", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Content authoring sandbox\",\n  \"description\": \"Working evaluation for the content-CRUD scenario; deleted in teardown.\",\n  \"evaluation_group_id\": \"{{group_id}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Create a throwaway evaluation in bootstrap's group to author against. Requires permission `evaluations:update`."
+      },
+      "response": []
+    },
+    {
+      "name": "A · Scenarios",
+      "item": [
+        {
+          "name": "1 · Create scenario 1",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('scenario_id_1', pm.response.json().id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "scenarios"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Prompt injection\",\n  \"description\": \"Coax the model past its system prompt.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Create a scenario (challenge) under the evaluation. Order is server-assigned (`position`). Requires permission `evaluations:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Create scenario 2",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('scenario_id_2', pm.response.json().id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "scenarios"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Data exfiltration\",\n  \"description\": \"Extract training data or secrets.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "A second scenario, so reorder has something to swap."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · List scenarios",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "scenarios"] },
+            "description": "List scenarios in the evaluation, ordered by `position`. Requires permission `evaluations:read`."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Get scenario (with tasks)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios/{{scenario_id_1}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "scenarios", "{{scenario_id_1}}"] },
+            "description": "Single-scenario GET embeds its live tasks (`ScenarioDetailResponse`)."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Update scenario",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios/{{scenario_id_1}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "scenarios", "{{scenario_id_1}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Prompt injection (refined)\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Patch a scenario field. Requires permission `evaluations:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Reorder scenarios",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios/order", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "scenarios", "order"] },
+            "body": { "mode": "raw", "raw": "{\n  \"scenario_ids\": [\"{{scenario_id_2}}\", \"{{scenario_id_1}}\"]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Replace the order by sending the full id list in the desired sequence. Requires permission `evaluations:update`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B · Tasks",
+      "item": [
+        {
+          "name": "1 · Create task",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('task_id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/scenarios/{{scenario_id_1}}/tasks", "host": ["{{base_url}}"], "path": ["api", "v1", "scenarios", "{{scenario_id_1}}", "tasks"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bypass refusal\",\n  \"description\": \"Get a refusal-worthy answer.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Create a task under the scenario. Tasks are unordered. Inherits `evaluations:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · List tasks",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/scenarios/{{scenario_id_1}}/tasks", "host": ["{{base_url}}"], "path": ["api", "v1", "scenarios", "{{scenario_id_1}}", "tasks"] },
+            "description": "List tasks for the scenario (ordered by created_at, id)."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Get task",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/scenarios/{{scenario_id_1}}/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "scenarios", "{{scenario_id_1}}", "tasks", "{{task_id}}"] },
+            "description": "Fetch the task."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Update task",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/scenarios/{{scenario_id_1}}/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "scenarios", "{{scenario_id_1}}", "tasks", "{{task_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Get a refusal-worthy answer in one turn.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Patch a task field."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Delete task",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/scenarios/{{scenario_id_1}}/tasks/{{task_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "scenarios", "{{scenario_id_1}}", "tasks", "{{task_id}}"] },
+            "description": "Delete the task."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C · Model assignment",
+      "item": [
+        {
+          "name": "1 · Assign model",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('content_assignment_id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/models", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "models"] },
+            "body": { "mode": "raw", "raw": "{\n  \"model_id\": \"{{model_id}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Assign bootstrap's model to this evaluation. Requires permission `evaluations:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · List assigned models",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/models", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "models"] },
+            "description": "List the evaluation's model assignments."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Get assignment",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/models/{{content_assignment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "models", "{{content_assignment_id}}"] },
+            "description": "Fetch the single assignment (carries the per-assignment inference-params override and display mask)."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Update assignment (mask)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/models/{{content_assignment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "models", "{{content_assignment_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"model_display_mask\": \"Model A\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Set the display mask shown to red-teamers when the evaluation hides model identities."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Unassign model",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/models/{{content_assignment_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}", "models", "{{content_assignment_id}}"] },
+            "description": "Remove the assignment (cascades a soft-delete to any conversation bound to it)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D · Read side",
+      "item": [
+        {
+          "name": "1 · Get the evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('it is the one we built', () => pm.expect(b.id).to.eql(pm.collectionVariables.get('content_eval_id')));",
+                  "pm.test('created evaluations start at status new', () => pm.expect(b.status).to.eql('new'));",
+                  "pm.test('the resolved licence rides along as an object, not a bare SPDX string', () => { pm.expect(b.effective_license).to.be.an('object'); pm.expect(b.effective_license.id).to.be.a('string'); pm.expect(b.effective_license.name).to.be.a('string'); });",
+                  "pm.test('the models array reflects the unassign in folder C — present but empty', () => { pm.expect(b.models).to.be.an('array'); pm.expect(b.models).to.have.lengthOf(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}"
+              ]
+            },
+            "description": "The detail read. `effective_license` is resolved through the cascade (evaluation override → group override → platform default — see collection `12`), and `models` embeds the assignments folder C manages \u2014 which by this point is **empty**, because folder C step 5 unassigned the model. That empty array is asserted deliberately: it is what proves the unassign took effect on the read side, and asserting merely \"is an array\" here would pass either way."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · List evaluations, filtered to the parent group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('our evaluation is in its group', () => pm.expect(pm.response.json().items.map(i => i.id)).to.include(pm.collectionVariables.get('content_eval_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations?evaluation_group_id={{group_id}}&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ],
+              "query": [
+                {
+                  "key": "evaluation_group_id",
+                  "value": "{{group_id}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The flat cross-group list with the `evaluation_group_id` filter — what a group's detail page pages through. `limit` caps at 100."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Search evaluations by title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('search narrows rather than widens', () => pm.expect(pm.response.json().items.every(i => /content/i.test(i.title) || /content/i.test(i.description || ''))).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations?search=Content&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "Content"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The `search` filter is a case-insensitive `ILIKE` over **`title` OR `description`** (`services/evaluations.py`), not the title alone \u2014 so the assertion accepts a match in either field. Asserted as \"every row matches\" rather than \"ours is present\", so a filter that silently stopped filtering would fail here."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · List scenarios across evaluations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "pm.test('both of folder A\\'s scenarios are listed', () => pm.expect(items.length).to.be.at.least(2));",
+                  "pm.test('all scoped to the filtered evaluation', () => pm.expect(items.every(i => i.evaluation_id === pm.collectionVariables.get('content_eval_id'))).to.eql(true));",
+                  "pm.test('positions come back strictly ascending in the returned order', () => { const ps = items.map(i => i.position); pm.expect(ps.every((p, n) => n === 0 || p > ps[n - 1])).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios?evaluation_id={{content_eval_id}}&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios"
+              ],
+              "query": [
+                {
+                  "key": "evaluation_id",
+                  "value": "{{content_eval_id}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The standalone cross-evaluation scenario list (the nested one is folder A step 3). `position` is the dense integer order folder A step 6 rewrites."
+          },
+          "response": []
+        }
+      ],
+      "description": "The evaluation detail read plus the two flat cross-parent lists (`GET /evaluations`, `GET /scenarios`) and their filters — the endpoints the dashboard and search pages page through. Read-only; adds no fixtures."
+    },
+    {
+      "name": "E · Lifecycle, duplicate & scenario delete",
+      "item": [
+        {
+          "name": "1 · Approve from the wrong state → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 409', () => pm.response.to.have.status(409));",
+                  "pm.test('names both states', () => { const d = pm.response.json().detail; pm.expect(d).to.include('new'); pm.expect(d).to.include('approved'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}",
+                "approve"
+              ]
+            },
+            "description": "`evaluations:approve` (admin-only). The transition is `under_review → approved|rejected`, and a freshly created evaluation is `new`, so this is a **409** — the deterministic, unattended outcome.\n\n**⚠ Reaching the 200 needs a manual precondition.** There is no `submit` route at the *evaluation* level (unlike evaluation **groups**, which have the full `submit`/`approve`/`request-changes`/`reject` chain — see `03`), so `under_review` cannot be reached through the API at all. To see the success path:\n\n```\nmake dbshell\nUPDATE evaluations SET status='under_review' WHERE id='<content_eval_id>';\n```\n\nthen re-run this request and expect 200 with `status: \"approved\"`. The 409 asserted here is the honest unattended result, not a stand-in for an untested success path."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Reject from the wrong state → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejection_reason\": \"Out of scope for this engagement.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Same source-state rule and the same `dbshell` precondition as step 1. `rejection_reason` is required on the reject body and is persisted onto the evaluation."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Duplicate the evaluation with its children",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('dup_eval_id', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.test('the copy is a fresh row', () => pm.expect(b.id).to.not.eql(pm.collectionVariables.get('content_eval_id')));",
+                  "pm.test('and starts at status new', () => pm.expect(b.status).to.eql('new'));",
+                  "pm.test('it lands in the same group', () => pm.expect(b.evaluation_group_id).to.eql(pm.environment.get('group_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/duplicate?include_children=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}",
+                "duplicate"
+              ],
+              "query": [
+                {
+                  "key": "include_children",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "`evaluations:create`. `include_children=true` deep-copies the scenarios, their tasks and the model assignments; runtime data (conversations, flags, reviews) and credentials are **never** copied."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · The copy carries the scenarios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('children came across', () => pm.expect(pm.response.json().items.length).to.be.at.least(1));",
+                  "pm.test('and belong to the copy, not the source', () => pm.expect(pm.response.json().items.every(i => i.evaluation_id === pm.collectionVariables.get('dup_eval_id'))).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios?evaluation_id={{dup_eval_id}}&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios"
+              ],
+              "query": [
+                {
+                  "key": "evaluation_id",
+                  "value": "{{dup_eval_id}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "What `include_children` actually did — copies, re-parented to the new evaluation."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Duplicate the parent group (children included)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('dup_group_id', pm.response.json().id);",
+                  "pm.test('the copy is a draft', () => pm.expect(pm.response.json().status).to.eql('draft'));",
+                  "pm.test('carries an author (single identity here, so caller-vs-source needs a two-identity run)', () => pm.expect(pm.response.json().created_by_id).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{group_id}}/duplicate?include_children=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{group_id}}",
+                "duplicate"
+              ],
+              "query": [
+                {
+                  "key": "include_children",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "The group-level duplicate (`evaluation_groups:create`). The copy always lands as a **`draft`** owned by the caller, whatever the source's status — so a template can be cloned and reworked without touching a published engagement.\n\nThe caller must be the source's **owner** or hold the `evaluation_groups:manage` break-glass — merely being able to *see* a group is not enough to clone it. A since-soft-deleted owning organisation is dropped rather than carried as a dangling reference."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Delete the duplicated evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{dup_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{dup_eval_id}}"
+              ]
+            },
+            "description": "Self-cleanup. The duplicated **group** cannot be deleted — groups have no DELETE route — so it leaks; its title carries bootstrap's suffix, which keeps it identifiable."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Delete scenario 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios/{{scenario_id_2}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}",
+                "scenarios",
+                "{{scenario_id_2}}"
+              ]
+            },
+            "description": "`evaluations:update`. Folder A created two scenarios and only ever deleted tasks; this closes the scenario lifecycle. Soft delete \u2014 it drops out of every live read (step 8 and step 9 check both the detail and the list). Whether the tombstoned row retains its `position` is not observable through the API, so nothing here claims it."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · The deleted scenario is gone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios/{{scenario_id_2}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}",
+                "scenarios",
+                "{{scenario_id_2}}"
+              ]
+            },
+            "description": "Reads as missing, with no existence leak."
+          },
+          "response": []
+        },
+        {
+          "name": "9 · The remaining scenario still lists",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().items.map(i => i.id);",
+                  "pm.test('scenario 1 survives', () => pm.expect(ids).to.include(pm.collectionVariables.get('scenario_id_1')));",
+                  "pm.test('scenario 2 does not', () => pm.expect(ids).to.not.include(pm.collectionVariables.get('scenario_id_2')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}/scenarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{content_eval_id}}",
+                "scenarios"
+              ]
+            },
+            "description": "A sibling delete leaves the rest of the evaluation intact."
+          },
+          "response": []
+        }
+      ],
+      "description": "The admin approve/reject guards (both **409** from the create-time `new` status — the success path needs a documented `dbshell` precondition, since no route can reach `under_review`), the evaluation and group duplicate paths with `include_children`, and the scenario delete folder A left open. Self-cleaning apart from the duplicated group, which has no DELETE."
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 · Update evaluation",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Content authoring sandbox (done)\",\n  \"mask_models_enabled\": true\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Patch the evaluation (toggles model masking). Requires permission `evaluations:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Delete working evaluation",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{content_eval_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{content_eval_id}}"] },
+            "description": "Delete the sandbox evaluation; cascades to its scenarios and tasks. Leaves bootstrap's seeded evaluation intact."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

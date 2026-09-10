@@ -1,0 +1,29 @@
+# APP_DOMAIN (from .env) drives Caddy's automatic TLS: Let's Encrypt cert + the
+# HTTP->HTTPS redirect. (No HSTS — not wanted on a throwaway dev host.) Today
+# APP_DOMAIN=api.example.org (an <anything>-<ip>.sslip.io name works for a quick start).
+{$APP_DOMAIN} {
+	encode gzip
+	# Same-origin: backend owns these prefixes, everything else → the SPA.
+	# Order matters — @backend must match before the catch-all to frontend.
+	@backend path /api/* /health /ready /version /docs /redoc /openapi.json
+	reverse_proxy @backend app:8000
+	reverse_proxy frontend:80
+}
+
+# Grafana and GlitchTip each get their own subdomain, not a sub-path of
+# APP_DOMAIN — GlitchTip's BASE_PATH support doesn't cover static asset URLs
+# or every redirect, so a sub-path route would serve a broken UI there;
+# Grafana just matches that pattern for consistency. Both need their own DNS
+# record (same Elastic IP) before Caddy can issue a cert — see
+# ../monitoring/README.md "GlitchTip activation" / "Grafana subdomain
+# activation". A DNS gap fails the TLS handshake for that subdomain only, not
+# a 502 — the main site, app, and the other subdomain are unaffected. Opt-in
+# monitoring stack (../monitoring/), often not up — both blocks resolve
+# lazily (no depends_on here).
+grafana.{$APP_DOMAIN} {
+	reverse_proxy grafana:3000
+}
+
+glitchtip.{$APP_DOMAIN} {
+	reverse_proxy glitchtip:8080
+}

@@ -1,0 +1,5 @@
+Hi {{ assignee_name }},
+
+{{ assigner_name }} unassigned you from a flagged submission in "{{ evaluation_title }}". No action is needed.
+
+{% include "_footer.txt" %}

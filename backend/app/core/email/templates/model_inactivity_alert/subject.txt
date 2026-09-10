@@ -1,0 +1,1 @@
+"{{ model_name }}" has been idle for {{ idle_hours }} hour{% if idle_hours != 1 %}s{% endif %}

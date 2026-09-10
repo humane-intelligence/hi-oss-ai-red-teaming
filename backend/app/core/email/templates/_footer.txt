@@ -1,0 +1,4 @@
+--
+{{ brand.company }} · {{ brand.product }}
+{{ brand.site_url }}{% if brand.footer_address %}
+{{ brand.footer_address }}{% endif %}

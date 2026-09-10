@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make help)",
+      "Bash(make install)",
+      "Bash(make install-hooks)",
+      "Bash(make lint)",
+      "Bash(make format)",
+      "Bash(make services)",
+      "Bash(make test)",
+      "Bash(make test:*)",
+      "Bash(make test-cov)",
+      "Bash(make test-cov:*)",
+      "Bash(make coverage-md)",
+      "Bash(make showmigrations)",
+      "Bash(make currentmigration)",
+      "Bash(make logs)",
+      "Bash(make clean-dry)",
+
+      "Bash(uv lock --check)",
+
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch)",
+      "Bash(git branch --show-current)",
+      "Bash(git rev-parse:*)",
+      "Bash(git remote -v)",
+
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)",
+      "Bash(find . -type f:*)",
+      "Bash(wc -l:*)"
+    ]
+  }
+}

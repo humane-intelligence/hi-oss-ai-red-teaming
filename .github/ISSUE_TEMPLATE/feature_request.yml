@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a capability the platform does not have yet.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What are you trying to do, and where does the platform stop you? Describe the situation rather
+        than the solution — the fix is often not the one that first comes to mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: The change you would make, if you have a shape for it.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it would live
+      options:
+        - backend (API, workers, data model)
+        - frontend (operator console)
+        - deploy (CD, the box, Terraform)
+        - monitoring (Prometheus, Loki, Grafana, GlitchTip)
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried or considered
+      description: Workarounds you are using now, or approaches you rejected and why.

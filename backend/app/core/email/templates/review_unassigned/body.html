@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph %}
+{% block content %}
+{{ heading("You've been unassigned from a review") }}
+{% call paragraph() %}Hi {{ assignee_name }},{% endcall %}
+{% call paragraph() %}<strong>{{ assigner_name }}</strong> unassigned you from a flagged submission in <strong>{{ evaluation_title }}</strong>. No action is needed.{% endcall %}
+{% endblock %}

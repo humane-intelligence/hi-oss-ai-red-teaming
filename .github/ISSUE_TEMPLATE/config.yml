@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/humane-intelligence/hi-oss-ai-red-teaming/blob/main/SECURITY.md
+    about: Do not open a public issue. Report security problems privately — see the security policy.
+  - name: Contributing guide
+    url: https://github.com/humane-intelligence/hi-oss-ai-red-teaming/blob/main/CONTRIBUTING.md
+    about: Setup, the contract loop, the gates a PR has to pass.

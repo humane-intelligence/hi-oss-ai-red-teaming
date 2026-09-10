@@ -1,0 +1,5 @@
+# Rendered on the box by deploy.sh from SSM (secrets) — never commit.
+.env
+
+# Generated on the box by deploy.sh when SSM carries no parameter — never commit.
+conversation_secrets_key

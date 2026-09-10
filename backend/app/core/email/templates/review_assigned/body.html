@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, button %}
+{% block content %}
+{{ heading("You've been assigned a submission to review") }}
+{% call paragraph() %}Hi {{ assignee_name }},{% endcall %}
+{% call paragraph() %}<strong>{{ assigner_name }}</strong> assigned you to review a flagged submission in <strong>{{ evaluation_title }}</strong>.{% endcall %}
+{% call paragraph() %}Please sign in to review.{% endcall %}
+{{ button(brand.site_url, "Sign in") }}
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("You've been invited to a red-teaming engagement") }}
+{% call paragraph() %}<strong>{{ inviter_name }}</strong> has invited you to join the evaluation group <strong>{{ group_title }}</strong> as a <strong>{{ role_names | join(", ") }}</strong>.{% endcall %}
+{% call paragraph() %}To set your password and activate your account, please accept the invitation using the button below. You'll automatically be added to the group.{% endcall %}
+{{ button(accept_url, "Accept invitation") }}
+{% call note() %}This invitation expires on {{ expires_at | datetimefmt }}. You can safely ignore this email if you were not expecting an invitation.{% endcall %}
+{% endblock %}

@@ -1,0 +1,2535 @@
+{
+  "info": {
+    "name": "20 · Response-level notes",
+    "description": "**Response-level notes** (surfaced in the review view): free-text notes an annotator attaches to a selection of one conversation's messages, so a reviewer's reasoning lives next to the transcript it is about.\n\n**The asymmetry this collection is built around.** Notes are deliberately **not** scoped the same way on the two sides:\n\n| | rule |\n|---|---|\n| **create** | group **visibility** only — there is *no* `Conversation.user_id == caller` predicate, so an annotator can leave a note on a red-teamer's transcript. That is the entire point of the feature. |\n| **read / update / delete** | **owner-scoped** — a caller sees only what *they* authored. The conversation's own owner does **not** see an annotator's notes. |\n| **break-glass** | `evaluation_groups:manage` (admin) lifts the read scope, but **not** the create path — a manager who cannot see the group cannot author in it either. |\n\nContrast the sibling: `MessageFlag` keeps the ownership predicate on create (a flag is attributed to its author, so a manager must not stamp one in someone else's name — see `06`).\n\n**Flow.** A) a red teamer holds a conversation with a message worth noting; B) the **annotator** notes it, then reads/updates/lists its own work; C) the **owner-scoped read** — the conversation owner sees nothing, the admin sees everything; D) `notes:*` gating — the `owner` role holds none of it; E) delete, including the cross-author 404.\n\n**Permissions.** `notes:read|create|update|delete` are held by **admin, red_teamer and annotator** — notably **not** by `owner`, which is why folder D's 403 is a role check and not a scope check.\n\n**Contract notes.**\n- `message_ids` must all be live messages of the given `conversation_id`; the ancestry (`evaluation_id`, `evaluation_group_id`) is **denormalised onto the row at create** under the caller's visibility, so it cannot drift afterwards.\n- Only `text` is editable. To change the selection, create another note.\n- Another author's note reads as **404**, never 403 — no existence leak.\n\n**Auth model.** Per-request across four identities. Self-contained; tears down everything but the evaluation group (no DELETE route).\n\n**Prereq.** `make seedlocal`.\n\n**Verified green** — 69/69 assertions, 47 requests, 0 failures, against a live stack whose database has revision `4fd9bfdbdc1f` applied (the annotation→note rename, plus the scenario a conversation now requires). This is also the only end-to-end proof that the renamed **routes and permissions** work against a live stack; the migration's own data rewrites are covered separately, in both directions, by `tests/core/annotations/test_rename_annotations_to_notes.py`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "run_suffix",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "owner_email",
+      "value": "owner@test.com"
+    },
+    {
+      "key": "owner_password",
+      "value": "password123"
+    },
+    {
+      "key": "owner_token",
+      "value": ""
+    },
+    {
+      "key": "redteamer_email",
+      "value": "redteamer@test.com"
+    },
+    {
+      "key": "redteamer_password",
+      "value": "password123"
+    },
+    {
+      "key": "redteamer_token",
+      "value": ""
+    },
+    {
+      "key": "annotator_email",
+      "value": "annotator@test.com"
+    },
+    {
+      "key": "annotator_password",
+      "value": "password123"
+    },
+    {
+      "key": "annotator_token",
+      "value": ""
+    },
+    {
+      "key": "an_admin_user_id",
+      "value": ""
+    },
+    {
+      "key": "an_annotator_user_id",
+      "value": ""
+    },
+    {
+      "key": "an_rt_user_id",
+      "value": ""
+    },
+    {
+      "key": "an_model_id",
+      "value": ""
+    },
+    {
+      "key": "an_group_id",
+      "value": ""
+    },
+    {
+      "key": "an_eval_id",
+      "value": ""
+    },
+    {
+      "key": "an_assignment_id",
+      "value": ""
+    },
+    {
+      "key": "an_scenario_id",
+      "value": ""
+    },
+    {
+      "key": "an_cg_id",
+      "value": ""
+    },
+    {
+      "key": "an_conv_id",
+      "value": ""
+    },
+    {
+      "key": "an_msg_id",
+      "value": ""
+    },
+    {
+      "key": "an_note_id",
+      "value": ""
+    },
+    {
+      "key": "an_rt_note_id",
+      "value": ""
+    },
+    {
+      "key": "an_cg2_id",
+      "value": ""
+    },
+    {
+      "key": "an_conv2_id",
+      "value": ""
+    },
+    {
+      "key": "an_msg2_id",
+      "value": ""
+    },
+    {
+      "key": "an_note2_id",
+      "value": ""
+    },
+    {
+      "key": "client_msg_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 · Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Builds the engagement and later demonstrates the `evaluation_groups:manage` break-glass on reads."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Log in as red teamer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('redteamer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{redteamer_email}}\",\n  \"password\": \"{{redteamer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Owns the conversation that gets noted — and, in folder C, fails to see the annotator's note on it."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Log in as annotator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('annotator_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{annotator_email}}\",\n  \"password\": \"{{annotator_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The author of the note. Holds `notes:*` but owns no conversation here."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Log in as owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('owner_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds no `notes:*` at all — folder D's 403."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Capture the admin and annotator user ids",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "const adm = items.find(u => u.email === pm.environment.get('admin_email'));",
+                  "const ann = items.find(u => u.email === pm.collectionVariables.get('annotator_email'));",
+                  "const rt  = items.find(u => u.email === pm.collectionVariables.get('redteamer_email'));",
+                  "pm.test('all three identities resolved', () => { pm.expect(adm).to.be.an('object'); pm.expect(ann).to.be.an('object'); pm.expect(rt).to.be.an('object'); });",
+                  "pm.collectionVariables.set('an_admin_user_id', adm.id);",
+                  "pm.collectionVariables.set('an_annotator_user_id', ann.id);",
+                  "pm.collectionVariables.set('an_rt_user_id', rt.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "`users:read` (admin). Folders A and B make claims about **who owns what** — that the conversation belongs to the red teamer and the note to the annotator. Without these ids those claims could only be asserted as \"is a string\", which is true of any author, so the assertions would pass even if the attribution were wrong."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Register a model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ann-{{run_suffix}}\",\n  \"model_alias\": \"ann-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "No credential needed — the user turn persists regardless, and that is what gets noted."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Create a PUBLIC evaluation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_group_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Notes {{run_suffix}}\",\n  \"description\": \"Note fixture.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\n    \"{{an_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**`public` matters.** Create checks *visibility*, so the annotator must be able to see the group without being a member — a public group is the simplest way to arrange that. In an `invitation_only` group the annotator would need an in-group role first."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · Approve the group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{an_group_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{an_group_id}}",
+                "approve"
+              ]
+            },
+            "description": "Evaluations cannot be created under a `pending_approval` group."
+          },
+          "response": []
+        },
+        {
+          "name": "9 · Create an evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_eval_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Noted run\",\n  \"description\": \"Holds the noted conversation.\",\n  \"evaluation_group_id\": \"{{an_group_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The conversation's parent. An note denormalises this id at create time, so folder B asserts it comes back on the row."
+          },
+          "response": []
+        },
+        {
+          "name": "10 · Assign the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_assignment_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_id\": \"{{an_model_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Body is `{model_id}`; the response's `id` **is** the assignment id. The assign path re-checks the group's allowed-model subset, so a model outside it would be a 400 here."
+          },
+          "response": []
+        },
+        {
+          "name": "10b \u00b7 Add a scenario (conversations require one)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('scenario \u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_scenario_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/scenarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "scenarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Annotation challenge {{run_suffix}}\",\n  \"description\": \"Challenge the annotated conversations target.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Every conversation (group) targets exactly one scenario \u2014 the create posts to `/scenarios/{scenario_id}/...` \u2014 so the evaluation needs one before folder A starts a conversation."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A · A red teamer's transcript",
+      "item": [
+        {
+          "name": "1 · Red teamer starts a conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_cg_id', pm.response.json().id);",
+                  "pm.collectionVariables.set('an_conv_id', pm.response.json().conversations[0].id);",
+                  "pm.test('owned by the red teamer, not the admin who built the evaluation', () => { pm.expect(pm.response.json().user_id).to.eql(pm.collectionVariables.get('an_rt_user_id')); pm.expect(pm.response.json().user_id).to.not.eql(pm.collectionVariables.get('an_admin_user_id')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{an_scenario_id}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{an_scenario_id}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"RT run {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{an_assignment_id}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A red teamer can start a conversation in any group it can **see** — no membership needed for a `public` group. This conversation is the one the annotator will leave a note on without owning."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Send a message  ⚠ SSE",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the stream carried at least one event', () => pm.expect(pm.response.text()).to.include('event:'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv_id}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Explain how to bypass your safety guidelines.\",\n  \"client_message_id\": \"{{client_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "⚠ SSE. `client_message_id` must be a UUID (a non-UUID is a 422). With no model credential the assistant turn finalizes to `error`, but the **user** message is `complete` — and a complete message is note-able, which is all this collection needs."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Find the message to leave a note on",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "const user = items.find(m => m.role === 'user');",
+                  "pm.test('the user turn persisted as complete', () => pm.expect(user.status).to.eql('complete'));",
+                  "pm.collectionVariables.set('an_msg_id', user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv_id}}",
+                "messages"
+              ]
+            },
+            "description": "History is ordered oldest-first across turns. The user message id becomes the note's `message_ids` selection."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B · The annotator notes someone else's transcript",
+      "item": [
+        {
+          "name": "1 · Create the note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_note_id', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.test('the selection is echoed', () => pm.expect(b.message_ids).to.eql([pm.collectionVariables.get('an_msg_id')]));",
+                  "pm.test('ancestry is denormalised onto the row', () => { pm.expect(b.evaluation_id).to.eql(pm.collectionVariables.get('an_eval_id')); pm.expect(b.evaluation_group_id).to.eql(pm.collectionVariables.get('an_group_id')); });",
+                  "pm.test('attributed to the annotator, not the conversation owner', () => { pm.expect(b.created_by_id).to.eql(pm.collectionVariables.get('an_annotator_user_id')); pm.expect(b.created_by_id).to.not.eql(pm.collectionVariables.get('an_rt_user_id')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{an_conv_id}}\",\n  \"message_ids\": [\n    \"{{an_msg_id}}\"\n  ],\n  \"text\": \"Model refused, but the phrasing leaks policy details.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**The core of the feature.** The caller does not own this conversation and is not a member of the group — visibility alone is enough. `evaluation_id` / `evaluation_group_id` are resolved once here, under the caller's visibility, so later reads need only the note's own columns and the ancestry cannot drift."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Read it back",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the author sees its own', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('an_note_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "description": "Trivially allowed — the author is inside its own read scope."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Update the text",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('text updated', () => pm.expect(pm.response.json().text).to.eql('Refusal is correct, but it names an internal policy id.'));",
+                  "pm.test('the selection is unchanged', () => pm.expect(pm.response.json().message_ids).to.eql([pm.collectionVariables.get('an_msg_id')]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Refusal is correct, but it names an internal policy id.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Only `text` is editable — the message selection is immutable, so re-scoping a note means writing a new one."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · List by conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('exactly its own one note', () => pm.expect(pm.response.json().total).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?conversation_id={{an_conv_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "{{an_conv_id}}"
+                }
+              ]
+            },
+            "description": "**FE note:** this is the call the review view makes to render notes beside a transcript. Filters: `conversation_id`, `evaluation_id`, `evaluation_group_id`, `message_id`, `created_by_id`, `created_from`/`created_to`, `search`."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Filter by the noted message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the message_id filter finds notes whose selection includes it', () => pm.expect(pm.response.json().items.map(i => i.id)).to.include(pm.collectionVariables.get('an_note_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?message_id={{an_msg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                }
+              ]
+            },
+            "description": "`message_id` matches notes whose *selection contains* that message — the per-message lookup the transcript uses to place a note against the right bubble."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C · Owner-scoped read (the asymmetry)",
+      "item": [
+        {
+          "name": "1 · The conversation owner lists — and sees nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('reads are owner-scoped, so the note is invisible to the transcript owner', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?conversation_id={{an_conv_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "{{an_conv_id}}"
+                }
+              ]
+            },
+            "description": "The red teamer **owns the conversation** and holds `notes:read`, and still sees nothing — reads return only what the caller *authored*. Not a bug: a reviewer's private reasoning is not addressed to the person being reviewed.\n\nWorth knowing when reading the FE: a red teamer's note panel shows only their own notes, so \"my note vanished\" reports are usually a different author, not a lost row."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · And cannot fetch it by id → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));",
+                  "pm.test('404, not 403 — no existence leak', () => pm.expect(pm.response.json().status).to.eql(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "description": "Out-of-scope rows read as *missing*, so addressing one cannot confirm it exists."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Admin sees it via the break-glass",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the manager reads another author\\'s note', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('an_note_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "description": "`evaluation_groups:manage` lifts the **read** scope to every author's work. It does *not* lift the create path — a manager who cannot see the group cannot author an note in it."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Admin lists every author's notes on the conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the break-glass list is not owner-scoped', () => pm.expect(pm.response.json().total).to.be.at.least(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?conversation_id={{an_conv_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "{{an_conv_id}}"
+                }
+              ]
+            },
+            "description": "The same lift on the list path, so a manager can audit a conversation's whole note history."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · The transcript owner can still leave a note on it themselves",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_rt_note_id', pm.response.json().id);",
+                  "pm.test('created', () => pm.expect(pm.response.json().text).to.eql('My own note on my own transcript.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{an_conv_id}}\",\n  \"message_ids\": [\n    \"{{an_msg_id}}\"\n  ],\n  \"text\": \"My own note on my own transcript.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Owner-scoped reads cut both ways — the red teamer authors its own note and *that* one it can see. A conversation carries many independent notes from many authors."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · …and now sees exactly one",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('its own note only — the annotator\\'s is still hidden', () => { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].id).to.eql(pm.collectionVariables.get('an_rt_note_id')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?conversation_id={{an_conv_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "{{an_conv_id}}"
+                }
+              ]
+            },
+            "description": "Two notes exist on this conversation (step 5 and folder B); this caller sees one. The pair with folder C step 4 is the whole scoping rule in two requests."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D · Permission gating",
+      "item": [
+        {
+          "name": "1 · The owner role holds no notes:read → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));",
+                  "pm.test('a permission refusal, not an empty list', () => pm.expect(pm.response.json().detail).to.include('notes:read'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "description": "`notes:*` is held by **admin, red_teamer and annotator** — not `owner`. A **403** rather than an empty page, which is the distinction that matters: the caller is told the capability is missing, not that there is nothing to see."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · The owner role cannot create either → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{an_conv_id}}\",\n  \"message_ids\": [\n    \"{{an_msg_id}}\"\n  ],\n  \"text\": \"should not land\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The gate is on the route, so it fires before any visibility or ownership logic — and before body validation."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · The owner role cannot update either → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"should not land\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`notes:update` is a separate member of the split, gated per verb — so it needs its own denial. Note the row *does* exist and the caller could not touch it either way; the 403 proves the refusal is the missing capability, not the owner-scope 404 an eligible role would get."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · The owner role cannot delete either → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "description": "`notes:delete`, likewise. The four members of the split are four independent route gates; a suite that only exercises one of them proves nothing about the other three."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · No token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "description": "The gate order in full: no credential is a 401 before any permission or scope check runs."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · An unknown message id → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{an_conv_id}}\",\n  \"message_ids\": [\n    \"11111111-1111-4111-8111-111111111111\"\n  ],\n  \"text\": \"mismatched selection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Every `message_ids` entry must be a live message **of that conversation**. A mismatch reads as 404 rather than 422 — the ids are well-formed, they just do not resolve inside the caller's scope."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "E · Delete",
+      "item": [
+        {
+          "name": "1 · Another author cannot delete it → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_rt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_rt_note_id}}"
+              ]
+            },
+            "description": "The annotator holds `notes:delete` but the row is outside its owner-scoped view, so it reads as missing."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · The author deletes its own",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_rt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_rt_note_id}}"
+              ]
+            },
+            "description": "Soft delete."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Admin deletes the annotator's note (break-glass)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note_id}}"
+              ]
+            },
+            "description": "`evaluation_groups:manage` lifts delete as well as read — so a manager can retract a note, though never author one."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Both are gone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the conversation has no live notes left', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?conversation_id={{an_conv_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "{{an_conv_id}}"
+                }
+              ]
+            },
+            "description": "Checked through the break-glass list, which would still see either row if it had survived."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "F · A soft-deleted parent hides the note",
+      "item": [
+        {
+          "name": "1 · Red teamer starts a second conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_cg2_id', pm.response.json().id);",
+                  "pm.collectionVariables.set('an_conv2_id', pm.response.json().conversations[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{an_scenario_id}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{an_scenario_id}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cascade probe {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{an_assignment_id}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A throwaway parent, so the cascade can be exercised without destroying the conversation folders A–E built."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Send a message  ⚠ SSE",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv2_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv2_id}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Second transcript, for the cascade probe.\",\n  \"client_message_id\": \"{{client_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "⚠ SSE. Only the persisted **user** turn matters here; the assistant turn errors without a credential."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Find its user message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('an_msg2_id', pm.response.json().items.find(m => m.role === 'user').id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv2_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv2_id}}",
+                "messages"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Annotator notes it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_note2_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{an_conv2_id}}\",\n  \"message_ids\": [\n    \"{{an_msg2_id}}\"\n  ],\n  \"text\": \"Note that should disappear with its parent.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A live note on a live conversation — the baseline the next step measures against."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · The author can read it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note2_id}}"
+              ]
+            },
+            "description": "Establishes that step 7's 404 is caused by the parent delete and not by the note never having been visible."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Naming conv2's message under conv1 → 404 (the foreign case)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));",
+                  "pm.test('the message, not the conversation, is what is refused', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversation_id\": \"{{an_conv_id}}\",\n  \"message_ids\": [\n    \"{{an_msg2_id}}\"\n  ],\n  \"text\": \"a live message, but of the other conversation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ]
+            },
+            "description": "The security case `assert_messages_in_conversation` exists for: both ids are **live and real**, they just belong to different conversations. Step D/6 sends a nonexistent id, which the unknown-id branch would refuse anyway — only this one fails if the `Turn.conversation_id` predicate is dropped."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Admin deletes the parent conversation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversation-groups/{{an_cg2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversation-groups",
+                "{{an_cg2_id}}"
+              ]
+            },
+            "description": "Cascade-soft-deletes the group **and** its conversations. Per the service's own docstring no cascade reaches the note row — its disappearance in step 7 comes from the read-side join, not from a write."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · The note now reads as missing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes/{{an_note2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes",
+                "{{an_note2_id}}"
+              ]
+            },
+            "description": "**The regression this folder exists to catch.** No cascade touches the note row itself — the service documents that reads join the **live** ancestor line (conversation → evaluation → group), which is what makes a soft-deleted parent hide it. (The row's own `deleted_at` is not observable through the API, so that half is the code's documented design, not something this request measures; what it measures is the 404.)\n\nA future change that scoped notes by their own `deleted_at` alone would still pass every other assertion in this collection while leaking notes attached to deleted transcripts. This is the repo's recurring soft-delete-cascade bug class, and before this folder existed the suite asserted it nowhere for notes."
+          },
+          "response": []
+        },
+        {
+          "name": "9 · …and is gone from the list too",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the list agrees with the detail read', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notes?conversation_id={{an_conv2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notes"
+              ],
+              "query": [
+                {
+                  "key": "conversation_id",
+                  "value": "{{an_conv2_id}}"
+                }
+              ]
+            },
+            "description": "Both read paths must narrow identically — a list that still returned the row while the detail 404s would be the inconsistency the live-parent join exists to prevent."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 · Delete the conversation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversation-groups/{{an_cg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversation-groups",
+                "{{an_cg_id}}"
+              ]
+            },
+            "description": "Admin can delete the red teamer's conversation group through the `evaluation_groups:manage` break-glass. Cascades to its conversations."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Delete the evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}"
+              ]
+            },
+            "description": "Parent of the conversation group deleted above — children first, then parents."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Delete the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{an_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{an_model_id}}"
+              ]
+            },
+            "description": "The evaluation group leaks — no DELETE route; `run_suffix` keeps its title unique."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

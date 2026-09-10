@@ -1,0 +1,47 @@
+# Scrape targets via file_sd (prometheus/targets/<component>/*.json,
+# 30s reload) rather than static_configs, so adding a target is a JSON drop, not a
+# Prometheus restart — see ../README.md.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: python
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/python/*.json"]
+
+  - job_name: postgresql
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/postgresql/*.json"]
+
+  - job_name: celery
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/celery/*.json"]
+
+  - job_name: nodes
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/nodes/*.json"]
+
+  - job_name: cadvisor
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/cadvisor/*.json"]
+
+  # Blackbox pattern: targets are probe URLs, not scrape addresses — relabeled
+  # onto __param_target, the real scrape address becomes the exporter itself.
+  - job_name: blackbox
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/blackbox/*.json"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

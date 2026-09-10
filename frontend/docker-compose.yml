@@ -1,0 +1,28 @@
+# Shared with the monorepo root so `cd frontend && docker compose ...` joins the
+# one stack, not a `frontend`-named project.
+name: ai-red-teaming
+
+services:
+  web:
+    # Dev image only — the Dockerfile is multi-stage; CI/CD build `--target prod`.
+    build:
+      context: .
+      target: dev
+    # Match the host user so files written into the bind mount (node_modules,
+    # generated client, dist) stay editable from the host. `make` exports these.
+    user: '${DOCKER_UID:-1000}:${DOCKER_GID:-1000}'
+    working_dir: /app
+    ports:
+      - '${FE_PORT}:${FE_PORT}'
+    volumes:
+      - .:/app
+    environment:
+      - FE_PORT=${FE_PORT}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+      # No inline default: the unified stack overrides this via the root Makefile
+      # export (http://app:8000), which takes precedence over frontend/.env.
+      - BACKEND_URL=${BACKEND_URL}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+    extra_hosts:
+      # Lets the Vite dev proxy reach a backend running on the host.
+      - 'host.docker.internal:host-gateway'

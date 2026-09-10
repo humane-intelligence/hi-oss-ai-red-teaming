@@ -1,0 +1,448 @@
+{
+	"info": {
+		"name": "17 · Audit log",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "The append-only audit trail — reading entries emitted by audited mutations, the filter surface, and the admin-only gate.\n\n**Flow.** A) create an org (emits an `organization.create` entry), then read it back via `GET /audit-logs` filtered by `action` + `object_id`, and confirm the page envelope; B) RBAC — a non-admin `viewer` is **403** (`audit:read` is admin-only), a no-token request is **401**.\n\n**Auth model.** Per-request: `{{admin_token}}` for the reads, `{{viewer_token}}` for the 403, `noauth` for the 401. Self-contained — no `00-bootstrap`, no manual token.\n\n**Trail contract.** Entries are append-only and secret-free (email/names are kept as attribution). Each carries `actor_id`/`actor_email`, `action`, `object_type`/`object_id`, a curated `before`/`after` diff, and `request_id`. Deleting the org does **not** remove its audit rows.\n\n**Leftovers.** None — Teardown deletes the org; the emitted audit rows persist by design.\n\n**Verified:** 13/13 checks green end-to-end against a live stack (`make up` + `make seedlocal`)."
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "run_suffix",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "viewer_email",
+			"value": "viewer@test.com"
+		},
+		{
+			"key": "viewer_password",
+			"value": "password123"
+		},
+		{
+			"key": "viewer_token",
+			"value": ""
+		},
+		{
+			"key": "au_org_id",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1 · Log in as admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded admin. Sets `run_suffix` (collision-free re-runs) and captures `admin_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('admin_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Log in as viewer (non-admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded `viewer` (a non-admin identity) for the RBAC/isolation checks. Captures `viewer_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "A · Generate + read an audited event",
+			"item": [
+				{
+					"name": "1 · Create an org (writes an audit row)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"audit-org-{{run_suffix}}\",\n  \"description\": \"Triggers an organization.create audit row.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/organizations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"organizations"
+							]
+						},
+						"description": "Any audited mutation lands a row. Creating an org emits an `organization.create` entry (actor = admin, object = the new org). Captures `au_org_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('au_org_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Read that entry back (filter by action + object)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/audit-logs?action=organization.create&object_id={{au_org_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"audit-logs"
+							],
+							"query": [
+								{
+									"key": "action",
+									"value": "organization.create"
+								},
+								{
+									"key": "object_id",
+									"value": "{{au_org_id}}"
+								}
+							]
+						},
+						"description": "**Requires `audit:read` (admin-only).** Filters: `action`, `object_type`, `object_id`, `actor_id`, `created_from`/`created_to`, plus `order_by`/`limit`/`offset`. The entry carries the actor, the target, and a secret-free `before`/`after` diff."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json();",
+									"pm.test('one matching entry', () => pm.expect(d.items.length).to.eql(1));",
+									"pm.test('action + object_type', () => { pm.expect(d.items[0].action).to.eql('organization.create'); pm.expect(d.items[0].object_type).to.eql('organization'); });",
+									"pm.test('actor attributed', () => { pm.expect(d.items[0].object_id).to.eql(pm.collectionVariables.get('au_org_id')); pm.expect(d.items[0].actor_email).to.eql(pm.environment.get('admin_email') || 'admin@test.com'); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Paginated list (page envelope)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/audit-logs?object_type=organization&limit=5",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"audit-logs"
+							],
+							"query": [
+								{
+									"key": "object_type",
+									"value": "organization"
+								},
+								{
+									"key": "limit",
+									"value": "5"
+								}
+							]
+						},
+						"description": "The list is a standard `Page[AuditLogResponse]` — `items` + `total`/`limit`/`offset`. Sensitive reads (asset egress, login attempts) are captured by the audit middleware; mutations by the explicit `record_audit` helper."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json();",
+									"pm.test('page envelope', () => { pm.expect(d).to.have.property('total'); pm.expect(d).to.have.property('limit'); pm.expect(d).to.have.property('offset'); pm.expect(d.items).to.be.an('array'); });",
+									"pm.test('limit honoured', () => pm.expect(d.items.length).to.be.at.most(5));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "B · RBAC",
+			"item": [
+				{
+					"name": "1 · Viewer → 403 (lacks audit:read)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/audit-logs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"audit-logs"
+							]
+						},
+						"description": "The audit trail is admin-only. A non-admin with a valid token is forbidden (`audit:read` is held by admin alone)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · No token → 401",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/audit-logs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"audit-logs"
+							]
+						},
+						"description": "Unauthenticated access is rejected before the permission check."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Teardown",
+			"item": [
+				{
+					"name": "1 · Delete the org",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/organizations/{{au_org_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"organizations",
+								"{{au_org_id}}"
+							]
+						},
+						"description": "Remove the org created in folder A (its `organization.create` / `organization.delete` audit rows remain — the trail is append-only)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

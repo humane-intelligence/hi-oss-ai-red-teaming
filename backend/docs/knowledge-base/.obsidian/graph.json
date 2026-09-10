@@ -1,0 +1,39 @@
+{
+  "collapse-filter": true,
+  "search": "",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:\"data-models\"",
+      "color": { "a": 1, "rgb": 5025616 }
+    },
+    {
+      "query": "path:\"components\"",
+      "color": { "a": 1, "rgb": 16750592 }
+    },
+    {
+      "query": "path:\"flows\"",
+      "color": { "a": 1, "rgb": 10233776 }
+    },
+    {
+      "query": "path:\"ai-gateway\" OR path:\"streaming-sse\" OR path:\"chat-stream\"",
+      "color": { "a": 1, "rgb": 15418782 }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": true,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1.3,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": false,
+  "centerStrength": 0.5,
+  "repelStrength": 12,
+  "linkStrength": 1,
+  "linkDistance": 90,
+  "scale": 1,
+  "close": false
+}

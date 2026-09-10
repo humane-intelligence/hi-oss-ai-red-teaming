@@ -1,0 +1,8 @@
+{{ inviter_name }} has invited you to join the evaluation group "{{ group_title }}" as a {{ role_names | join(", ") }}.
+
+To set your password and activate your account, please accept the invitation using the link below. You'll automatically be added to the group:
+{{ accept_url }}
+
+This invitation expires on {{ expires_at | datetimefmt }}. You can safely ignore this email if you were not expecting an invitation.
+
+{% include "_footer.txt" %}

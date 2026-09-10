@@ -1,0 +1,2617 @@
+{
+  "info": {
+    "name": "21 \u00b7 Admin user management",
+    "description": "The **admin account-management actions** on the user console: activate/deactivate an account, send someone a password-reset link, force-logout their sessions, and resend or revoke a pending invitation \u2014 each as a single-user route **and** through the platform bulk envelope.\n\n**Flow.** A) invite a throwaway account, so there is a `pending` invitation to work with; B) **invitation** resend + revoke; C) **force-logout**, including proof that the target's existing token dies; D) **status** change; E) **password reset**; F) RBAC \u2014 what a non-admin cannot do.\n\n**Permissions.** `users:update` gates status + password-reset, `users:invite` gates invitation resend/revoke, and `users:manage_sessions` gates force-logout. All three are **admin-only** except `users:invite`, which `owner` also holds.\n\n**Contract notes \u2014 the account-status preconditions are the surprising part.**\n- An **`invited`** account (invitation issued, never accepted) refuses a status change with **409** \u2014 *\"only an active or inactive account can be activated or deactivated\"* \u2014 and refuses a password reset with **409** \u2014 *\"only an active account can be sent a password reset\"*. So the status toggle is demonstrated on a seeded **active** user and restored afterwards.\n- **force-logout works on any account**, `invited` included (204), and does invalidate the target's issued tokens \u2014 folder C proves that with a token captured before the call.\n- **Deactivating an account also revokes its sessions**, not just future logins.\n- \u26a0 **Session revocation is second-granular and inclusive.** The marker is a Unix-second epoch and a token is rejected when `iat <= marker`, so a token minted *in the same second* as a revocation is already dead. **Folder C runs before folders D/E for exactly this reason** \u2014 its \"the token worked before the call\" baseline must not depend on a login that raced a revocation. If you reorder these folders, that assertion becomes flaky.\n- `POST /auth/users/{id}/invitation/resend` **after** a revoke succeeds (**200**) and issues a fresh invitation \u2014 revoking does not blacklist the address.\n- `POST /auth/invitations/bulk` row data requires **`role_ids`**, not just `email` \u2014 and it must be non-empty (an empty list is a `BadRequestError`). On this **platform** path `role_ids` *are* the account's global roles; there is no default fallback. Do not confuse it with the group-invitation path (`/evaluation-groups/{id}/invitations/bulk`), where the listed roles are group-scoped and a brand-new account separately gets the default `red_teamer` global role.\n- All three bulk paths are the platform `BulkRequest` envelope: per-row savepoints, partial success, and `dry_run: true` reports without committing. An unknown `user_id` is a per-row **404**.\n\n**\u26a0 This collection mutates seeded accounts.** Folder D deactivates and reactivates `viewer@test.com`, and folder C force-logs-out the viewer and the throwaway account. Everything is restored by the end, but do not run it concurrently with another collection that logs in as `viewer`.\n\n**Auth model.** Per-request: `{{admin_token}}` acts, `{{owner_token}}` supplies the RBAC negatives. Self-contained \u2014 the throwaway account is deleted in teardown. No manual token (the emailed reset/invite tokens are never needed; only that the send is accepted).\n\n**Prereq.** `make seedlocal`.\n\nFolder **G** covers the role-management CRUD: `POST /roles` and `GET|PATCH|DELETE /roles/{role_id}`, with the guardrails that distinguish their near-identical refusals \u2014 a reserved slug vs a duplicate name (two different 409s), an unknown vs a non-delegable permission (two different 400s), and a system role refusing both a content edit (400, `is code-managed`) and a delete (400, not the default-role 409).\n\nVerified green on a live stack: 94/94 assertions (Newman).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "run_suffix",
+      "value": ""
+    },
+    {
+      "key": "ua_custom_role_id",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "owner_email",
+      "value": "owner@test.com"
+    },
+    {
+      "key": "owner_password",
+      "value": "password123"
+    },
+    {
+      "key": "owner_token",
+      "value": ""
+    },
+    {
+      "key": "viewer_email",
+      "value": "viewer@test.com"
+    },
+    {
+      "key": "viewer_password",
+      "value": "password123"
+    },
+    {
+      "key": "viewer_token",
+      "value": ""
+    },
+    {
+      "key": "redteamer_email",
+      "value": "redteamer@test.com"
+    },
+    {
+      "key": "redteamer_password",
+      "value": "password123"
+    },
+    {
+      "key": "redteamer_token",
+      "value": ""
+    },
+    {
+      "key": "ua_role_id",
+      "value": ""
+    },
+    {
+      "key": "ua_email",
+      "value": ""
+    },
+    {
+      "key": "ua_user_id",
+      "value": ""
+    },
+    {
+      "key": "ua_viewer_id",
+      "value": ""
+    },
+    {
+      "key": "ua_expiry_before",
+      "value": ""
+    },
+    {
+      "key": "ghost_id",
+      "value": "11111111-1111-4111-8111-111111111111"
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 \u00b7 Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds `users:update`, `users:invite` and `users:manage_sessions` \u2014 every action here."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Log in as owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('owner_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds `users:invite` but **not** `users:update` or `users:manage_sessions` \u2014 folder F's negatives."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Log in as viewer (token captured for folder C's force-logout baseline)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('viewer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A seeded **active** account. Folder D toggles its status (and restores it); the token captured here is what folder C proves force-logout invalidates."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Log in as red teamer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('redteamer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{redteamer_email}}\",\n  \"password\": \"{{redteamer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds none of `users:*` \u2014 supplies the `users:invite` denial in folder F, the one management permission `owner` *does* hold."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Resolve the red_teamer role id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().items.find(x => x.name === 'red_teamer');",
+                  "pm.test('the red_teamer role exists', () => pm.expect(r).to.be.an('object'));",
+                  "pm.collectionVariables.set('ua_role_id', r.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles"
+              ]
+            },
+            "description": "`roles:read` (admin). An invitation must name the roles to pre-assign, so the id is resolved from the API rather than hard-coded \u2014 role ids are generated per environment."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Resolve the viewer's user id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().items.find(x => x.email === pm.collectionVariables.get('viewer_email'));",
+                  "pm.test('the seeded viewer is found', () => pm.expect(u).to.be.an('object'));",
+                  "pm.test('and is active', () => pm.expect(u.status).to.eql('active'));",
+                  "pm.collectionVariables.set('ua_viewer_id', u.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users?email={{viewer_email}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "{{viewer_email}}"
+                }
+              ]
+            },
+            "description": "`users:read`. The status is asserted here so folder D starts from a known state \u2014 if a previous interrupted run left it `inactive`, this fails loudly instead of confusing the toggle."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A \u00b7 Invite a throwaway account",
+      "item": [
+        {
+          "name": "1 \u00b7 Invite one user (the bulk envelope)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('ua_email', 'probe-' + pm.collectionVariables.get('run_suffix') + '@test.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the row succeeded', () => { pm.expect(b.succeeded).to.eql(1); pm.expect(b.failed).to.eql(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/invitations/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "invitations",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"invitee\",\n      \"data\": {\n        \"email\": \"{{ua_email}}\",\n        \"role_ids\": [\n          \"{{ua_role_id}}\"\n        ]\n      }\n    }\n  ],\n  \"dry_run\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**This is the only invite path** \u2014 the single-invite route is gone, so inviting one person is a one-row request. `role_ids` is **required** on the row data.\n\nDuplicate emails in one envelope, or more than `MAX_INVITE_ROWS` (**100**) rows, are rejected as **422** at the envelope level \u2014 the ceiling is a schema `max_length` on `rows`, so it never reaches the service."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 The account exists as `invited` with a pending invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().items[0];",
+                  "pm.test('found', () => pm.expect(u).to.be.an('object'));",
+                  "pm.test('status is invited, not active', () => pm.expect(u.status).to.eql('invited'));",
+                  "pm.test('the invitation rides along on the projection', () => pm.expect(u.invitation.status).to.eql('pending'));",
+                  "pm.collectionVariables.set('ua_user_id', u.id);",
+                  "pm.collectionVariables.set('ua_expiry_before', u.invitation.expires_at);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users?search={{ua_email}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "{{ua_email}}"
+                }
+              ]
+            },
+            "description": "**FE note:** the user list embeds `invitation` (`status` + `expires_at`), which is what lets the console show \"invited \u2014 expires in N days\" and decide whether to offer *resend* or *revoke*. An `invited` account has no usable password yet."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B \u00b7 Invitation resend & revoke",
+      "item": [
+        {
+          "name": "1 \u00b7 Resend the invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('still pending, for the same address', () => { pm.expect(b.status).to.eql('pending'); pm.expect(b.email).to.eql(pm.collectionVariables.get('ua_email')); });",
+                  "pm.test('the expiry was pushed out, not merely still valid', () => pm.expect(Date.parse(b.expires_at)).to.be.above(Date.parse(pm.collectionVariables.get('ua_expiry_before'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/invitation/resend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "invitation",
+                "resend"
+              ]
+            },
+            "description": "`users:invite`. Re-issues the single-use token and pushes the expiry out. Asserted against the expiry captured in folder A (`ua_expiry_before`) rather than against a bare 'still in the future' \u2014 the original invitation was in the future too, so that weaker form would hold even if resend refreshed nothing. The mail goes through the worker, so the token only ever appears in the worker log; this collection never needs it. (The margin is just the elapsed time between the two calls \u2014 `expires_at` is `now + TTL` \u2014 so it is tens of milliseconds, not days.)"
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Revoke it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/invitation",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "invitation"
+              ]
+            },
+            "description": "`users:invite`. Marks the pending invitation `revoked` so the emailed link stops working."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 The projection shows it revoked",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().items[0];",
+                  "pm.test('no longer pending', () => pm.expect(u.invitation === null || u.invitation.status !== 'pending').to.eql(true));",
+                  "pm.test('the account itself is untouched', () => pm.expect(u.status).to.eql('invited'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users?search={{ua_email}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "{{ua_email}}"
+                }
+              ]
+            },
+            "description": "Revoking the invitation does **not** delete the account \u2014 it stays `invited` with no live way in, which is the state an admin then either resends to or deletes."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Resending after a revoke works",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a fresh pending invitation is issued', () => pm.expect(pm.response.json().status).to.eql('pending'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/invitation/resend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "invitation",
+                "resend"
+              ]
+            },
+            "description": "**Not** a 409. Revoking withdraws the outstanding link; it does not blacklist the address, so an admin who revoked by mistake can simply resend."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Resend for an unknown user \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ghost_id}}/invitation/resend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ghost_id}}",
+                "invitation",
+                "resend"
+              ]
+            },
+            "description": "A well-formed id matching no live account."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C \u00b7 Force logout",
+      "item": [
+        {
+          "name": "1 \u00b7 The viewer's token works before the call",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('it is the viewer', () => pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('viewer_email')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Establishes the baseline, so step 3 is a real before/after rather than an assumption."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Force-logout the viewer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/force-logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "force-logout"
+              ]
+            },
+            "description": "`users:manage_sessions` \u2014 **admin-only**, separate from `users:update`, because revoking sessions is a containment action rather than an edit."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 The same token is now rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "**The assertion that matters.** An already-issued JWT stops being accepted, so force-logout is real session revocation and not merely a flag \u2014 that is the whole point when responding to a compromised account."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Force-logout works on an invited account too",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/force-logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "force-logout"
+              ]
+            },
+            "description": "Unlike status change and password reset, this has **no account-state precondition** \u2014 there is nothing to be inconsistent about in revoking sessions that may not exist."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Bulk force-logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('partial success', () => { pm.expect(b.succeeded).to.eql(1); pm.expect(b.failed).to.eql(1); });",
+                  "pm.test('the unknown user is a per-row 404', () => pm.expect(b.results.find(r => r.row_key === 'ghost').error.status).to.eql(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/force-logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "force-logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"probe\",\n      \"data\": {\n        \"user_id\": \"{{ua_user_id}}\"\n      }\n    },\n    {\n      \"row_key\": \"ghost\",\n      \"data\": {\n        \"user_id\": \"{{ghost_id}}\"\n      }\n    }\n  ],\n  \"dry_run\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The \"log everyone out\" action, one row per account. Deliberately targets the throwaway account rather than a seeded one, so the rest of the suite keeps its sessions."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Restore the viewer's session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('viewer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Force-logout revokes issued tokens; it does not disable the account, so a fresh login works immediately. Leaves the environment usable for the next collection."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D \u00b7 Account status",
+      "item": [
+        {
+          "name": "1 \u00b7 An invited account cannot be deactivated \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('explains which states are eligible', () => pm.expect(pm.response.json().detail).to.include('active or inactive'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The precondition worth knowing before wiring the console: `active` \u21c4 `inactive` is the only legal toggle. An `invited` account has never been activated, so there is nothing to deactivate \u2014 **409**, not 422.\n\nThe console should therefore offer *resend/revoke* for an `invited` row and *activate/deactivate* only for an `active`/`inactive` one."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Deactivate the seeded viewer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('now inactive', () => pm.expect(pm.response.json().status).to.eql('inactive'));",
+                  "pm.test('the full user projection comes back', () => pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('viewer_email')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`users:update`. The real toggle, on an account that is in an eligible state. \u26a0 This mutates a seeded login \u2014 step 5 restores it."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 A deactivated account cannot log in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));",
+                  "pm.test('and the reason is not disclosed', () => pm.expect(pm.response.json().detail).to.eql('Invalid email or password.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "What deactivation is *for*: correct credentials stop working.\n\n**The error is deliberately generic.** A deactivated account, a wrong password and an address with no account all return the identical `401 Invalid email or password.` \u2014 so login cannot be used to enumerate which accounts exist or which are disabled. The distinction is recorded only in the structured log (`auth.login.failed` with `reason=\"inactive\"` / `\"unknown_email\"`), never in the response, which is why this asserts the exact generic message rather than a reason code."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Bulk status: one eligible row, one ghost",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('partial success', () => { pm.expect(b.succeeded).to.eql(1); pm.expect(b.failed).to.eql(1); });",
+                  "pm.test('the unknown user is a per-row 404', () => pm.expect(b.results.find(r => r.row_key === 'ghost').error.status).to.eql(404));",
+                  "pm.test('the good row reports the new status', () => pm.expect(b.results.find(r => r.row_key === 'viewer').data.status).to.eql('active'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"viewer\",\n      \"data\": {\n        \"user_id\": \"{{ua_viewer_id}}\",\n        \"status\": \"active\"\n      }\n    },\n    {\n      \"row_key\": \"ghost\",\n      \"data\": {\n        \"user_id\": \"{{ghost_id}}\",\n        \"status\": \"inactive\"\n      }\n    }\n  ],\n  \"dry_run\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The bulk path the console's multi-select uses. This call is also what **reactivates the viewer** \u2014 the good row commits despite its neighbour failing, which is the partial-success guarantee in action."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 The viewer is active again and can log in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a usable token comes back', () => pm.expect(pm.response.json().access_token).to.be.a('string'));",
+                  "pm.collectionVariables.set('viewer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Confirms the seed state is restored, so the rest of the suite is unaffected. Re-captures the token for completeness; note that a token minted in the same second as the revocation just above is itself treated as revoked (see folder C), so nothing downstream relies on it."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Bulk dry_run reports without writing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('reported as a dry run that would succeed', () => { pm.expect(b.dry_run).to.eql(true); pm.expect(b.succeeded).to.eql(1); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"viewer\",\n      \"data\": {\n        \"user_id\": \"{{ua_viewer_id}}\",\n        \"status\": \"inactive\"\n      }\n    }\n  ],\n  \"dry_run\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A preview of a deactivation that must not happen \u2014 step 7 proves it did not."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 \u2026and the viewer really is still active",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the dry run rolled back', () => pm.expect(pm.response.json().status).to.eql('active'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}"
+              ]
+            },
+            "description": "The assertion that gives step 6 its meaning."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "E \u00b7 Password reset",
+      "item": [
+        {
+          "name": "1 \u00b7 An invited account cannot be sent a reset \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('names the password-reset precondition, not the status one', () => pm.expect(pm.response.json().detail).to.include('can be sent a password reset'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/password-reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "password-reset"
+              ]
+            },
+            "description": "Stricter than the status toggle: a reset needs an **active** account (an `invited` one has no password to reset \u2014 it needs an *invitation*, not a reset). A distinct 409, so the console can offer the right action."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Send the seeded viewer a reset link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/password-reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "password-reset"
+              ]
+            },
+            "description": "`users:update`. **204** \u2014 the endpoint reports that the mail was *accepted*, not that it arrived: the send goes through the worker.\n\nThe single-use token is only ever written to the worker log (`email.sent.console`), never returned, so the reset link itself is out of reach for an automated run. Collection `01` documents the manual token dance for actually completing a reset."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Bulk reset, dry run",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('reported as a dry run', () => pm.expect(b.dry_run).to.eql(true));",
+                  "pm.test('the eligible row would succeed, the ghost would 404', () => { pm.expect(b.succeeded).to.eql(1); pm.expect(b.results.find(r => r.row_key === 'ghost').error.status).to.eql(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/password-reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "password-reset"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"viewer\",\n      \"data\": {\n        \"user_id\": \"{{ua_viewer_id}}\"\n      }\n    },\n    {\n      \"row_key\": \"ghost\",\n      \"data\": {\n        \"user_id\": \"{{ghost_id}}\"\n      }\n    }\n  ],\n  \"dry_run\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Run as a **dry run deliberately** \u2014 a committed bulk reset would email every listed operator, which is not something a scenario collection should do to a shared environment. The per-row outcomes are still fully reported."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "F \u00b7 RBAC negatives",
+      "item": [
+        {
+          "name": "1 \u00b7 Owner cannot change a status \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));",
+                  "pm.test('names the missing permission', () => pm.expect(pm.response.json().detail).to.include('users:update'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`users:update` is admin-only. The gate runs before body validation, so a well-formed body still gets the 403."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Owner cannot force-logout \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));",
+                  "pm.test('names the missing permission', () => pm.expect(pm.response.json().detail).to.include('users:manage_sessions'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/force-logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "force-logout"
+              ]
+            },
+            "description": "`users:manage_sessions` is admin-only too \u2014 an owner managing an engagement has no business ending other people's sessions."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 But owner CAN manage invitations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}/invitation/resend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}",
+                "invitation",
+                "resend"
+              ]
+            },
+            "description": "The contrast that makes the split meaningful: `owner` holds `users:invite`, so onboarding is delegated while account control is not."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Owner cannot send a password reset \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/password-reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "password-reset"
+              ]
+            },
+            "description": "Reset rides on `users:update`, not `users:invite` \u2014 being able to invite someone does not extend to resetting their credentials."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Red teamer cannot invite \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));",
+                  "pm.test('names the invite permission', () => pm.expect(pm.response.json().detail).to.include('users:invite'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/invitations/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "invitations",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"nope\",\n      \"data\": {\n        \"email\": \"nope-{{run_suffix}}@test.com\",\n        \"role_ids\": [\n          \"{{ua_role_id}}\"\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Completes the picture: `owner` holds `users:invite` (step 3 above) but `red_teamer` does not, so onboarding is delegated to owners only. Folder A/B exercised the allowed side of this permission; without this row the gate was only ever seen succeeding."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 No token \u2192 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "401 before 403: an anonymous caller is rejected for missing credentials, not for a missing permission."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "G \u00b7 Role CRUD",
+      "item": [
+        {
+          "name": "1 \u00b7 Create a custom role \u2192 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set('ua_custom_role_id', b.id);",
+                  "pm.test('custom, not code-managed', () => pm.expect(b.is_system).to.eql(false));",
+                  "pm.test('active but not any kind of default', () => { pm.expect(b.is_active).to.eql(true); pm.expect(b.is_default).to.eql(false); pm.expect(b.is_participant_default).to.eql(false); });",
+                  "pm.test('the granted permission comes back', () => pm.expect(b.permissions).to.include('evaluation_groups:read'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"custom-{{run_suffix}}\",\n  \"display_name\": \"Custom {{run_suffix}}\",\n  \"description\": \"A throwaway role for the scenario run.\",\n  \"permissions\": [\n    \"evaluation_groups:read\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles"
+              ]
+            },
+            "description": "`roles:manage` (admin only). `name` is the slug and is immutable afterwards \u2014 `RoleUpdate` has no `name` field."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Read it back \u2192 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the same role', () => { pm.expect(b.id).to.eql(pm.collectionVariables.get('ua_custom_role_id')); pm.expect(b.name).to.eql('custom-' + pm.collectionVariables.get('run_suffix')); });",
+                  "pm.test('permissions survived the round trip', () => pm.expect(b.permissions).to.eql(['evaluation_groups:read']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{ua_custom_role_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles",
+                "{{ua_custom_role_id}}"
+              ]
+            },
+            "description": "`roles:read`, which every role holds \u2014 unlike the write side."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 A canonical slug \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('names the reservation, not a plain collision', () => pm.expect(pm.response.json().detail).to.include('is reserved for a system role'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"admin\",\n  \"display_name\": \"Not the real admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles"
+              ]
+            },
+            "description": "A system slug is reserved even though no live *custom* role holds it \u2014 a different message from the duplicate case in step 4, which is the point of asserting the substring."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 The same name twice \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('names the collision, not the reservation', () => { const d = pm.response.json().detail; pm.expect(d).to.include('already exists'); pm.expect(d).to.not.include('reserved'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"custom-{{run_suffix}}\",\n  \"display_name\": \"Duplicate\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles"
+              ]
+            },
+            "description": "Step 1's name, re-sent."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 A non-delegable permission \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('refused as an elevation vector, not as unknown', () => { const d = pm.response.json().detail; pm.expect(d).to.include('cannot be granted to a custom role'); pm.expect(d).to.include('roles:manage'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"escalate-{{run_suffix}}\",\n  \"display_name\": \"Escalation attempt\",\n  \"permissions\": [\n    \"roles:manage\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles"
+              ]
+            },
+            "description": "`NON_DELEGABLE_PERMISSIONS` \u2014 `roles:manage`, `users:manage_admin`, `users:update`. A custom role cannot hand out the keys to the role system itself."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 An unknown permission \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('a different refusal from the non-delegable one', () => { const d = pm.response.json().detail; pm.expect(d).to.include('Unknown permission'); pm.expect(d).to.not.include('cannot be granted'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"typo-{{run_suffix}}\",\n  \"display_name\": \"Typo\",\n  \"permissions\": [\n    \"evaluation_groups:reed\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles"
+              ]
+            },
+            "description": "A typo must not be silently dropped."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Rename the custom role \u2192 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the display name changed', () => pm.expect(b.display_name).to.eql('Renamed ' + pm.collectionVariables.get('run_suffix')));",
+                  "pm.test('the slug did not \u2014 `RoleUpdate` carries no `name`', () => pm.expect(b.name).to.eql('custom-' + pm.collectionVariables.get('run_suffix')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Renamed {{run_suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{ua_custom_role_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles",
+                "{{ua_custom_role_id}}"
+              ]
+            },
+            "description": "The slug is immutable by omission from the update schema, so this pins that a rename cannot move a role's identity."
+          },
+          "response": []
+        },
+        {
+          "name": "8 \u00b7 Patching a system role \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('says why, and that the flags are the exception', () => { const d = pm.response.json().detail; pm.expect(d).to.include('is code-managed'); pm.expect(d).to.include('activation and default flags'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Red Teamers, renamed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{ua_role_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles",
+                "{{ua_role_id}}"
+              ]
+            },
+            "description": "`ua_role_id` is `red_teamer`, resolved in Setup step 5 \u2014 a system role. Only `is_active` / the default flags are editable on one; a display-name edit is refused."
+          },
+          "response": []
+        },
+        {
+          "name": "9 \u00b7 Deleting a system role \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('a 400, not the 409 the default-role guard raises', () => pm.expect(pm.response.json().detail).to.include('System role'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{ua_role_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles",
+                "{{ua_role_id}}"
+              ]
+            },
+            "description": "System roles are code-managed: `make syncroles` would recreate one anyway. Distinct from the *default*-role guard, which is a 409."
+          },
+          "response": []
+        },
+        {
+          "name": "10 \u00b7 Delete the custom role \u2192 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{ua_custom_role_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles",
+                "{{ua_custom_role_id}}"
+              ]
+            },
+            "description": "Self-containment: the collection created it, so it removes it. Deletable because it is neither a system role, nor a default, nor the sole holder of anything."
+          },
+          "response": []
+        },
+        {
+          "name": "11 \u00b7 \u2026and it is gone \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{ua_custom_role_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "roles",
+                "{{ua_custom_role_id}}"
+              ]
+            },
+            "description": "Soft-deleted rows read as absent."
+          },
+          "response": []
+        }
+      ],
+      "description": "The four role-management operations `POST /roles` and `GET|PATCH|DELETE /roles/{role_id}`, plus the guardrails that make them safe: a reserved slug and a duplicate name are two *different* 409s, an unknown and a non-delegable permission are two *different* 400s, and a system role refuses both a content edit and a delete. Writes need `roles:manage` (admin only); the read needs `roles:read`, which every role holds.\n\nSelf-contained: the custom role is created in step 1 and deleted in step 10, so a repeat run needs no cleanup. `run_suffix` keeps the slug unique in case a run is interrupted between the two."
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 \u00b7 Delete the throwaway account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}"
+              ]
+            },
+            "description": "`users:delete`. Soft delete; its invitation goes with it."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 It reads as gone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_user_id}}"
+              ]
+            },
+            "description": "Soft-deleted, so even an admin holding `users:read` reads it as missing."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 The seeded viewer is left active",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('restored to active, as the suite expects', () => pm.expect(pm.response.json().status).to.eql('active'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users/{{ua_viewer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{ua_viewer_id}}"
+              ]
+            },
+            "description": "The final guarantee that this collection borrowed a seeded account and gave it back \u2014 the next collection to log in as `viewer` is unaffected."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{yml,yaml,toml,json,md}]
+indent_size = 2
+
+# Frontend (TS/JS/CSS/HTML) — 2-space, matches Prettier.
+[*.{ts,tsx,js,jsx,cjs,mjs,css,html}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab

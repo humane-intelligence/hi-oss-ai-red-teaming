@@ -1,0 +1,143 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 5px;
+  color-scheme: light;
+
+  /* Light — paper telemetry: same instrument, printed on light stock. */
+  --background: #e9efed;
+  --foreground: #0b1417;
+  --card: #fbfdfc;
+  --card-foreground: #0b1417;
+  --popover: #fbfdfc;
+  --popover-foreground: #0b1417;
+  --primary: #e59a33;
+  --primary-foreground: #1a1206;
+  --secondary: #dce6e3;
+  --secondary-foreground: #0b1417;
+  --muted: #dce6e3;
+  --muted-foreground: #51676b;
+  --accent: #dce6e3;
+  --accent-foreground: #0b1417;
+  --destructive: #c2342d;
+  --destructive-foreground: #ffffff;
+  --border: #c5d3d0;
+  --input: #c5d3d0;
+  --ring: #0c8478;
+  --sidebar: #fbfdfc;
+  --sidebar-foreground: #0b1417;
+  --sidebar-primary: #e59a33;
+  --sidebar-primary-foreground: #1a1206;
+  --sidebar-accent: #dce6e3;
+  --sidebar-accent-foreground: #0b1417;
+  --sidebar-border: #c5d3d0;
+  --sidebar-ring: #0c8478;
+  --ok: #157a4a;
+  --warn: #9c620a;
+  --err: #b5302a;
+  --grid: rgba(11, 20, 23, 0.05);
+  --glow: rgba(12, 132, 120, 0.07);
+}
+
+.dark {
+  /* Dark — telemetry palette ported from the legacy console. */
+  color-scheme: dark;
+  --background: #0b1417;
+  --foreground: #e9f1ef;
+  --card: #101c20;
+  --card-foreground: #e9f1ef;
+  --popover: #101c20;
+  --popover-foreground: #e9f1ef;
+  --primary: #f2a93b;
+  --primary-foreground: #0b1417;
+  --secondary: #15262b;
+  --secondary-foreground: #e9f1ef;
+  --muted: #15262b;
+  --muted-foreground: #7e9ca2;
+  --accent: #15262b;
+  --accent-foreground: #e9f1ef;
+  --destructive: #ff5b54;
+  --destructive-foreground: #0b1417;
+  --border: #203a41;
+  --input: #203a41;
+  --ring: #54d4c6;
+  --sidebar: #101c20;
+  --sidebar-foreground: #e9f1ef;
+  --sidebar-primary: #f2a93b;
+  --sidebar-primary-foreground: #0b1417;
+  --sidebar-accent: #15262b;
+  --sidebar-accent-foreground: #e9f1ef;
+  --sidebar-border: #203a41;
+  --sidebar-ring: #54d4c6;
+  --ok: #6fe3a0;
+  --warn: #f2a93b;
+  --err: #ff5b54;
+  --grid: rgba(255, 255, 255, 0.035);
+  --glow: rgba(84, 212, 198, 0.1);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Space Grotesk', var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply text-foreground font-sans;
+    background:
+      radial-gradient(120% 80% at 80% -10%, var(--glow) 0%, transparent 55%),
+      repeating-linear-gradient(0deg, var(--grid) 0 1px, transparent 1px 64px),
+      repeating-linear-gradient(90deg, var(--grid) 0 1px, transparent 1px 64px), var(--background);
+    min-height: 100svh;
+  }
+  ::selection {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  /* Tailwind v4's preflight resets buttons to `cursor: default`; restore the pointer on enabled controls. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}

@@ -1,0 +1,15 @@
+Hi {{ recipient_name }},
+
+No messages have been sent to "{{ model_name }}" for {{ idle_hours }} hour{% if idle_hours != 1 %}s{% endif %}.
+{% if still_warmed %}
+It is still being warmed, so the endpoint keeps waking for conversations nobody sends a message in — that is the time you are paying for.
+{% else %}
+Nothing is warming it either, so it should be scaled down already — disabling it just takes it out of the pickers.
+{% endif %}
+Last message: {% if last_used_at %}{{ last_used_at | datetimefmt }}{% else %}never — no messages since setup{% endif %}.
+Last warmed: {% if last_warmup_at %}{{ last_warmup_at | datetimefmt }}{% else %}never warmed{% endif %}.
+
+Disable it if nobody needs it:
+{{ target_url }}
+
+{% include "_footer.txt" %}

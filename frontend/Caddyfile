@@ -1,0 +1,8 @@
+# Static server for the built SPA (prod image), behind the box's edge Caddy.
+# Unknown paths fall back to index.html so React Router owns client routes.
+:80 {
+	root * /srv
+	encode gzip
+	try_files {path} /index.html
+	file_server
+}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("You've been invited to " ~ brand.product) }}
+{% call paragraph() %}{% if inviter_name %}<strong>{{ inviter_name }}</strong> invited you{% else %}You have been invited{% endif %} to join {{ brand.product }} as a <strong>{{ role_names | join(", ") }}</strong>.{% endcall %}
+{% call paragraph() %}Accept the invitation to create a password and set up your account.{% endcall %}
+{{ button(accept_url, "Accept invitation") }}
+{% call note() %}This invitation expires on {{ expires_at | datetimefmt }}. You can safely ignore this email if you weren't expecting an invitation.{% endcall %}
+{% endblock %}

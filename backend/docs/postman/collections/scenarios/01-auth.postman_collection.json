@@ -1,0 +1,438 @@
+{
+  "info": {
+    "name": "01 · Auth — identity & onboarding",
+    "description": "Auth/identity business flows.\n\nFour folders, each self-contained:\n- **Self-service signup** — register → verify email → log in\n- **Password reset** — register → request → confirm → log in\n- **Admin user management** — list → register → look up → get → update → delete (needs admin token)\n- **Platform invitation** — create invitation → **verify the token** → accept → log in (needs admin token)\n\n**Admin token:** the user-management and invitation folders use collection-level Bearer on `{{access_token}}`. Run `00-bootstrap` first (it logs in admin and sets `access_token`), or run this collection's own login requests.\n\n**⚠ Manual token steps.** Verify / reset-confirm / invitation-accept consume a single-use token that is **emailed**, not returned by the API (console backend → logged in the **worker**, and hashed in the DB so it can't be read back). For each, the request description explains how to copy the `token=` value out of the worker log and into the matching variable. Everything else runs unattended.\n\nNote: there is **no admin create-with-password route** — accounts onboard via registration or invitation, so the user-management folder registers a throwaway user and resolves its id by email before the admin get/update/delete steps.\n\n**Verified on a live stack: 21 assertions execute, 13 pass unattended.** The 8 failures are structural, not drift: they are the four \u26a0 manual-token steps (verify email, confirm reset, verify the invitation token, accept the invitation) plus the three logins that depend on them \u2014 the tokens are single-use, emailed, and only ever appear in the worker log, so Newman cannot reach them. Paste the four tokens in the GUI and the collection is fully green. This is the one collection in the suite whose *subject* is what makes it un-automatable. The **Platform invitation** folder was later re-pointed at `POST /auth/invitations/bulk` (the single endpoint is gone) and its automatable steps re-verified against the live stack; the manual-token pair (accept \u2192 log in) was not re-run.\n\n**`GET /auth/invitations/accept` is a token *check*, not an acceptance** — despite sharing the path with the POST. It is what an invite landing page calls before rendering the set-password form: 200 = pending and usable, 404 = unknown, **410** = already used / revoked / expired, 422 = `token` missing. Folder D step 3 exercises it with the real emailed token (⚠ manual); step 4 is the **unattended** half and needs no token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "run_suffix", "value": "", "type": "string" },
+    { "key": "signup_email", "value": "", "type": "string" },
+    { "key": "signup_password", "value": "", "type": "string" },
+    { "key": "verify_token", "value": "", "type": "string" },
+    { "key": "reset_email", "value": "", "type": "string" },
+    { "key": "reset_password", "value": "", "type": "string" },
+    { "key": "reset_token", "value": "", "type": "string" },
+    { "key": "role_id", "value": "", "type": "string" },
+    { "key": "managed_user_id", "value": "", "type": "string" },
+    { "key": "invite_email", "value": "", "type": "string" },
+    { "key": "invite_password", "value": "", "type": "string" },
+    { "key": "invitation_id", "value": "", "type": "string" },
+    { "key": "invite_token", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "A · Self-service signup",
+      "item": [
+        {
+          "name": "1 · Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));",
+                  "pm.collectionVariables.set('signup_email', `signup-${pm.collectionVariables.get('run_suffix')}@example.com`);",
+                  "pm.collectionVariables.set('signup_password', 'Sup3rSecret!1');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('register → 202 (accepted, verification email sent)', () => pm.response.to.have.status(202));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signup_email}}\",\n  \"password\": \"{{signup_password}}\",\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Lovelace\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Create an unverified account and dispatch a verification email. Public (no token). The account can't log in until step 2 verifies it."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Verify email  ⚠ manual token",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('verify → 204', () => pm.response.to.have.status(204));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/register/verify", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register", "verify"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verify_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Activate the account with the emailed token.\n\n**⚠ Manual:** the token is emailed, not returned. Get it from the worker log:\n1. `make logs` (or `docker compose logs worker --tail=50`)\n2. Find the latest `email.sent.console` line addressed to `{{signup_email}}`\n3. Copy the `token=...` value out of `body_text` / `body_html`\n4. Set the `verify_token` variable to it, then Send."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Log in (new user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login → 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns a token', () => pm.expect(pm.response.json().access_token).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signup_email}}\",\n  \"password\": \"{{signup_password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Confirm the freshly-verified account can authenticate. Fails with 401 if step 2 hasn't run."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B · Password reset",
+      "description": "Resets the **verified user from folder A** — run folder A first. Reset only issues a token for an `active` account (a freshly-registered, unverified user gets a silent no-op), and we never reset the admin (it would break every other scenario's login).",
+      "item": [
+        {
+          "name": "1 · Request reset (folder A's user)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.collectionVariables.set('reset_password', 'Rotat3d!Pass2');"]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('request → 204 (always, even for unknown/inactive email)', () => pm.response.to.have.status(204));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/password-resets/request", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "password-resets", "request"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signup_email}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Dispatch a reset link for the active user that folder A signed up and verified. Always 204 (never reveals whether the email exists or is active). Public."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Confirm reset  ⚠ manual token",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('confirm → 204', () => pm.response.to.have.status(204));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/password-resets/confirm", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "password-resets", "confirm"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"password\": \"{{reset_password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Set the new password with the emailed token.\n\n**⚠ Manual:** copy the `token=...` from the worker's **latest** `email.sent.console` line for `{{signup_email}}` (the reset mail — newer than the earlier verification mail) via `make logs`, set the `reset_token` variable, then Send."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Log in (new password)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('login with new password → 200', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signup_email}}\",\n  \"password\": \"{{reset_password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Confirm the rotated password works for folder A's user."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C · Admin user management",
+      "item": [
+        {
+          "name": "1 · List users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('list → 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().items, 'at least one user').to.be.an('array').and.not.empty;"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/users?limit=5", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users"], "query": [{ "key": "limit", "value": "5" }] },
+            "description": "List users (the admin user-management surface). Requires permission `users:read`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Register a user to manage",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));",
+                  "pm.collectionVariables.set('managed_email', `managed-${pm.collectionVariables.get('run_suffix')}@example.com`);",
+                  "pm.collectionVariables.set('managed_password', 'M4nag3dPass!1');"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('register → 202', () => pm.response.to.have.status(202));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managed_email}}\",\n  \"password\": \"{{managed_password}}\",\n  \"first_name\": \"Grace\",\n  \"last_name\": \"Hopper\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Onboard a user via self-registration — the platform has **no admin create-with-password route**; accounts onboard by registration or invitation. The just-registered (unverified) row is what the admin then reads/updates/deletes below. Public endpoint (no auth)."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Look up the new user's id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('lookup → 200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().items.find(x => x.email === pm.collectionVariables.get('managed_email'));",
+                  "pm.test('registered user is listed', () => pm.expect(u, 'user in list').to.be.an('object'));",
+                  "pm.collectionVariables.set('managed_user_id', u.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/users?email={{managed_email}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users"], "query": [{ "key": "email", "value": "{{managed_email}}" }] },
+            "description": "Resolve the registered user's id via the exact-email filter (the API has no create-returns-id step). Requires permission `users:read`."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Get user",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('get → 200', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/users/{{managed_user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users", "{{managed_user_id}}"] },
+            "description": "Fetch the user by id. Requires permission `users:read`."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Update user",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('update → 200', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/users/{{managed_user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users", "{{managed_user_id}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Grace M.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Patch a field. Requires permission `users:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Delete user",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('delete → 204', () => pm.response.to.have.status(204));"] } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/auth/users/{{managed_user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users", "{{managed_user_id}}"] },
+            "description": "Soft-delete the user. Requires permission `users:delete`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D · Platform invitation",
+      "item": [
+        {
+          "name": "1 · List users (capture role_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('list → 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('role_id', pm.response.json().items[0].roles[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/users?limit=5", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users"], "query": [{ "key": "limit", "value": "5" }] },
+            "description": "Grab a `role_id` to pre-assign on the invitation. Requires permission `users:read`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Create invitation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));",
+                  "pm.collectionVariables.set('invite_email', `invite-${pm.collectionVariables.get('run_suffix')}@example.com`);",
+                  "pm.collectionVariables.set('invite_password', 'Inv1ted!Pass3');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invitation → 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('invitation_id', pm.response.json().results[0].data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/invitations/bulk", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "invitations", "bulk"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    { \"row_key\": \"r1\", \"data\": { \"email\": \"{{invite_email}}\", \"role_ids\": [\"{{role_id}}\"] } }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Issue platform invitations with pre-assigned roles — the bulk envelope is the only invite path, so a single invitee is a one-row request. Each invited account is created and a token emailed. Per-row outcomes in `results`; `dry_run: true` validates without persisting. Requires permission `users:invite`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Verify the invitation token  ⚠ manual token",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('verify → 200', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/v1/auth/invitations/accept?token={{invite_token}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "invitations", "accept"], "query": [{ "key": "token", "value": "{{invite_token}}" }] },
+            "description": "**FE note:** despite the path, the GET is a **token check**, not the acceptance — it is what the invite landing page calls before rendering the set-password form, so a dead link can be reported as such instead of failing on submit. Public (no auth). 200 = pending and usable, 404 = unknown, **410** = used / revoked / expired, 422 = no `token` at all.\n\n**⚠ Manual:** needs the same real token as step 5 — copy `token=...` from the worker's latest `email.sent.console` line for `{{invite_email}}` (`make logs`) into `invite_token`. Run step 4 first if you only want the unattended half."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Verify an unknown token → 404",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 404', () => pm.response.to.have.status(404));", "pm.test('says the invitation is not found', () => pm.expect(pm.response.json().detail).to.include('Invitation not found'));"] } }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/v1/auth/invitations/accept?token=not-a-real-invitation-token", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "invitations", "accept"], "query": [{ "key": "token", "value": "not-a-real-invitation-token" }] },
+            "description": "The deterministic, unattended half of the token check — no emailed token needed. A garbage token is a **404** (`Invitation not found.`); omitting `token` entirely is a 422, since it is a required query parameter."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Accept invitation  ⚠ manual token",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('accept → 204', () => pm.response.to.have.status(204));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/invitations/accept", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "invitations", "accept"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{invite_token}}\",\n  \"password\": \"{{invite_password}}\",\n  \"first_name\": \"Invited\",\n  \"last_name\": \"User\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Onboard the invited account by setting a password.\n\n**⚠ Manual:** copy the `token=...` from the worker's latest `email.sent.console` line for `{{invite_email}}` (`make logs`) into the `invite_token` variable, then Send."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Log in (invited user)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('login → 200', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{invite_email}}\",\n  \"password\": \"{{invite_password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Confirm the onboarded invitee can authenticate."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

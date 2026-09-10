@@ -1,0 +1,1435 @@
+{
+  "info": {
+    "name": "11 \u00b7 Organizations & tenancy",
+    "description": "Tenancy root \u2014 the admin-managed organization resource and its membership, plus the delete guard that keeps referenced orgs alive.\n\n**Flow.** A) org CRUD (create/get/list-filter/rename, name-collision 409, missing 404); B) members (assign/list/remove, non-member 404); C) the tenancy invariant \u2014 an `organization`-access-level group references the org, so deleting the org is **blocked (409)** until the group is freed (switched to `public` with `organization_id` cleared), then it deletes (204); D) RBAC negatives \u2014 `viewer` (non-admin) reads (200) but is denied create/update/delete/manage-members (403), and a no-token request is 401.\n\n**Auth model.** Per-request (not collection-level): `{{admin_token}}` for management, `{{viewer_token}}` for the non-admin negatives, `noauth` for the 401. Setup logs in both seeded identities \u2014 **self-contained, no `00-bootstrap` and no manual verification-token step** (the non-admin is the seeded `viewer`, not a fresh registration).\n\n**Permissions.** `organizations:read` is held by every role; `create`/`update`/`delete`/`manage_members` are admin-only.\n\n**Leftovers.** Evaluation groups have no DELETE endpoint, so the folder-C group is left behind (`run_suffix` keeps it unique); Teardown removes org2 (org1 is deleted in folder C).\n\n**Verified:** 30/30 against a live stack (`make up` + `make seedlocal`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "run_suffix",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "viewer_email",
+      "value": "viewer@test.com",
+      "type": "string"
+    },
+    {
+      "key": "viewer_password",
+      "value": "password123",
+      "type": "string"
+    },
+    {
+      "key": "viewer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "member_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "org1_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "org2_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "org_group_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "org_model_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 \u00b7 Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json()['access_token']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Authenticate the seeded admin (env `admin_email`/`admin_password`). Sets `run_suffix` (collision-free re-runs) and captures `admin_token` for every management request."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Log in as viewer (non-admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Authenticate the seeded `viewer` \u2014 a non-admin that holds `organizations:read` but none of the management permissions. Drives the 403 negatives in folder D. No manual verification-token step is needed (unlike 07), because this identity is seeded, not freshly registered."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Capture viewer user id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('member_user_id', pm.response.json()['id']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Read the viewer's own id via `/auth/me` \u2014 used as the member to assign/remove in folder B (avoids needing `users:read`)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A \u00b7 Organization CRUD",
+      "item": [
+        {
+          "name": "1 \u00b7 Create organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('org1_id', pm.response.json()['id']);",
+                  "pm.test('Location header points at the new org', () => pm.expect(pm.response.headers.get('Location')).to.eql(`/api/v1/organizations/${pm.response.json().id}`));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme {{run_suffix}}\",\n  \"description\": \"Red-teaming tenant.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**Admin-only** (`organizations:create`). Creates the tenancy root; `name` must be unique among live rows. Captures `org1_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Get organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}"
+              ]
+            },
+            "description": "Fetch the org by id (`organizations:read`, held by every role)."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 List with name filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('filter finds exactly the created org', () => pm.expect(pm.response.json().total).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations?name=Acme {{run_suffix}}&limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations"
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "Acme {{run_suffix}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Paginated list narrowed by `?name=`. The run-suffixed name makes the count deterministic (`total == 1`)."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Rename organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme {{run_suffix}} (renamed)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Partial update (`organizations:update`). Omitted fields stay unchanged."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Create a second organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('org2_id', pm.response.json()['id']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Beta {{run_suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A second org, used for the name-collision 409 and the folder-D negatives."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Rename into an existing name \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org2_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme {{run_suffix}} (renamed)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Renaming org2 onto org1's live name violates the unique-name constraint \u2192 409 Conflict."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Get a non-existent org \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/11111111-1111-4111-8111-111111111111",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "description": "An unknown id reads as 404 Not Found."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B \u00b7 Members",
+      "item": [
+        {
+          "name": "1 \u00b7 Assign viewer as member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}",
+                "members"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{member_user_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**Admin-only** (`organizations:manage_members`). Stamps `User.organization_id`; moves the user out of any prior org. Idempotent when already a member."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Member appears in the member list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('viewer is in the member list', () => pm.expect(pm.response.json().items.map(u => u.id)).to.include(pm.collectionVariables.get('member_user_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}/members?limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Paginated members of the org; the assigned viewer is present."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Remove member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}/members/{{member_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}",
+                "members",
+                "{{member_user_id}}"
+              ]
+            },
+            "description": "Detach the user (clears `organization_id`). Returns 204."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Remove a non-member \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}/members/{{member_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}",
+                "members",
+                "{{member_user_id}}"
+              ]
+            },
+            "description": "Removing a user who is no longer a member reads as 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C \u00b7 Tenancy invariant (delete guard)",
+      "item": [
+        {
+          "name": "1 \u00b7 Register a model (for the group's allowed-model subset)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('org_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"org-{{run_suffix}}\",\n  \"model_alias\": \"org-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A group create requires a non-empty `allowed_model_ids`, so the engagement needs a registered model first. No credential is set \u2014 nothing here talks to the provider. Captures `org_model_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Create an org-scoped evaluation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('org_group_id', pm.response.json()['id']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Org-scoped group {{run_suffix}}\",\n  \"description\": \"References the org, to prove the delete guard.\",\n  \"access_level\": \"organization\",\n  \"organization_id\": \"{{org1_id}}\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\"{{org_model_id}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "An `organization` access-level group must reference a live org via `organization_id`. This live reference is what blocks the org delete in the next step."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Delete the org while in use \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}"
+              ]
+            },
+            "description": "Deleting an org is blocked while any **live** evaluation group still references it \u2014 a soft-delete wouldn't fire the FK `SET NULL`, so those groups would go dark and un-editable. \u2192 409."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Free the group (public + clear org)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{org_group_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{org_group_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"access_level\": \"public\",\n  \"organization_id\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Switch the group to `public` and clear `organization_id` in one PATCH (clearing the org while still `organization` would be rejected). Removes the reference."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Delete the now-free org \u2192 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org1_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org1_id}}"
+              ]
+            },
+            "description": "With no live group referencing it, the soft-delete succeeds \u2192 204."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D \u00b7 RBAC negatives",
+      "item": [
+        {
+          "name": "1 \u00b7 Viewer can list (read held by all)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations?limit=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "`organizations:read` is held by every role, so a non-admin lists fine \u2192 200."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Viewer create \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nope {{run_suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Non-admin lacks `organizations:create` \u2192 403."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Viewer update \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org2_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"hijack\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Non-admin lacks `organizations:update` \u2192 403."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Viewer delete \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org2_id}}"
+              ]
+            },
+            "description": "Non-admin lacks `organizations:delete` \u2192 403."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Viewer assign member \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org2_id}}/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org2_id}}",
+                "members"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{member_user_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Non-admin lacks `organizations:manage_members` \u2192 403."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 No token \u2192 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations"
+              ]
+            },
+            "description": "A protected route with no bearer token \u2192 401."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 \u00b7 Delete org2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{org2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "organizations",
+                "{{org2_id}}"
+              ]
+            },
+            "description": "org2 was never referenced by a group, so it deletes cleanly. (org1 was already deleted in folder C.)"
+          },
+          "response": []
+        }
+,
+        {
+          "name": "2 \u00b7 Delete the model fixture",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{org_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{org_model_id}}"
+              ]
+            },
+            "description": "Self-containment: the collection created this model, so it deletes it."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,276 @@
+{
+  "info": {
+    "name": "00 · Bootstrap — seed shared context",
+    "description": "Seeds a reusable context other scenario collections build on, writing the ids into **environment** variables (collection variables don't cross collections):\n\n- `access_token` — admin bearer token (collection-level auth uses it)\n- `model_id` — a registered `AiModel`\n- `group_id` — a `draft` evaluation group (owned by admin)\n- `evaluation_id` — an evaluation in that group\n- `assignment_id` — the model assigned to the evaluation\n- `scenario_id` — a scenario of the evaluation (conversations require one)\n- `conversation_group_id` — the conversation group that owns the conversation\n- `conversation_id` — a conversation against that assignment (the group's `conversations[0]`)\n\nRun this **first** with the `local` environment selected, then run other scenarios. Re-running mints a fresh `run_suffix` so unique names (model alias, group title) never collide. Verified green on a live stack: 9/9 assertions (Newman, `make up` + `make seedlocal`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "run_suffix", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1 · Log in (admin)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Fresh per run so unique names (model alias, group title) never collide on re-run.",
+              "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('login → 200', () => pm.response.to.have.status(200));",
+              "const token = pm.response.json().access_token;",
+              "pm.expect(token, 'access_token present').to.be.a('string').and.not.empty;",
+              "pm.environment.set('access_token', token);",
+              "pm.environment.set('refresh_token', pm.response.json().refresh_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "auth": { "type": "noauth" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Mint the admin bearer token and store it as the `access_token` environment variable used by every other request's collection-level auth."
+      },
+      "response": []
+    },
+    {
+      "name": "2 · Create AI model",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('model → 201', () => pm.response.to.have.status(201));",
+              "pm.environment.set('model_id', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/ai-models",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "ai-models"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"bootstrap-{{run_suffix}}\",\n  \"model_alias\": \"bootstrap-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Register an `AiModel`. `model_alias` is unique, so the per-run `{{run_suffix}}` keeps re-runs from colliding (409). Requires permission `models:create`."
+      },
+      "response": []
+    },
+    {
+      "name": "3 · Create evaluation group",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('group → 201', () => pm.response.to.have.status(201));",
+              "pm.environment.set('group_id', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/evaluation-groups",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "evaluation-groups"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bootstrap {{run_suffix}}\",\n  \"description\": \"Seeded by 00-bootstrap.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-09-01\",\n  \"end_date\": \"2026-09-30\",\n  \"allowed_model_ids\": [\"{{model_id}}\"]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Create a complete group (status `pending_approval`) owned by the admin (auto-granted the in-group `owner` role). Requires permission `evaluation_groups:create`. Approved in the next step so evaluations can be added."
+      },
+      "response": []
+    },
+    {
+      "name": "3b · Approve the group (enables evaluation creation)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('approved → 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/evaluation-groups/{{group_id}}/approve",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "evaluation-groups", "{{group_id}}", "approve"]
+        },
+        "description": "Approve the group (pending_approval → approved). Evaluations can be added only to an approved/published group, so this must precede step 4 (otherwise 409). Admin is the group owner and also holds the `evaluation_groups:manage` break-glass."
+      },
+      "response": []
+    },
+    {
+      "name": "4 · Create evaluation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('evaluation → 201', () => pm.response.to.have.status(201));",
+              "pm.environment.set('evaluation_id', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/evaluations",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "evaluations"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bootstrap eval\",\n  \"description\": \"Seeded evaluation.\",\n  \"evaluation_group_id\": \"{{group_id}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Create an evaluation in the seeded group. Requires permission `evaluations:update`."
+      },
+      "response": []
+    },
+    {
+      "name": "5 · Assign model to evaluation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('assignment → 201', () => pm.response.to.have.status(201));",
+              "pm.environment.set('assignment_id', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/evaluations/{{evaluation_id}}/models",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "evaluations", "{{evaluation_id}}", "models"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"model_id\": \"{{model_id}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Assign the model to the evaluation, producing the `EvaluationAiModel` assignment a conversation binds to. Requires permission `evaluations:update`."
+      },
+      "response": []
+    },
+    {
+      "name": "5b · Create scenario (conversations require one)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('scenario → 201', () => pm.response.to.have.status(201));",
+              "pm.environment.set('scenario_id', pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/evaluations/{{evaluation_id}}/scenarios",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "evaluations", "{{evaluation_id}}", "scenarios"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Bootstrap scenario\",\n  \"description\": \"Shared challenge for the bootstrap conversation.\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Create a scenario of the evaluation. Every conversation (group) now targets exactly one scenario — the create posts to `/scenarios/{scenario_id}/...` — so the chain needs one before step 6. Leaves `scenario_id` for the downstream scenarios. Requires permission `evaluations:update`."
+      },
+      "response": []
+    },
+    {
+      "name": "6 · Start conversation (via a conversation group)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('conversation group → 201', () => pm.response.to.have.status(201));",
+              "const g = pm.response.json();",
+              "pm.environment.set('conversation_group_id', g.id);",
+              "pm.test('one conversation created', () => pm.expect(g.conversations).to.be.an('array').that.is.not.empty);",
+              "pm.environment.set('conversation_id', g.conversations[0].id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/scenarios/{{scenario_id}}/conversation-groups",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "scenarios", "{{scenario_id}}", "conversation-groups"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Bootstrap conversation\",\n  \"models\": [{ \"evaluation_ai_model_id\": \"{{assignment_id}}\" }]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "description": "Open a conversation against the assigned model. Post-`main`, a conversation must belong to a **conversation group**: `POST /scenarios/{scenario_id}/conversation-groups` with `{name, models:[{evaluation_ai_model_id}]}` creates the group plus one conversation per entry — the scenario travels in the path (every conversation targets one). Leaves `conversation_group_id` and `conversation_id` (the embedded `conversations[0].id`) for the conversation/flag scenarios. Requires permission `conversations:create`."
+      },
+      "response": []
+    }
+  ]
+}

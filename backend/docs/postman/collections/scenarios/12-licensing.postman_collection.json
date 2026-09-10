@@ -1,0 +1,3060 @@
+{
+  "info": {
+    "name": "12 \u00b7 Data licensing",
+    "description": "The platform's **data-licensing** policy: the DB-backed license catalog, the admin-only platform default, user-authored license CRUD, and the override cascade that resolves an evaluation's effective license.\n\n**Flow.** A) the catalog (`GET /licenses[/{license_id}]`) \u2014 auth-only, no permission, readable by any role; B) the platform default (`GET`/`PATCH /platform-settings`) \u2014 admin-only; C) **user-authored license CRUD** (`licenses:create|update|delete`, admin + owner) plus the curated-is-immutable and default-is-undeletable guards; D) the **cascade** \u2014 a group `data_license_id` override vs a group that inherits the platform default, then an evaluation with its own override (wins) vs one inheriting the group's.\n\n**Auth model.** Per-request: `{{admin_token}}` for settings + fixtures, `{{owner_token}}` for the second author, `{{viewer_token}}` / `{{redteamer_token}}` for the 403s, `noauth` for the 401. Self-contained \u2014 no `00-bootstrap`, no manual token.\n\n**Contract notes (the string-SPDX model is gone).**\n- A license is addressed by its **UUID**, not its SPDX id: `GET /licenses/{license_id}`. A slug is a **422**, and folder A asserts that explicitly so the old contract cannot silently come back.\n- Curated rows (the shipped CC/ODC/CDLA set) carry an `spdx_id` and `created_by_id: null`, and are **refused for everyone** on PATCH/DELETE (403) \u2014 they are reconciled from code by `make synclicenses`.\n- A user-authored row has `spdx_id: null` and `is_curated: false`.\n- The platform default cannot be deleted (**409**); an unknown `default_license_id` is a **400**, not a 422.\n- Overrides are `data_license_id` (UUID) and the response's `effective_license` is an **object**, not a string.\n\n**Prereq.** `make seedlocal` (for the five role logins and the synced curated catalog).\n\n**Leftovers.** The two evaluation groups in folder D leak \u2014 groups have no DELETE; `run_suffix` keeps them unique. Everything else is torn down.\n\nFolder **E** covers the conversation-data protection flag: the licence field, both projections, the sealed/unsealed conversation pair, and the fact that clearing the flag leaves an existing conversation's `content_protected` untouched. Each of that pair creates a scenario first \u2014 a conversation group is posted to `/scenarios/{scenario_id}/conversation-groups`, not to the evaluation.\n\nVerified green on a live stack: 90/90 assertions (Newman).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "run_suffix",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "owner_email",
+      "value": "owner@test.com"
+    },
+    {
+      "key": "owner_password",
+      "value": "password123"
+    },
+    {
+      "key": "owner_token",
+      "value": ""
+    },
+    {
+      "key": "viewer_email",
+      "value": "viewer@test.com"
+    },
+    {
+      "key": "viewer_password",
+      "value": "password123"
+    },
+    {
+      "key": "viewer_token",
+      "value": ""
+    },
+    {
+      "key": "redteamer_email",
+      "value": "redteamer@test.com"
+    },
+    {
+      "key": "redteamer_password",
+      "value": "password123"
+    },
+    {
+      "key": "redteamer_token",
+      "value": ""
+    },
+    {
+      "key": "plat_default_id",
+      "value": ""
+    },
+    {
+      "key": "curated_id",
+      "value": ""
+    },
+    {
+      "key": "catalog_ids",
+      "value": ""
+    },
+    {
+      "key": "lic_admin",
+      "value": ""
+    },
+    {
+      "key": "lic_admin_author",
+      "value": ""
+    },
+    {
+      "key": "lic_owner",
+      "value": ""
+    },
+    {
+      "key": "lic_model_id",
+      "value": ""
+    },
+    {
+      "key": "grp_ovr",
+      "value": ""
+    },
+    {
+      "key": "grp_inh",
+      "value": ""
+    },
+    {
+      "key": "eval_ovr",
+      "value": ""
+    },
+    {
+      "key": "eval_inh",
+      "value": ""
+    },
+    {
+      "key": "lic_protect",
+      "value": ""
+    },
+    {
+      "key": "eval_prot",
+      "value": ""
+    },
+    {
+      "key": "assign_prot",
+      "value": ""
+    },
+    {
+      "key": "scen_prot",
+      "value": ""
+    },
+    {
+      "key": "conv_prot",
+      "value": ""
+    },
+    {
+      "key": "eval_open",
+      "value": ""
+    },
+    {
+      "key": "assign_open",
+      "value": ""
+    },
+    {
+      "key": "scen_open",
+      "value": ""
+    },
+    {
+      "key": "cg_open",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 \u00b7 Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds every license permission plus the `licenses:manage` break-glass."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Log in as owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('owner_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds `licenses:create|update|delete` but **not** `licenses:manage` \u2014 the second author, used to prove one author cannot edit another's row."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Log in as viewer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('viewer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Can read the catalog (auth-only) but holds no license or platform-settings permission."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Log in as red teamer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('redteamer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{redteamer_email}}\",\n  \"password\": \"{{redteamer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds no `licenses:create` \u2014 the create 403."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Register a model (for the cascade groups)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('lic_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"lic-{{run_suffix}}\",\n  \"model_alias\": \"lic-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Folder D creates evaluation groups, and a group create requires a non-empty `allowed_model_ids`. No credential is set \u2014 nothing here talks to the provider."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A \u00b7 License catalog (auth-only, any role)",
+      "item": [
+        {
+          "name": "1 \u00b7 List the catalog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "pm.test('the curated set is synced', () => pm.expect(items.filter(i => i.is_curated).length).to.be.above(0));",
+                  "pm.test('list omits the full content', () => pm.expect(items[0]).to.not.have.property('content'));",
+                  "const curated = items.find(i => i.is_curated);",
+                  "pm.collectionVariables.set('curated_id', curated.id);",
+                  "pm.collectionVariables.set('catalog_ids', JSON.stringify(items.map(i => i.id)));",
+                  "pm.test('a curated row carries an spdx_id and no author', () => { pm.expect(curated.spdx_id).to.be.a('string'); pm.expect(curated.created_by_id).to.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The picker's source. `content` is detail-only \u2014 the list stays lean. Captures a curated id."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Get one license by its UUID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('detail carries the full content', () => pm.expect(pm.response.json().content).to.be.a('string'));",
+                  "pm.test('id echoes the request', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('curated_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{curated_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{curated_id}}"
+              ]
+            },
+            "description": "**A license is addressed by UUID.** The detail projection adds the full licence text."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Unknown UUID \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/11111111-1111-4111-8111-111111111111",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "description": "A well-formed id that matches no live row."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 SPDX slug \u2192 422 (the old contract is gone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 422', () => pm.response.to.have.status(422));",
+                  "pm.test('rejected as a malformed UUID, not resolved as a slug', () => pm.expect(JSON.stringify(pm.response.json())).to.include('uuid'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/CC-BY-4.0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "CC-BY-4.0"
+              ]
+            },
+            "description": "`GET /licenses/{spdx_id}` was replaced with `GET /licenses/{license_id}`. This request is a **drift guard**: it pins the fact that a slug no longer resolves, so the old contract cannot quietly return."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Viewer can read the catalog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ]
+            },
+            "description": "Catalog reads are **auth-only** \u2014 no permission gate, because every role needs the picker."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 No token \u2192 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ]
+            },
+            "description": "Auth-only still means authenticated."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B \u00b7 Platform default (admin-only)",
+      "item": [
+        {
+          "name": "1 \u00b7 Admin reads the platform settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('plat_default_id', pm.response.json().default_license_id);",
+                  "pm.test('a default license is always resolved, and it is a live catalog row', () => { const id = pm.response.json().default_license_id; pm.expect(id).to.be.a('string'); pm.expect(JSON.parse(pm.collectionVariables.get('catalog_ids') || '[]')).to.include(id); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "description": "The singleton. Reads never persist a row \u2014 until the first PATCH this is a transient instance pointing at the curated row named by `PLATFORM_DEFAULT_DATA_LICENSE`. Captures the id so folder B can restore it."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Viewer read \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "description": "`platform_settings:read` is admin-only."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Admin sets a new default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the new default stuck', () => pm.expect(pm.response.json().default_license_id).to.eql(pm.collectionVariables.get('curated_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_license_id\": \"{{curated_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The field is **`default_license_id`** (a UUID). The old `default_license` string is rejected as `extra_forbidden`."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Unknown license id \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the unknown id', () => pm.expect(pm.response.json().detail).to.include('Unknown data license'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_license_id\": \"11111111-1111-4111-8111-111111111111\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`validate_license_ref` rejects a reference to a non-live licence as a **400** (a domain guard), not a 422 \u2014 the id is a well-formed UUID, so schema validation passes."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Viewer patch \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_license_id\": \"{{curated_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`platform_settings:update` is admin-only."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Restore the original default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('restored', () => pm.expect(pm.response.json().default_license_id).to.eql(pm.collectionVariables.get('plat_default_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_license_id\": \"{{plat_default_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Leaves the platform as it was found \u2014 folder D asserts against this value."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C \u00b7 User-authored license CRUD",
+      "item": [
+        {
+          "name": "1 \u00b7 Admin creates a license",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('lic_admin', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set('lic_admin_author', b.created_by_id);",
+                  "pm.test('user-authored: no spdx_id, not curated', () => { pm.expect(b.spdx_id).to.eql(null); pm.expect(b.is_curated).to.eql(false); });",
+                  "pm.test('attributed to an author (compared against the owner row in step 4)', () => pm.expect(b.created_by_id).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"House licence {{run_suffix}}\",\n  \"version\": \"1.0\",\n  \"short_description\": \"Internal terms for red-team transcripts.\",\n  \"content\": \"Full licence text goes here.\",\n  \"reference_url\": \"https://example.com/licence\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`licenses:create`. A user-authored row is distinguished from a curated one by having an author and **no** `spdx_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Read it back",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('any role can read it', () => pm.expect(pm.response.json().content).to.eql('Full licence text goes here.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_admin}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_admin}}"
+              ]
+            },
+            "description": "Detail is auth-only like the list \u2014 a viewer reads any licence, authored or curated."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Author updates it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('patched', () => pm.expect(pm.response.json().short_description).to.eql('Revised internal terms.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_admin}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_admin}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"short_description\": \"Revised internal terms.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`licenses:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Owner creates their own",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('lic_owner', pm.response.json().id);",
+                  "pm.test('attributed to the owner, not to the admin who created step 1', () => pm.expect(pm.response.json().created_by_id).to.not.eql(pm.collectionVariables.get('lic_admin_author')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Owner licence {{run_suffix}}\",\n  \"short_description\": \"Owner's terms.\",\n  \"content\": \"Owner licence text.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`owner` holds `licenses:create` too \u2014 licences are not admin-only."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Admin edits the owner's licence (licenses:manage break-glass)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_owner}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_owner}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"short_description\": \"Edited by an admin.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The admin-only `licenses:manage` break-glass reaches **another user's** licence."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Owner edits the admin's licence \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_admin}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_admin}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"short_description\": \"should not land\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holding `licenses:update` governs your **own** rows; without `licenses:manage` another author's row is refused."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Red teamer creates \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"nope {{run_suffix}}\",\n  \"short_description\": \"s\",\n  \"content\": \"c\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`red_teamer` holds no `licenses:create`."
+          },
+          "response": []
+        },
+        {
+          "name": "8 \u00b7 Curated PATCH \u2192 403 (immutable for everyone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));",
+                  "pm.test('explains why', () => pm.expect(pm.response.json().detail).to.include('managed in code'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{curated_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{curated_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"short_description\": \"should not land\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Curated rows are reconciled from code by `sync_licenses`, so an API edit would be reverted on the next deploy. Refused even for an admin holding `licenses:manage`."
+          },
+          "response": []
+        },
+        {
+          "name": "9 \u00b7 Curated DELETE \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{curated_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{curated_id}}"
+              ]
+            },
+            "description": "Same rule on the delete path."
+          },
+          "response": []
+        },
+        {
+          "name": "10 \u00b7 Make ours the platform default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_license_id\": \"{{lic_admin}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Sets up the delete guard below."
+          },
+          "response": []
+        },
+        {
+          "name": "11 \u00b7 Delete the platform default \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('tells the caller what to do first', () => pm.expect(pm.response.json().detail).to.include('set another default'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_admin}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_admin}}"
+              ]
+            },
+            "description": "A licence every unset group/evaluation resolves to cannot be removed while it holds that role."
+          },
+          "response": []
+        },
+        {
+          "name": "12 \u00b7 Restore the default, then delete ours",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platform-settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_license_id\": \"{{plat_default_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Releases the guard so the teardown can proceed."
+          },
+          "response": []
+        },
+        {
+          "name": "13 \u00b7 Delete the admin's licence",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_admin}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_admin}}"
+              ]
+            },
+            "description": "Soft delete. Groups/evaluations that already reference a tombstoned licence keep resolving it."
+          },
+          "response": []
+        },
+        {
+          "name": "14 \u00b7 Delete the owner's licence",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_owner}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_owner}}"
+              ]
+            },
+            "description": "Via the same `licenses:manage` break-glass as step 5."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D \u00b7 Effective-license cascade",
+      "item": [
+        {
+          "name": "1 \u00b7 Group with a licence override",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('grp_ovr', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.test('raw override is the id we set', () => pm.expect(b.data_license_id).to.eql(pm.collectionVariables.get('curated_id')));",
+                  "pm.test('effective_license is an OBJECT resolving to it', () => { pm.expect(b.effective_license).to.be.an('object'); pm.expect(b.effective_license.id).to.eql(pm.collectionVariables.get('curated_id')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Lic override {{run_suffix}}\",\n  \"description\": \"Group-level data-licence override.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"data_license_id\": \"{{curated_id}}\",\n  \"allowed_model_ids\": [\n    \"{{lic_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`data_license_id` is the raw override; `effective_license` is the **resolved object** (`{id, spdx_id, name, ...}`). Both used to be SPDX strings."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Approve it (evaluations need an approved group)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{grp_ovr}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{grp_ovr}}",
+                "approve"
+              ]
+            },
+            "description": "A fresh group is `pending_approval` and evaluation creation 409s until it is approved; an owner may self-approve."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Group inheriting the platform default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('grp_inh', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.test('no raw override', () => pm.expect(b.data_license_id).to.eql(null));",
+                  "pm.test('effective == the platform default', () => pm.expect(b.effective_license.id).to.eql(pm.collectionVariables.get('plat_default_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Lic inherit {{run_suffix}}\",\n  \"description\": \"No override \u2014 inherits the platform default.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\n    \"{{lic_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "With nothing set at the group level the cascade falls through to the platform default."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Approve the inheriting group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{grp_inh}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{grp_inh}}",
+                "approve"
+              ]
+            },
+            "description": "Same precondition as step 2."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Evaluation with its own override (wins)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('eval_ovr', pm.response.json().id);",
+                  "pm.test('evaluation override beats the inherited default', () => pm.expect(pm.response.json().effective_license.id).to.eql(pm.collectionVariables.get('curated_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Eval override\",\n  \"description\": \"Own licence override.\",\n  \"evaluation_group_id\": \"{{grp_inh}}\",\n  \"data_license_id\": \"{{curated_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Most-specific wins: Platform default \u2192 Group override \u2192 **Evaluation override**. Deliberately placed in the *inheriting* group so the override is the only thing that can explain the result."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Evaluation inheriting the group's override",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('eval_inh', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.test('no own override', () => pm.expect(b.data_license_id).to.eql(null));",
+                  "pm.test('effective == the group override', () => pm.expect(b.effective_license.id).to.eql(pm.collectionVariables.get('curated_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Eval inherit\",\n  \"description\": \"No override \u2014 inherits the group's.\",\n  \"evaluation_group_id\": \"{{grp_ovr}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "An omitted `data_license_id` means *inherit*, never *reset to none*."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "E \u00b7 Conversation-data protection",
+      "item": [
+        {
+          "name": "1 \u00b7 Create a licence that protects conversation data",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('lic_protect', pm.response.json().id);",
+                  "pm.test('the flag comes back set', () => pm.expect(pm.response.json().protects_conversation_data).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Closed data {{run_suffix}}\",\n  \"short_description\": \"No redistribution outside the engagement.\",\n  \"content\": \"Closed data. No sharing, publication or reuse.\",\n  \"protects_conversation_data\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A user-authored licence may declare that it protects the conversations written under it: message text in a conversation created under it is stored **encrypted at rest**. Titles, tags and attachments are not covered."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Read it back \u2014 the flag is on the detail projection",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('detail carries the flag', () => pm.expect(pm.response.json().protects_conversation_data).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_protect}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_protect}}"
+              ]
+            },
+            "description": "`DataLicenseResponse` projects the flag, so a client can tell whether choosing this licence will seal transcripts."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 \u2026and on the list summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const row = pm.response.json().items.find(l => l.id === pm.collectionVariables.get('lic_protect'));",
+                  "pm.test('summary carries the flag too', () => { pm.expect(row).to.be.an('object'); pm.expect(row.protects_conversation_data).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses?limit=100"
+              ]
+            },
+            "description": "`DataLicenseSummary` carries it as well \u2014 the licence picker marks the option without a second round-trip."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 An evaluation under that licence",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('eval_prot', pm.response.json().id);",
+                  "pm.test('effective licence protects conversation data', () => pm.expect(pm.response.json().effective_license.protects_conversation_data).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Protected transcripts {{run_suffix}}\",\n  \"description\": \"Evaluation whose licence seals message text.\",\n  \"evaluation_group_id\": \"{{grp_inh}}\",\n  \"data_license_id\": \"{{lic_protect}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The conversation inherits its protection from the evaluation's **effective** licence, so the cascade is what decides sealing \u2014 not a per-conversation switch."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Assign the model to it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('assign_prot', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_prot}}/models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_prot}}",
+                "models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_id\": \"{{lic_model_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A conversation runs against an **assignment**, not a bare model \u2014 the body is `{model_id}` and the response id is the `evaluation_ai_model_id` the conversation needs."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Create a scenario for it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('scen_prot', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_prot}}/scenarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_prot}}",
+                "scenarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Scenario {{run_suffix}}\",\n  \"description\": \"Hosts the sealed conversation below.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A conversation lives under a scenario, so the evaluation needs one before the group below."
+          }
+        },
+        {
+          "name": "7 \u00b7 A conversation started here is sealed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "const conv = pm.response.json().conversations[0];",
+                  "pm.collectionVariables.set('conv_prot', conv.id);",
+                  "pm.test('content_protected is true', () => pm.expect(conv.content_protected).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{scen_prot}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{scen_prot}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sealed {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{assign_prot}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`ConversationResponse.content_protected` is resolved **once, at creation**, from the evaluation's effective licence. From here every message written into this conversation is stored as ciphertext and served as plaintext."
+          },
+          "response": []
+        },
+        {
+          "name": "8 \u00b7 An evaluation inheriting the platform default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('eval_open', pm.response.json().id);",
+                  "pm.test('the inherited licence does NOT protect', () => pm.expect(pm.response.json().effective_license.protects_conversation_data).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Open transcripts {{run_suffix}}\",\n  \"description\": \"No override \\u2014 inherits the platform default.\",\n  \"evaluation_group_id\": \"{{grp_inh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The control half of the pair. Asserting the inherited licence's flag here rather than assuming it means that if the platform default ever becomes a protecting licence, this step fails loudly instead of the next one flipping silently."
+          },
+          "response": []
+        },
+        {
+          "name": "9 \u00b7 Assign the model to it as well",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('assign_open', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_open}}/models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_open}}",
+                "models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_id\": \"{{lic_model_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10 \u00b7 Create a scenario for it as well",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('scen_open', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_open}}/scenarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_open}}",
+                "scenarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Scenario {{run_suffix}}\",\n  \"description\": \"Hosts the unsealed conversation below.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A conversation lives under a scenario, so the evaluation needs one before the group below."
+          }
+        },
+        {
+          "name": "11 \u00b7 \u2026and its conversation is not sealed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('cg_open', pm.response.json().id);",
+                  "pm.test('content_protected is false', () => pm.expect(pm.response.json().conversations[0].content_protected).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{scen_open}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{scen_open}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Open {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{assign_open}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Same request shape, different licence \u2014 so the only thing that can explain the difference is the licence flag."
+          },
+          "response": []
+        },
+        {
+          "name": "12 \u00b7 Clearing the flag on the licence",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the licence now reads unprotected', () => pm.expect(pm.response.json().protects_conversation_data).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_protect}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_protect}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"protects_conversation_data\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The author (or a `licenses:manage` holder) may turn the flag off. What that does **not** do is the point of the next step."
+          },
+          "response": []
+        },
+        {
+          "name": "13 \u00b7 \u2026does not reach a conversation already created",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('content_protected is still true', () => pm.expect(pm.response.json().content_protected).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_prot}}/conversations/{{conv_prot}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_prot}}",
+                "conversations",
+                "{{conv_prot}}"
+              ]
+            },
+            "description": "The decision is frozen at creation and never re-derived, so `content_protected` can legitimately disagree with the licence's current flag. Rows already sealed stay sealed \u2014 clearing the flag only changes what happens to conversations started from now on."
+          },
+          "response": []
+        },
+        {
+          "name": "14 \u00b7 A curated licence refuses the flag",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{curated_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{curated_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"protects_conversation_data\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Curated rows are code-owned: `content` is the single field the API accepts on them, and only where the catalog ships none. Every other field \u2014 this one included \u2014 is refused for everyone, because the next `synclicenses` would revert it."
+          },
+          "response": []
+        }
+      ],
+      "description": "The licence flag that decides whether message text is **encrypted at rest**, and the per-conversation field that reports the decision.\n\nThe pair of conversation creates \u2014 one sealed, one not \u2014 is the load-bearing part: two conversations started by the same request shape, each under its own scenario, differing only in the licence their evaluation resolves to. The re-read after the licence flag is cleared pins the promise the contract makes \u2014 that `content_protected` is taken once at creation and can therefore disagree with the licence's current flag.\n\nSealing covers `messages.content` only; conversation titles, tags and attachments stay in the clear, and an export unseals the text by design."
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "0 \u00b7 Delete the protected evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_prot}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_prot}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "0 \u00b7 Delete the open evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_open}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_open}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "0 \u00b7 Delete the protecting licence",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/licenses/{{lic_protect}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "licenses",
+                "{{lic_protect}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "1 \u00b7 Delete the override evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_ovr}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_ovr}}"
+              ]
+            },
+            "description": "Children before parents."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Delete the inheriting evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{eval_inh}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{eval_inh}}"
+              ]
+            },
+            "description": "The second cascade fixture. Both evaluations go before the model, whose assignment they would otherwise still reference."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Delete the model fixture",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{lic_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{lic_model_id}}"
+              ]
+            },
+            "description": "The two evaluation groups leak \u2014 groups have no DELETE route; `run_suffix` keeps their titles unique."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

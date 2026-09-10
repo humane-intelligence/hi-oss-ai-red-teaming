@@ -1,0 +1,576 @@
+{
+	"info": {
+		"name": "10 · Auth & RBAC over REST",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "The RBAC-over-REST surface: token refresh, the roles/permissions on `/auth/me`, and the role + permission catalog endpoints. Two identities: seeded **admin** and seeded **viewer** (lacks `roles:read`).\n\n**Flow.** A) `POST /auth/refresh` rotates the token pair, the refreshed token works on `/auth/me`, a bogus one is 401; B) `/auth/me` returns non-empty `roles[]` + effective `permissions[]`; C) `GET /roles` + `/permissions` catalogs; D) gating — `viewer` (no `roles:read`) is 403 on both catalogs, no-token is 401.\n\n**Auth model.** Per-request: `{{admin_token}}` / `{{admin_token_refreshed}}` / `{{viewer_token}}` / `noauth`. Self-contained — **no manual token** (uses the seeded `viewer`), no `00-bootstrap`.\n\n**Leftovers.** None — no entities created.\n\n**Verified:** 16/16 checks green end-to-end against a live stack (`make up` + `make seedlocal`)."
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "run_suffix",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "viewer_email",
+			"value": "viewer@test.com"
+		},
+		{
+			"key": "viewer_password",
+			"value": "password123"
+		},
+		{
+			"key": "viewer_token",
+			"value": ""
+		},
+		{
+			"key": "admin_refresh",
+			"value": ""
+		},
+		{
+			"key": "admin_token_refreshed",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1 · Log in as admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded admin; capture the access **and** refresh token (the refresh token is exercised in folder A)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const t = pm.response.json();",
+									"pm.collectionVariables.set('admin_token', t.access_token);",
+									"pm.collectionVariables.set('admin_refresh', t.refresh_token);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Log in as viewer (non-admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded `viewer` (a non-admin identity) for the RBAC/isolation checks. Captures `viewer_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "A · Token refresh",
+			"item": [
+				{
+					"name": "1 · Refresh the token pair",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{admin_refresh}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/refresh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"refresh"
+							]
+						},
+						"description": "Exchange the refresh token for a fresh pair (rotated each call). No auth header — the refresh token in the body is the credential."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const t = pm.response.json();",
+									"pm.test('returns a new access + refresh pair', () => { pm.expect(t.access_token).to.be.a('string'); pm.expect(t.refresh_token).to.be.a('string'); });",
+									"pm.collectionVariables.set('admin_token_refreshed', t.access_token);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Use the refreshed access token",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token_refreshed}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"me"
+							]
+						},
+						"description": "The refreshed access token authenticates like the original."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Reject an invalid refresh token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"not-a-real-refresh-token\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/refresh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"refresh"
+							]
+						},
+						"description": "A bogus refresh token is a uniform 401."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "B · Identity (/auth/me)",
+			"item": [
+				{
+					"name": "1 · Roles + effective permissions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"me"
+							]
+						},
+						"description": "`/auth/me` returns the slim `roles[]` and the flattened effective `permissions[]`, resolved live from the DB."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const me = pm.response.json();",
+									"pm.test('roles non-empty', () => pm.expect(me.roles).to.be.an('array').that.is.not.empty);",
+									"pm.test('permissions non-empty + include roles:read', () => { pm.expect(me.permissions).to.be.an('array').that.is.not.empty; pm.expect(me.permissions).to.include('roles:read'); });"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "C · Role & permission catalog",
+			"item": [
+				{
+					"name": "1 · List roles",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/roles?limit=50",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"roles"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50"
+								}
+							]
+						},
+						"description": "`GET /roles` — the source for `role_ids` on user create/update/invite (gated `roles:read`, held by admin + owner)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('page of roles', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · List permissions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/permissions?limit=100",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"permissions"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						},
+						"description": "`GET /permissions` — every permission string + description for the role-builder UI."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('page of permissions', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "D · Catalog gating (negatives)",
+			"item": [
+				{
+					"name": "1 · viewer → 403 on /roles",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"roles"
+							]
+						},
+						"description": "`viewer` lacks `roles:read` → the assignable-role catalog is forbidden."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · viewer → 403 on /permissions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/permissions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"permissions"
+							]
+						},
+						"description": "Same gate on the permission catalog."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · no token → 401 on /roles",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"roles"
+							]
+						},
+						"description": "Unauthenticated catalog read is a 401."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

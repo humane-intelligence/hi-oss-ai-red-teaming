@@ -1,0 +1,22 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ],
+  /* For the shadcn CLI only. It reads `compilerOptions.paths` from this file and follows no project
+     reference, so without this block it resolves `@` to a literal `@/` directory. `baseUrl` is
+     required alongside `paths` here - dropping it leaves the CLI with no components path at all.
+     Inert for `tsc` (`files` is empty); the alias the compiler uses lives in tsconfig.app.json,
+     which drops `baseUrl` on purpose as deprecated in TS6. */
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}

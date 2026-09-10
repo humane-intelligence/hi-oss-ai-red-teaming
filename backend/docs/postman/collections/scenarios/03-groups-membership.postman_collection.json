@@ -1,0 +1,626 @@
+{
+  "info": {
+    "name": "03 · Evaluation groups — membership & lifecycle",
+    "description": "Group read/update, per-group membership, annotator search, email invitations, and the **full publication lifecycle** driven end to end through the API.\n\n**Prereqs:** run `00-bootstrap` first (for `{{access_token}}`). Otherwise self-contained — it creates its own groups and a member user. Self-service join logs in as the seeded **`redteamer@test.com`** (`password123`) so a genuine non-owner caller joins.\n\n**Role ids:** Setup registers a user (who gets the default `red_teamer` role) and reads `red_teamer_role_id` + `member_user_id` back via the `?email=` user filter — one lookup yields both. (The role id is also available from the `GET /roles` catalog, gated on `roles:read`.)\n\n**Lifecycle.** The group publication chain is now fully API-exposed, so no `dbshell` precondition is needed: `submit (draft→pending_approval)`, `approve (pending_approval→approved)`, `publish (approved→published)` and `finish (published→inactive)` are owner-or-manage; the moderation verdicts `request-changes` / `reject` are gated on `evaluation_groups:manage` alone (an owner can't moderate their own group). Folders **E/F/G** walk the happy path on group 1 (`draft → pending_approval → approved → published`, a real `join` while published, then `→ inactive`) — including the publish gate: E refuses the empty group (**400**, `Cannot publish an incomplete group: Add at least one evaluation to the group.`), then adds an evaluation with a scenario and publishes for real. The ≥1-evaluation rule can only live on publish, since a group accepts evaluations from `approved` onwards; folder **H** shows the moderation branches on group 2 (`submit → request-changes → re-submit` rework loop, then `reject`). `not_approved` and `inactive` are terminal.\n\n**⚠ `submit` has a completeness gate the draft create does not.** Both groups here are created with `POST /evaluation-groups/draft`, which requires only a `title` and accepts an **empty** allowed-model subset. `submit` then restores the full-create checks — required fields, `start_date` not before today, the organization invariant, **and at least one allowed model** (`Cannot submit an incomplete group: Assign at least one allowed model.` \u2192 **400**, listing every gap at once). That is why Setup registers a model and both drafts carry `allowed_model_ids`: without it folders E and H fail at the very first transition and every later verdict 409s on the unchanged state.\n\nVerified end-to-end against the live stack, chained after `00-bootstrap` (**54/54** assertions, twice). Folder **I** is a drift guard: `allowed_model_ids` required and non-empty on the full create, optional on `draft`, re-imposed at `submit` \u2014 the change that silently broke ten collections now fails here instead. The **Email invitations** folder was later re-pointed at `POST /evaluation-groups/{id}/invitations/bulk` (the single endpoint is gone) and re-verified against the live stack (3/3).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }] },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "run_suffix", "value": "", "type": "string" },
+    { "key": "b_group_id", "value": "", "type": "string" },
+    { "key": "member_email", "value": "", "type": "string" },
+    { "key": "member_user_id", "value": "", "type": "string" },
+    { "key": "red_teamer_role_id", "value": "", "type": "string" },
+    { "key": "invite_email", "value": "", "type": "string" },
+    { "key": "group2_id", "value": "", "type": "string" },
+    { "key": "joiner_token", "value": "", "type": "string" },
+    { "key": "b_model_id", "value": "", "type": "string" },
+    { "key": "b_eval_id", "value": "", "type": "string" },
+    { "key": "future_start_date", "value": "", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// start_date must not be before today, so a hardcoded date rots. Collection level, not folder level: Setup and folder H create groups before folder I runs.",
+          "pm.collectionVariables.set('future_start_date', new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 · Register a model (for the groups' allowed-model subset)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('b_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"grp-{{run_suffix}}\",\n  \"model_alias\": \"grp-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Both groups here are created through `POST /evaluation-groups/draft`, where `allowed_model_ids` is optional — but **`submit` requires at least one allowed model** (`Cannot submit an incomplete group: Assign at least one allowed model.`), so folders E and H need this fixture even though the draft create would accept an empty subset."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Create group",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "type": "text/javascript", "exec": [
+                "pm.collectionVariables.set('run_suffix', Date.now().toString(36));",
+                "const s = pm.collectionVariables.get('run_suffix');",
+                "pm.collectionVariables.set('member_email', `member-${s}@example.com`);",
+                "pm.collectionVariables.set('invite_email', `ginvite-${s}@example.com`);"
+              ] }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('b_group_id', pm.response.json().id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/draft", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "draft"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Membership sandbox {{run_suffix}}\",\n\"description\": \"Group for the membership/lifecycle scenario.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"{{future_start_date}}\",\n  \"allowed_model_ids\": [\"{{b_model_id}}\"]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "A fresh `draft` group owned by admin (admin auto-gets the in-group `owner` role)."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Register a member user",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 202', () => pm.response.to.have.status(202));"] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{member_email}}\",\n  \"password\": \"M3mberPass!1\",\n  \"first_name\": \"Mem\",\n  \"last_name\": \"Ber\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Self-registers a user who receives the default global `red_teamer` role — the source for both `member_user_id` and `red_teamer_role_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Look up member id + role id",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('→ 200', () => pm.response.to.have.status(200));",
+            "const u = pm.response.json().items.find(x => x.email === pm.collectionVariables.get('member_email'));",
+            "pm.test('member found', () => pm.expect(u, 'registered user in list').to.be.an('object'));",
+            "pm.collectionVariables.set('member_user_id', u.id);",
+            "const rt = u.roles.find(r => r.name === 'red_teamer');",
+            "pm.collectionVariables.set('red_teamer_role_id', rt.id);"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/users?email={{member_email}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "users"], "query": [{ "key": "email", "value": "{{member_email}}" }] },
+            "description": "Find the just-registered user (exact email filter) to capture `member_user_id` and its `red_teamer` role id. Requires permission `users:read`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A · Group read & update",
+      "item": [
+        {
+          "name": "1 · Get group",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}"] }, "description": "Fetch the group (embeds child evaluations). Requires permission `evaluation_groups:read`." },
+          "response": []
+        },
+        {
+          "name": "2 · Update group",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Updated by the membership scenario.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Patch the group. Authorized via the in-group owner role (admin is the creator). Requires permission `evaluation_groups:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · List groups",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups?limit=10", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups"], "query": [{ "key": "limit", "value": "10" }] }, "description": "List groups visible to the caller (public, owned, or holding an object role)." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B · Members",
+      "item": [
+        {
+          "name": "1 · List members",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/members", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "members"] }, "description": "List members (the creator is already an `owner`). Requires permission `evaluation_groups:manage_members`." },
+          "response": []
+        },
+        {
+          "name": "2 · Add member",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/members", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "members"] },
+            "body": { "mode": "raw", "raw": "{\n  \"user_id\": \"{{member_user_id}}\",\n  \"role_ids\": [\"{{red_teamer_role_id}}\"]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Assign the user the in-group `red_teamer` role (a per-object role assignment). Requires permission `evaluation_groups:manage_members`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Update member roles",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/members/{{member_user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "members", "{{member_user_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"role_ids\": [\"{{red_teamer_role_id}}\"]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Replace the member's in-group role set (reconciled wholesale)."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Remove member",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/members/{{member_user_id}}", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "members", "{{member_user_id}}"] }, "description": "Revoke the user's in-group roles." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C · Annotators",
+      "item": [
+        {
+          "name": "1 · Annotator search",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/annotators?limit=10", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "annotators"], "query": [{ "key": "limit", "value": "10" }] }, "description": "Search assignable annotators. A `public` group lists every holder of the global `annotator` role (may be empty here); an `invitation_only` group lists only its own `annotator` members. Requires permission `evaluation_groups:manage_members`." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D · Email invitations",
+      "item": [
+        {
+          "name": "1 · Invite a user (one row)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('outcome present', () => pm.expect(pm.response.json().results[0].data.outcome).to.be.oneOf(['assigned', 'invited']));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/invitations/bulk", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "invitations", "bulk"] },
+            "body": { "mode": "raw", "raw": "{\n  \"rows\": [\n    { \"row_key\": \"r1\", \"data\": { \"email\": \"{{invite_email}}\", \"role_ids\": [\"{{red_teamer_role_id}}\"] } }\n  ]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Invite by email with pre-assigned in-group roles — one row of the bulk envelope, the only invite path. Roles are assigned on the group **immediately** (the invitee shows up in the member list as pending); for a new account an invited user is created and a group-scoped token emailed. Same gate as adding a member."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Members include the pending invitee",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('→ 200', () => pm.response.to.have.status(200));",
+            "const found = pm.response.json().items.some(m => m.user.email === pm.collectionVariables.get('invite_email'));",
+            "pm.test('pending invitee is a member', () => pm.expect(found, 'invitee in member list').to.be.true);"
+          ] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/members", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "members"] }, "description": "Confirms the invite assigned the role on the group right away — the invitee appears even before accepting." },
+          "response": []
+        },
+        {
+          "name": "3 · Invite in bulk",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('→ 200', () => pm.response.to.have.status(200));",
+            "pm.test('all rows succeeded', () => pm.expect(pm.response.json().failed).to.eql(0));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/invitations/bulk", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "invitations", "bulk"] },
+            "body": { "mode": "raw", "raw": "{\n  \"rows\": [\n    { \"row_key\": \"r1\", \"data\": { \"email\": \"bulk1-{{run_suffix}}@example.com\", \"role_ids\": [\"{{red_teamer_role_id}}\"] } },\n    { \"row_key\": \"r2\", \"data\": { \"email\": \"bulk2-{{run_suffix}}@example.com\", \"role_ids\": [\"{{red_teamer_role_id}}\"] } }\n  ]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Platform bulk envelope: each `row_key` correlates to a per-row result in the response. Visibility/permission checked once; duplicate emails would be a 422. Set `dry_run: true` to validate without persisting."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "E · Lifecycle — submit → approve → publish (group 1)",
+      "description": "The full publication chain via API: the owner submits the draft, a manager approves it, then it is published. No `dbshell` precondition.",
+      "item": [
+        {
+          "name": "1 · Submit  (draft → pending_approval)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status pending_approval', () => pm.expect(pm.response.json().status).to.eql('pending_approval'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/submit", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "submit"] }, "description": "Submit the draft for approval. Owner-or-manage (`evaluation_groups:update` via the in-group owner role — admin is the creator)." },
+          "response": []
+        },
+        {
+          "name": "2 · Approve  (pending_approval → approved)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status approved', () => pm.expect(pm.response.json().status).to.eql('approved'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/approve", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "approve"] }, "description": "Approve the submitted group. Owner-or-manage like publish/finish (gated on `evaluation_groups:update`); the manage-only verdicts are request-changes/reject." },
+          "response": []
+        },
+        {
+          "name": "3 · Publish the empty group → 400",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 400', () => pm.response.to.have.status(400));", "pm.test('names the missing evaluation', () => pm.expect(pm.response.json().detail).to.include('at least one evaluation'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/publish", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "publish"] }, "description": "The publish gate refuses a group with nothing to play: an approved group needs at least one live evaluation, each carrying a scenario. Deterministic here — the group has no children yet. The 400 lists every gap at once, so the client can show the whole list." },
+          "response": []
+        },
+        {
+          "name": "4 · Add an evaluation (publish needs one)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('b_eval_id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Lifecycle evaluation {{run_suffix}}\",\n  \"description\": \"One evaluation so the group can be published.\",\n  \"evaluation_group_id\": \"{{b_group_id}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Only an `approved` or `published` group accepts evaluations, which is why this sits after the approve — and why the ≥1-evaluation rule gates publish rather than submit."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Give it a scenario",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluations/{{b_eval_id}}/scenarios", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluations", "{{b_eval_id}}", "scenarios"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Prompt injection\",\n  \"description\": \"Coax the model past its system prompt.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "An evaluation with no scenario is unplayable, so the same gate refuses it — conversations target a scenario."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Publish  (approved → published)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status published', () => pm.expect(pm.response.json().status).to.eql('published'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/publish", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "publish"] }, "description": "Publish the approved group, now that it holds a playable evaluation. Owner-or-manage." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "F · Self-service join — real non-owner (group 1)",
+      "description": "Logs in as the seeded `redteamer@test.com` (a non-owner, non-member) and joins the now public+published group — a deterministic 201. The collection default auth is the admin bearer, so both requests set their own auth.",
+      "item": [
+        {
+          "name": "1 · Log in (red_teamer)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('joiner_token', pm.response.json().access_token);"] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"redteamer@test.com\",\n  \"password\": \"password123\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Authenticate the seeded red_teamer (active account, `password123`) to obtain a non-owner bearer token for the join."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Join group  (red_teamer → member)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));"] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{joiner_token}}", "type": "string" }] },
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/join", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "join"] },
+            "description": "Add yourself as a `red_teamer`. Works because the group is now `public` + `published` and the caller is a non-member. Gated on `evaluation_groups:read`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "G · Wind down — finish (group 1)",
+      "item": [
+        {
+          "name": "1 · Finish  (published → inactive)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status inactive', () => pm.expect(pm.response.json().status).to.eql('inactive'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{b_group_id}}/finish", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{b_group_id}}", "finish"] }, "description": "Wind the published group down to `inactive`. Owner-or-manage. Runs after the join so the group is still `published` when the red_teamer joins." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "H · Moderation verdicts — rework loop & reject (group 2)",
+      "description": "A second group exercises the moderation branches that cannot share group 1's chain (`reject` is terminal). Shows the rework loop (`request-changes` → re-`submit`) and a terminal `reject`.",
+      "item": [
+        {
+          "name": "1 · Create group 2",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('group2_id', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/draft", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "draft"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Moderation sandbox {{run_suffix}}\",\n  \"description\": \"Second group for the moderation-verdict branches.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"{{future_start_date}}\",\n  \"allowed_model_ids\": [\"{{b_model_id}}\"]\n}", "options": { "raw": { "language": "json" } } },
+            "description": "A fresh `draft` group for the moderation branches."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Submit  (draft → pending_approval)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status pending_approval', () => pm.expect(pm.response.json().status).to.eql('pending_approval'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{group2_id}}/submit", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{group2_id}}", "submit"] }, "description": "Submit group 2 for approval." },
+          "response": []
+        },
+        {
+          "name": "3 · Request changes  (pending_approval → changes_requested)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status changes_requested', () => pm.expect(pm.response.json().status).to.eql('changes_requested'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{group2_id}}/request-changes", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{group2_id}}", "request-changes"] }, "description": "Bounce the group back for edits — the non-terminal verdict. Moderation (`evaluation_groups:manage`). No body (the change note is a deferred feature)." },
+          "response": []
+        },
+        {
+          "name": "4 · Re-submit  (changes_requested → pending_approval)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status pending_approval', () => pm.expect(pm.response.json().status).to.eql('pending_approval'));"] } }],
+          "request": { "method": "POST", "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{group2_id}}/submit", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{group2_id}}", "submit"] }, "description": "The owner reworks and resubmits — the loop that `request-changes` enables." },
+          "response": []
+        },
+        {
+          "name": "5 · Reject  (pending_approval → not_approved)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));", "pm.test('status not_approved', () => pm.expect(pm.response.json().status).to.eql('not_approved'));", "pm.test('rejection_reason recorded', () => pm.expect(pm.response.json().rejection_reason).to.be.a('string').and.not.empty);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/evaluation-groups/{{group2_id}}/reject", "host": ["{{base_url}}"], "path": ["api", "v1", "evaluation-groups", "{{group2_id}}", "reject"] },
+            "body": { "mode": "raw", "raw": "{\n  \"rejection_reason\": \"Out of scope for this engagement.\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Terminal rejection, recording the reason. Moderation (`evaluation_groups:manage`)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "I \u00b7 The allowed_model_ids regression guard",
+      "item": [
+        {
+          "name": "1 \u00b7 Full create with no allowed_model_ids \u2192 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 422', () => pm.response.to.have.status(422));",
+                  "pm.test('the missing field is named, not a generic body error', () => pm.expect(pm.response.json().errors.find(x => x.loc.join('.') === 'body.allowed_model_ids')).to.be.an('object'));",
+                  "pm.test('and it is missing, not malformed', () => { const e = pm.response.json().errors.find(x => x.loc.join('.') === 'body.allowed_model_ids'); pm.expect(e.type).to.eql('missing'); pm.expect(e.msg).to.eql('Field required'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"regression-{{run_suffix}}\",\n  \"description\": \"Pins the required-field rule.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"{{future_start_date}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "description": "This field is required on the *full* create. Its absence silently broke ten collections at their first or second request \u2014 so the contract gets a guard of its own rather than living in prose."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Full create with an empty allowed_model_ids \u2192 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 422', () => pm.response.to.have.status(422));",
+                  "pm.test('refused for being empty, not for being absent', () => { const e = pm.response.json().errors.find(x => x.loc.join('.') === 'body.allowed_model_ids'); pm.expect(e.type).to.eql('too_short'); pm.expect(e.msg).to.include('at least 1 item'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"regression-{{run_suffix}}\",\n  \"description\": \"Pins the required-field rule.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"{{future_start_date}}\",\n  \"allowed_model_ids\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "description": "`min_length=1`, so present-but-empty is a *different* validation error from absent \u2014 step 1 asserts `missing`, this one `too_short`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 A draft may omit them \u2192 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('regress_group_id', pm.response.json().id);",
+                  "pm.test('saved as a draft with no allowed models', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('draft'); pm.expect(b.allowed_model_ids || []).to.eql([]); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"regression-draft-{{run_suffix}}\",\n  \"description\": \"d\",\n  \"access_level\": \"public\",\n  \"start_date\": \"{{future_start_date}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/draft",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "draft"
+              ]
+            },
+            "description": "The draft path deliberately allows an empty subset \u2014 which is why the breakage in this collection surfaced late, at submit, rather than at create like everywhere else."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 \u2026but submitting it \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('the submit gate restores the requirement, and says so', () => pm.expect(pm.response.json().detail).to.eql('Cannot submit an incomplete group: Assign at least one allowed model.'));",
+                  "pm.test('a 400, not the 422 the create edge raises', () => pm.expect(pm.response.json().title).to.eql('Bad Request'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{regress_group_id}}/submit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{regress_group_id}}",
+                "submit"
+              ]
+            },
+            "description": "`assert_group_submittable` re-imposes what the draft path skipped. This is the exact path by which that change broke *this* collection while the other nine failed at create."
+          },
+          "response": []
+        }
+      ],
+      "description": "A drift guard for the change that broke this suite: `allowed_model_ids` is required and non-empty on `POST /evaluation-groups`, optional on `POST /draft`, and re-required at `submit`. Three distinct refusals \u2014 `missing`, `too_short`, and a 400 from the submit gate \u2014 so a regression in any one of them fails here instead of cascading through ten collections.\n\nThe draft from step 3 leaks: there is no group DELETE. `run_suffix` keeps its title unique."
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 · Delete the model fixture",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{b_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{b_model_id}}"
+              ]
+            },
+            "description": "Both evaluation groups leak — groups have no DELETE route; `run_suffix` keeps their titles unique. The invited/member accounts are left in place (they are cheap and unique per run)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Removes the only fixture this collection can remove."
+    }
+  ]
+}

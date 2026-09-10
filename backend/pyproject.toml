@@ -1,0 +1,268 @@
+[project]
+name = "ai-red-teaming-backend"
+version = "0.1.0"
+description = "AI red teaming backend"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "authlib~=1.7",
+    # Transitive via authlib (its async OAuth2 client subclasses httpx.AsyncClient
+    # directly) — declared explicitly because oidc.py catches its exception
+    # hierarchy for network failures talking to an IdP.
+    "httpx~=0.28",
+    "alembic~=1.18",
+    "argon2-cffi~=25.1",
+    "asyncpg~=0.31",
+    "itsdangerous~=2.2",
+    "celery~=5.6",
+    "fastapi[standard]~=0.141",
+    "jinja2~=3.1",
+    "joserfc~=1.7",
+    "psycopg[binary]~=3.3",
+    "pydantic~=2.13",
+    "pydantic-settings~=2.14",
+    "redis~=8.0",
+    "sqlalchemy[asyncio]~=2.0",
+    "sqlmodel~=0.0.39",
+    "starlette~=1.3",
+    "structlog~=26.1",
+    "litellm~=1.94",
+    "sse-starlette~=3.4",
+    "boto3~=1.43",
+    "pillow~=12.3",
+    "sentry-sdk~=2.66",
+    "prometheus-fastapi-instrumentator~=8.1",
+    "prometheus-client~=0.26",
+    "cryptography~=50.0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit[toml]~=1.9",
+    "deptry~=0.25",
+    "pgcli~=4.5",
+    "prek~=0.4",
+    "pyyaml~=6.0",
+    "ruff~=0.16",
+    "ty~=0.0",
+]
+test = [
+    "polyfactory~=3.3",
+    "pytest~=9.1",
+    "pytest-asyncio~=1.4",
+    "pytest-cov~=7.1",
+    "pytest-random-order~=1.2",
+    "pytest-socket~=0.8",
+    "pytest-xdist~=3.8",
+    "time-machine~=3.2",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces flake8, isort, black, pyupgrade, etc.)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "N",      # pep8-naming
+    "S",      # flake8-bandit (security)
+    "SIM",    # flake8-simplify
+    "RUF",    # ruff-specific
+    "PL",     # pylint
+    "PT",     # flake8-pytest-style
+    "FURB",   # refurb
+    "RSE",    # flake8-raise
+    "PERF",   # perflint
+    "RET",    # flake8-return
+    "A",      # flake8-builtins
+    "PIE",    # flake8-pie
+    "FLY",    # flynt
+    "TID",    # flake8-tidy-imports
+    "ASYNC",  # flake8-async
+    "FAST",   # FastAPI-specific
+    "DTZ",    # flake8-datetimez
+    "T20",    # flake8-print
+    "LOG",    # flake8-logging
+    "G",      # flake8-logging-format
+    # pydocstyle — formatting only; presence (D1xx) and arg-coverage (D417)
+    # stay off so the "pragmatic" Google-style guide for this repo holds.
+    "D200",   # one-line docstring fits on one line
+    "D205",   # blank line between summary and description
+    "D212",   # multi-line summary starts on the first line (Google flavor)
+    "D415",   # first line ends with ".", "?", or "!"
+    "D417",   # if an Args section exists, every signature arg must appear in it
+    "D419",   # docstring is not empty
+]
+
+[tool.ruff.lint.pydocstyle]
+# Documents intent and pre-filters any future D rules to Google-compatible ones.
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # assert used — pytest relies on assert
+    "PLR2004", # magic value comparisons — common in test assertions
+    "S105",    # hardcoded password string — test fixtures
+    "S106",    # hardcoded password func arg — test fixtures
+    "D",       # docstring conventions don't apply to tests
+]
+"alembic/**/*.py" = [
+    "D",       # auto-generated migration docstrings follow Alembic's template
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "scripts", "tests"]
+# One import per line — yields cleaner diffs and blame when import sets change.
+force-single-line = true
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Security",
+]
+
+# ---------------------------------------------------------------------------
+# uv - package and project manager
+# ---------------------------------------------------------------------------
+[tool.uv]
+required-version = ">=0.11.8"
+package = false
+# pgcli caps sqlparse <0.6, but only 0.6.0 carries the fixes for CVE-2026-54284 / -59893 /
+# -59894 / -71491, so `make audit` fails on the transitive pin. pgcli's sqlparse paths
+# (parseutils, sqlcompletion) work on 0.6.0; pgspecial, the other consumer, declares
+# `sqlparse>=0.1.19` and needs no override. Confined to the `dev` group — prod builds
+# `uv sync --no-dev`, so none of this reaches the shipped image.
+#
+# Patch precision, not the `~=major.minor` the deps rule asks for: this override deliberately
+# defeats an upstream cap, and only 0.6.x is known good. `~=0.6` would let `make update` pull
+# 0.7 straight past that. Drop the whole thing once pgcli lifts the cap.
+override-dependencies = ["sqlparse~=0.6.0"]
+
+# ---------------------------------------------------------------------------
+# Bandit — security linter (ruff "S" rules are a subset, bandit goes deeper)
+# ---------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = [
+    "tests",
+]
+
+# ---------------------------------------------------------------------------
+# ty — Astral's type checker (beta). Replaces mypy.
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ty.src]
+include = ["app", "scripts", "tests"]
+
+# ---------------------------------------------------------------------------
+# deptry — finds unused / missing / misplaced dependencies
+# ---------------------------------------------------------------------------
+[tool.deptry]
+known_first_party = ["app", "scripts", "tests"]
+
+[tool.deptry.per_rule_ignores]
+# alembic: imported in alembic/env.py which is outside the app/ source tree.
+# psycopg: loaded by SQLAlchemy via the postgresql+psycopg dialect string, not
+# imported directly by our code; pin it so the driver is present at runtime.
+DEP002 = ["alembic", "psycopg"]
+
+# starlette ships with fastapi[standard]; we import StarletteHTTPException in the
+# error handler so a single handler covers both fastapi and starlette-raised
+# HTTPExceptions (e.g. routing 404s). Adding it as a direct dep would duplicate
+# fastapi's transitive pin.
+# botocore ships with boto3 (same release train); the ses backend imports
+# botocore.exceptions directly for error mapping. Declaring it would duplicate
+# boto3's transitive pin.
+# anyio ships with starlette/fastapi; the S3 export backend uses anyio.to_thread to
+# offload blocking boto calls off the event loop. Declaring it would duplicate the pin.
+DEP003 = ["starlette", "botocore", "anyio"]
+
+# pyyaml: dev-only, used by scripts/dump_openapi.py.
+DEP004 = ["yaml"]
+
+# ---------------------------------------------------------------------------
+# pytest — test runner
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+xfail_strict = true
+addopts = [
+    "-ra",                        # short summary for all non-passing outcomes
+    "--strict-markers",           # unknown @pytest.mark.* is a hard error
+    "--strict-config",            # unknown ini options are a hard error
+    "--tb=short",
+    "--random-order",             # randomize test order (pytest-random-order; under xdist the controller's seed is pushed to workers)
+    "--numprocesses=auto",        # pytest-xdist: parallel workers, each with its own test DB (see tests/conftest.py); -n 0 disables
+    "--dist=worksteal",           # rebalance the queue as workers free up — test durations are uneven
+    "--disable-socket",           # block real network by default
+    "--allow-unix-socket",        # keep unix sockets (DB drivers, FastAPI TestClient internals)
+    "--allow-hosts=127.0.0.1,::1", # allow loopback so DB + Redis fixtures can connect
+]
+markers = [
+    "unit: fast, no I/O — pure logic only (location: tests/unit/)",
+    "integration: touches at least one real service (DB / Redis / Celery) — location: tests/api, services, workers",
+    "e2e: full flow across multiple components — location: tests/e2e/ (create when needed)",
+    "slow: noticeably slow (> 1s) — orthogonal to the scope markers above",
+]
+filterwarnings = [
+    "error",                          # turn warnings into errors — catch deprecations early
+    # TODO: narrow to a specific message= once the first real pydantic deprecation surfaces
+    # — a blanket module ignore loses signal on migrations we should be tracking.
+    "ignore::DeprecationWarning:pydantic.*",
+    # litellm schedules an internal async logging handler it never awaits; the
+    # RuntimeWarning surfaces at GC time in an arbitrary later test, so it can't
+    # be scoped to one test. Third-party artifact, not our coroutine.
+    "ignore:coroutine 'Logging.async_success_handler' was never awaited:RuntimeWarning",
+    # starlette 1.2 migrated TestClient to httpx2 and warns when the (still
+    # widely-pinned) httpx is used instead. fastapi[standard] pins httpx and our
+    # tests use httpx.AsyncClient directly, so we keep httpx until the ecosystem
+    # moves. TODO: drop once we migrate the test HTTP client to httpx2.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
+
+# ---------------------------------------------------------------------------
+# coverage — measurement + reporting (driven by pytest-cov)
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false
+precision = 2
+exclude_also = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

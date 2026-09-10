@@ -1,0 +1,118 @@
+default_install_hook_types: [pre-commit, pre-push]
+
+default_language_version:
+  python: python3.14
+
+repos:
+  # `make -C backend docslint` re-runs this block on its own — CI's Docs lint job, the
+  # gate for changes the backend Lint job skips. All of it except debug-statements
+  # (python-only; every .py is under backend/, which Lint gates) and no-commit-to-branch
+  # (a local pre-commit guard). Add a new generic hook to HOUSEKEEPING_HOOKS too.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: '^frontend/tsconfig.*\.json$'  # TS tsconfigs are JSONC (comments)
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: debug-statements
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "dev"]
+        stages: [pre-commit]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: ["-c", "backend/pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty (type check)
+        entry: make -C backend ty
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-push]
+
+      - id: deptry
+        name: deptry (unused/missing deps)
+        entry: make -C backend deptry
+        language: system
+        pass_filenames: false
+        files: '^backend/(pyproject\.toml|uv\.lock|app/.+\.py|tests/.+\.py)$'
+        require_serial: true
+        stages: [pre-push]
+
+      - id: checkmigrations
+        name: check migrations (single alembic head)
+        entry: make -C backend checkmigrations
+        language: system
+        pass_filenames: false
+        files: '^backend/alembic/versions/.+\.py$'
+        require_serial: true
+        stages: [pre-push]
+
+      - id: openapidump
+        name: openapi dump (refresh docs/openapi.yaml)
+        entry: make -C backend openapidump
+        language: system
+        pass_filenames: false
+        files: '^backend/(app/.+\.py|scripts/dump_openapi\.py)$'
+        require_serial: true
+        stages: [pre-push]
+
+      - id: erddump
+        name: erd dump (refresh docs/erd.md)
+        entry: make -C backend erddump
+        language: system
+        pass_filenames: false
+        files: '^backend/(app/.+\.py|scripts/dump_erd\.py)$'
+        require_serial: true
+        stages: [pre-push]
+
+      - id: permissionsdump
+        name: permissions dump (refresh docs/permissions.md)
+        entry: make -C backend permissionsdump
+        language: system
+        pass_filenames: false
+        files: '^backend/(app/core/auth/roles\.py|app/core/auth/object_roles/registry\.py|scripts/dump_permissions\.py)$'
+        require_serial: true
+        stages: [pre-push]
+
+      # Frontend hooks go through `make -C frontend` (Docker) — there is no Node on the host.
+      - id: fe-eslint
+        name: eslint (frontend)
+        entry: make -C frontend eslint
+        language: system
+        pass_filenames: false
+        files: '^frontend/.+\.(ts|tsx|js|jsx)$'
+        require_serial: true
+        stages: [pre-push]
+
+      - id: fe-format-check
+        name: prettier --check (frontend)
+        entry: make -C frontend format-check
+        language: system
+        pass_filenames: false
+        files: '^frontend/.+\.(ts|tsx|js|jsx|css|html|json|yml|yaml)$'
+        require_serial: true
+        stages: [pre-push]

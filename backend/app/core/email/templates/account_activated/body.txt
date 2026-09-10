@@ -1,0 +1,8 @@
+Hi {{ user_name }},
+
+Your account is set up and ready. Sign in to start red-teaming engagements, join evaluation groups, and submit your findings:
+{{ brand.site_url }}
+{% if password_cleared|default(false) %}
+Signing in with an identity provider clears any password on the account. If you'd like to set one, use "Forgot password" on the sign-in page.
+{% endif %}
+{% include "_footer.txt" %}

@@ -1,0 +1,1 @@
+{% if inviter_name %}{{ inviter_name }} invited you to {{ brand.product }}{% else %}You've been invited to {{ brand.product }}{% endif %}

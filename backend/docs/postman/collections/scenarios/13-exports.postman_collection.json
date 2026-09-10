@@ -1,0 +1,937 @@
+{
+  "info": {
+    "name": "13 \u00b7 Async exports",
+    "description": "The async CSV export pipeline \u2014 template catalog, job lifecycle (queue \u2192 worker \u2192 download), idempotency, and RBAC.\n\n**Flow.** A) `GET /exports` template catalog (auth-only, no-token 401); B) `POST /exports/jobs` \u2192 **202**, then **poll** `GET /exports/jobs/{id}` until `status == ready`, `GET .../download` the `text/csv`, and confirm it appears in the scoped jobs list; C) idempotency \u2014 a same-key/same-body retry returns the **same** job, a same-key/different-template retry is **409**; D) RBAC \u2014 a non-admin lacking the template's permission is 403 \u2014 then delete the job (204) and confirm 404.\n\n**\u26a0 Requires the worker.** Jobs are processed by a Celery **worker** \u2014 bring the stack up with `make up` (worker included). If jobs sit in `pending` forever, the worker is down/stale (see the `exports-stale-env` runbook note).\n\n**Async poll.** Step B2 re-sends itself via `postman.setNextRequest` until `ready`; set a ~1s **delay** in the Collection Runner so the worker keeps up.\n\n**Contract gotchas.** Create + list both need **exactly one** of `evaluation_id` / `evaluation_group_id` (400 otherwise); `idempotency_key` must be a UUID; the terminal success status is `ready` (not `completed`).\n\n**Auth model.** Per-request: `{{admin_token}}` for the lifecycle, `{{viewer_token}}` for the 403, `noauth` for the 401. Self-contained \u2014 no `00-bootstrap`, no manual token.\n\n**Leftovers.** The source evaluation group leaks (no group DELETE; `run_suffix` keeps it unique); the job is deleted in folder D.\n\n**Verified green on a live stack** (`make up` + `make seedlocal`): every assertion passes, with **zero failures** on repeated runs. Deliberately no fixed `N/N` here \u2014 folder B re-sends its poll via `setNextRequest` until the worker marks the job `ready`, so each extra poll contributes its own assertions and the total moves run to run (28\u201329 observed). A pinned count would be wrong by construction; the invariant worth recording is **failed = 0**.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "run_suffix",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "viewer_email",
+      "value": "viewer@test.com",
+      "type": "string"
+    },
+    {
+      "key": "viewer_password",
+      "value": "password123",
+      "type": "string"
+    },
+    {
+      "key": "viewer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idem_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "poll_count",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "grp",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "exp_model_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 \u00b7 Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));",
+                  "pm.collectionVariables.set('idem_key', pm.variables.replaceIn('{{$randomUUID}}'));",
+                  "pm.collectionVariables.set('poll_count', '0');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Authenticate the seeded admin. Sets `run_suffix`, a single `idem_key` (UUID \u2014 reused by the create + replay so idempotency holds), and resets the poll counter."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Log in as viewer (non-admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('viewer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Seeded non-admin. Used for the template-permission 403 (viewer lacks `conversations:read`)."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Register a model (for the group's allowed-model subset)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('exp_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"exp-{{run_suffix}}\",\n  \"model_alias\": \"exp-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A group create requires a non-empty `allowed_model_ids`, so the engagement needs at least one registered model before it exists. No credential is set \u2014 nothing here talks to the provider. Captures `exp_model_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Create an export-source group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('grp', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Export source {{run_suffix}}\",\n  \"description\": \"Group to export.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\"{{exp_model_id}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A group to scope the export to (empty is fine \u2014 the CSV is headers-only). Captures `grp`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A \u00b7 Template catalog",
+      "item": [
+        {
+          "name": "1 \u00b7 List export templates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('catalog has engagement_report', () => pm.expect(pm.response.json().items.map(t => t.key)).to.include('engagement_report'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ]
+            },
+            "description": "The static template catalog (`key` / `name` / `description` / required `permission`). Auth-only to list."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Viewer can list templates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ]
+            },
+            "description": "Listing templates needs no special permission \u2192 200 for a non-admin too."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 No token \u2192 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ]
+            },
+            "description": "Authenticated-only."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B \u00b7 Job lifecycle (queue \u2192 worker \u2192 download)",
+      "item": [
+        {
+          "name": "1 \u00b7 Create export job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 202', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('job_id', pm.response.json().id);",
+                  "pm.test('starts pending/running', () => pm.expect(pm.response.json().status).to.be.oneOf(['pending','running']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": \"engagement_report\",\n  \"evaluation_group_id\": \"{{grp}}\",\n  \"idempotency_key\": \"{{idem_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**202 Accepted** \u2014 the job is queued; a Celery **worker** processes it (the worker must be running). Body needs **exactly one** of `evaluation_id` / `evaluation_group_id` (400 otherwise). `idempotency_key` (a UUID) makes retries safe."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Poll job until ready",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const n = parseInt(pm.collectionVariables.get('poll_count') || '0') + 1;",
+                  "pm.collectionVariables.set('poll_count', String(n));",
+                  "if (j.status === 'ready') { pm.test('job ready', () => pm.expect(j.status).to.eql('ready')); }",
+                  "else if (j.status === 'failed') { pm.test('job did not fail', () => pm.expect.fail('export job failed')); }",
+                  "else if (n < 30) { postman.setNextRequest(pm.info.requestName); }",
+                  "else { pm.test('job ready within timeout', () => pm.expect.fail('still ' + j.status + ' after ' + n + ' polls')); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs/{{job_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs",
+                "{{job_id}}"
+              ]
+            },
+            "description": "Polls the job status. **Async:** re-sends itself via `postman.setNextRequest` until `status === 'ready'` (terminal success; `failed` is the error terminal). Set a ~1s delay in the Collection Runner so the worker has time between polls. `pending \u2192 running \u2192 ready`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Download the ready job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('streams text/csv', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs/{{job_id}}/download",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs",
+                "{{job_id}}",
+                "download"
+              ]
+            },
+            "description": "Streams the generated CSV. Only works once the job is `ready` (this is the audited data-egress route)."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Job appears in the scoped list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('lists the job', () => pm.expect(pm.response.json().items.map(j => j.id)).to.include(pm.collectionVariables.get('job_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs?evaluation_group_id={{grp}}&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "evaluation_group_id",
+                  "value": "{{grp}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "**Gotcha:** the jobs list is **scoped** \u2014 it requires exactly one of `evaluation_id` / `evaluation_group_id` as a query filter (400 without it), mirroring the create contract."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C \u00b7 Idempotency",
+      "item": [
+        {
+          "name": "1 \u00b7 Replay (same key + same body)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 202', () => pm.response.to.have.status(202));",
+                  "pm.test('returns the same job (no duplicate)', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('job_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": \"engagement_report\",\n  \"evaluation_group_id\": \"{{grp}}\",\n  \"idempotency_key\": \"{{idem_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A retry with the same `idempotency_key` and the same request returns the **same** job \u2014 no duplicate is created."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Same key + different template \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": \"transcript\",\n  \"evaluation_group_id\": \"{{grp}}\",\n  \"idempotency_key\": \"{{idem_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Reusing the key for a **different** request (template changed) is a 409 \u2014 the key is bound to its original template/scope fingerprint."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D \u00b7 RBAC & delete",
+      "item": [
+        {
+          "name": "1 \u00b7 Viewer create (lacks template permission) \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{viewer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": \"conversations\",\n  \"evaluation_group_id\": \"{{grp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Each template declares a required permission; `conversations` needs `conversations:read`, which the seeded viewer lacks \u2192 403."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Delete the job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs/{{job_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs",
+                "{{job_id}}"
+              ]
+            },
+            "description": "Owner deletes the job (also removes the stored CSV). 204."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Get deleted job \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/jobs/{{job_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "jobs",
+                "{{job_id}}"
+              ]
+            },
+            "description": "The deleted job reads as 404."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Delete the model fixture",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{exp_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{exp_model_id}}"
+              ]
+            },
+            "description": "The export-source group has no DELETE and leaks (`run_suffix` keeps it unique); the model fixture does not have to."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

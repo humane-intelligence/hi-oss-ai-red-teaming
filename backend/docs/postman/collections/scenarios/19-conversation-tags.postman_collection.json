@@ -1,0 +1,2115 @@
+{
+  "info": {
+    "name": "19 \u00b7 Conversation tags & the tag schema",
+    "description": "Conversation **tags** and the per-evaluation tag schema that governs them: free-form key/value context an operator attaches to a conversation, which the backend folds into the model's system prompt.\n\n**Flow.** A) the allow-list (`GET`/`POST`/`DELETE /evaluations/{id}/tag-keys`) \u2014 the admin tag schema, gated on `evaluations:update`; B) **free-form** tagging (`tags_restricted: false`) \u2014 any key is accepted; C) **restricted** tagging \u2014 only allowed keys, anything else refused; D) tagging **disabled** \u2014 every tag refused; E) removing a key retroactively narrows what reaches the model, without breaking the already-tagged conversation.\n\n**Two independent flags, checked in this order.** `tags_enabled` decides whether tagging exists for the evaluation at all (off \u2192 the console renders no tagging surface and every tag is rejected). `tags_restricted` then decides *which* keys (off \u2192 free-form; on \u2192 the key must be in the allow-list, and an **empty allow-list while restricted forbids all tags**). Keeping \"disabled\" separate from \"restricted with nothing allowed\" is deliberate \u2014 otherwise the two are indistinguishable in the DB and neither the API nor the UI could tell a deliberate opt-out from a half-finished setup.\n\n**Contract notes.**\n- A refused tag is a **400** (`BadRequestError`), *not* a 422 \u2014 the payload is well-formed, it is the tag *policy* that rejects it. Two distinct messages: `Tagging is disabled for this evaluation.` and `Tag key(s) not allowed for this evaluation: <keys>.`\n- `tags_enabled` defaults to **true** and `tags_restricted` to **false**, so a fresh evaluation is free-form \u2014 folder B asserts that starting state rather than assuming it.\n- A duplicate key is a **409**; the allow-list is capped at `MAX_TAGS` (**16**) keys.\n- Authoring and replaying are separate policies. Writes (`assert_tags_allowed`) **reject**; the fold into the prompt (`allowed_tags_only`) **drops** instead \u2014 so tightening the policy later must not leave an already-tagged conversation unable to send. Folder E asserts exactly that: after a key is removed, the stored tag survives on the conversation and the send still works.\n- Tags live on the conversation (create + PATCH) **and** on a single message (`tags` on the send body), where the message layer overrides the conversation per key.\n\n**Auth model.** Per-request. `{{admin_token}}` owns the schema and the conversations; `{{redteamer_token}}` proves a participant cannot edit the allow-list (`evaluations:update` is admin/owner only). Self-contained \u2014 creates and tears down its own model, group, evaluation and conversations. No manual token.\n\n**Prereq.** `make seedlocal`.\n\nVerified green on a live stack: 66/66 assertions (Newman).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "run_suffix",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "redteamer_email",
+      "value": "redteamer@test.com"
+    },
+    {
+      "key": "redteamer_password",
+      "value": "password123"
+    },
+    {
+      "key": "redteamer_token",
+      "value": ""
+    },
+    {
+      "key": "tg_model_id",
+      "value": ""
+    },
+    {
+      "key": "tg_group_id",
+      "value": ""
+    },
+    {
+      "key": "tg_eval_id",
+      "value": ""
+    },
+    {
+      "key": "tg_scenario_id",
+      "value": ""
+    },
+    {
+      "key": "tg_assignment_id",
+      "value": ""
+    },
+    {
+      "key": "tg_cg_id",
+      "value": ""
+    },
+    {
+      "key": "tg_conv_free",
+      "value": ""
+    },
+    {
+      "key": "tg_conv_restricted",
+      "value": ""
+    },
+    {
+      "key": "tg_key_id",
+      "value": ""
+    },
+    {
+      "key": "client_msg_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 \u00b7 Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Owns the evaluation, so it holds `evaluations:update` (the tag schema) and `conversations:*`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Log in as red teamer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('redteamer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{redteamer_email}}\",\n  \"password\": \"{{redteamer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A participant: holds `conversations:*` but **not** `evaluations:update` \u2014 the allow-list 403 in folder A."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Register a model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"tag-{{run_suffix}}\",\n  \"model_alias\": \"tag-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "No credential \u2014 this collection never needs a completion, only the write path."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Create an evaluation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_group_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Tags {{run_suffix}}\",\n  \"description\": \"Tag-schema fixture.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\n    \"{{tg_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`allowed_model_ids` must be non-empty and its members are the only models assignable to this group's evaluations."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Approve the group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{tg_group_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{tg_group_id}}",
+                "approve"
+              ]
+            },
+            "description": "A fresh group is `pending_approval`; evaluation creation 409s until it is approved (an owner may self-approve)."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Create an evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_eval_id', pm.response.json().id);",
+                  "const b = pm.response.json();",
+                  "pm.test('tagging is on by default', () => pm.expect(b.tags_enabled).to.eql(true));",
+                  "pm.test('and unrestricted by default', () => pm.expect(b.tags_restricted).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Tag policy {{run_suffix}}\",\n  \"description\": \"Subject of the tag schema.\",\n  \"evaluation_group_id\": \"{{tg_group_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The two flags are asserted at creation rather than assumed, so a changed default surfaces here instead of confusing folder B."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Assign the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_assignment_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_id\": \"{{tg_model_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Body is `{model_id}`. The assign path re-checks the group's allowed-model subset \u2014 a model outside it is a 400."
+          },
+          "response": []
+        },
+        {
+          "name": "7b \u00b7 Add a scenario (conversations require one)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('scenario \u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_scenario_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/scenarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "scenarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tag challenge {{run_suffix}}\",\n  \"description\": \"Challenge the tagged conversations target.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Every conversation (group) targets exactly one scenario \u2014 the create posts to `/scenarios/{scenario_id}/...` \u2014 so the evaluation needs one before step 8."
+          },
+          "response": []
+        },
+        {
+          "name": "8 \u00b7 Create a conversation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_cg_id', pm.response.json().id);",
+                  "pm.collectionVariables.set('tg_conv_free', pm.response.json().conversations[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{tg_scenario_id}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{tg_scenario_id}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tag runs {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{tg_assignment_id}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A conversation needs a parent group. Its first conversation is the free-form subject in folder B."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A \u00b7 The tag-key allow-list",
+      "item": [
+        {
+          "name": "1 \u00b7 The allow-list starts empty",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('no keys yet', () => pm.expect(pm.response.json().length).to.eql(0));",
+                  "pm.test('the response is a bare array, not a page', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "description": "`evaluations:read`. Unlike most list endpoints this returns a **plain array**, not a `Page[T]` envelope \u2014 so there is no `items`/`total` to read and no `limit`/`offset` to pass. While `tags_restricted` is false these keys are inert."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Allow a key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_key_id', pm.response.json().id);",
+                  "pm.test('echoes the key and its evaluation', () => { const b = pm.response.json(); pm.expect(b.key).to.eql('severity'); pm.expect(b.evaluation_id).to.eql(pm.collectionVariables.get('tg_eval_id')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"severity\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`evaluations:update` \u2014 the tag schema is an admin/owner concern, not a participant's."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Allow a second key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"technique\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Two keys, so folder C can accept one and refuse another."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 The same key again \u2192 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('names the duplicate key', () => pm.expect(pm.response.json().detail).to.include('severity'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"severity\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A partial-unique index among live rows is the arbiter, so a concurrent double-add loses cleanly rather than 500ing."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Keys are listed in key order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const keys = pm.response.json().map(k => k.key);",
+                  "pm.test('both keys are present', () => pm.expect(keys).to.have.members(['severity', 'technique']));",
+                  "pm.test('sorted by key', () => pm.expect(keys).to.eql([...keys].sort()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "description": "Ordered by `key`, so the console renders a stable list without sorting client-side."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 A participant cannot edit the allow-list \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"smuggled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`red_teamer` holds `conversations:*` and can tag its own conversations, but the *schema* is `evaluations:update`. The permission gate runs before body validation, so this is a 403 and not a 422."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B \u00b7 Free-form tagging (tags_restricted = false)",
+      "item": [
+        {
+          "name": "1 \u00b7 Tag a conversation with a key outside the allow-list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const t = pm.response.json().tags;",
+                  "pm.test('both keys stored, allow-list ignored', () => { pm.expect(t.anything).to.eql('goes'); pm.expect(t.severity).to.eql('high'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_free}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_free}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": {\n    \"anything\": \"goes\",\n    \"severity\": \"high\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "With `tags_restricted: false` the allow-list from folder A is **inert** \u2014 `anything` is not in it and is still accepted. This is the default state of every new evaluation."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Create a conversation carrying tags",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('tg_conv_restricted', pm.response.json().id);",
+                  "pm.test('tags land at create time too', () => pm.expect(pm.response.json().tags.freeform).to.eql('yes'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{tg_scenario_id}}/conversations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{tg_scenario_id}}",
+                "conversations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"evaluation_ai_model_id\": \"{{tg_assignment_id}}\",\n  \"conversation_group_id\": \"{{tg_cg_id}}\",\n  \"title\": \"born tagged\",\n  \"tags\": {\n    \"freeform\": \"yes\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Tags are settable at create as well as on PATCH \u2014 the same `assert_tags_allowed` guard covers both write paths."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C \u00b7 Restricted tagging (tags_restricted = true)",
+      "item": [
+        {
+          "name": "1 \u00b7 Turn restriction on",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('restricted now, still enabled', () => { const b = pm.response.json(); pm.expect(b.tags_restricted).to.eql(true); pm.expect(b.tags_enabled).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags_restricted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`evaluations:update`. From here the allow-list stops being decorative."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 An allowed key is accepted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const t = pm.response.json().tags;",
+                  "pm.test('both allowed keys stored', () => { pm.expect(t.severity).to.eql('critical'); pm.expect(t.technique).to.eql('prompt-injection'); });",
+                  "pm.test('the earlier free-form key was replaced, not merged', () => pm.expect(t.freeform).to.eql(undefined));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": {\n    \"severity\": \"critical\",\n    \"technique\": \"prompt-injection\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The tag map is written as a whole, not merged key-by-key \u2014 the `freeform` key set in folder B is gone. Worth pinning: a client that PATCHes a partial map silently drops the rest."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 A key outside the allow-list \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "const d = pm.response.json();",
+                  "pm.test('a policy refusal, not a schema error', () => pm.expect(d.title).to.eql('Bad Request'));",
+                  "pm.test('names only the offending key', () => { pm.expect(d.detail).to.include('smuggled'); pm.expect(d.detail).to.not.include('severity'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": {\n    \"severity\": \"high\",\n    \"smuggled\": \"nope\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**400, not 422** \u2014 the body is well-formed JSON of the right shape; it is the tag *policy* that refuses it. The message names only the disallowed keys, so a UI can highlight exactly those fields."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 The refused write changed nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const t = pm.response.json().tags;",
+                  "pm.test('step 2 tags intact', () => pm.expect(t.severity).to.eql('critical'));",
+                  "pm.test('the smuggled key never landed', () => pm.expect(t.smuggled).to.eql(undefined));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "description": "A rejected tag map is rejected whole \u2014 the transaction rolls back, so no partial write."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 A disallowed key on a *message* is refused too",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('the same policy guards the send path', () => pm.expect(pm.response.json().detail).to.include('smuggled'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"probe\",\n  \"client_message_id\": \"{{client_msg_id}}\",\n  \"tags\": {\n    \"smuggled\": \"nope\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The send body carries its own `tags`, which override the conversation's per key \u2014 so the same guard has to run here. Refused **before** the turn opens, so no message is persisted and no SSE stream starts (`client_message_id` must be a UUID; a non-UUID is a 422). Step 6 is what proves the \"nothing persisted\" half."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 \u2026and no turn was persisted by it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the refused send left no message behind', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}",
+                "messages"
+              ]
+            },
+            "description": "The tag guard runs before `open_turn`, so a refused send is not a half-written turn: the transcript is still empty. Without this the previous step proved only the status code, while the description claimed the stronger guarantee."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D \u00b7 Tagging disabled (tags_enabled = false)",
+      "item": [
+        {
+          "name": "1 \u00b7 Turn tagging off",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('disabled', () => pm.expect(pm.response.json().tags_enabled).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags_enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The outer flag. The console renders no tagging surface for this evaluation at all."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Even an allowed key is refused \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('the disabled message, not the allow-list one', () => pm.expect(pm.response.json().detail).to.include('Tagging is disabled'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": {\n    \"severity\": \"high\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`tags_enabled` is checked **first**: `severity` is in the allow-list and still refused. The distinct message is what lets a UI say \"tagging is off here\" rather than \"that key is not allowed\"."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Stored tags survive the switch",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the conversation keeps what it was tagged with', () => pm.expect(pm.response.json().tags.severity).to.eql('critical'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "description": "Disabling tagging stops *authoring*; it does not erase history. The stored map stays on the row \u2014 the fold into the prompt drops it instead (`allowed_tags_only`), which is what keeps an already-tagged conversation usable."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Sending still works with tagging off",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the turn is accepted (SSE; the assistant errors without a credential)', () => pm.expect(pm.response.text()).to.include('event:'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"still sendable\",\n  \"client_message_id\": \"{{client_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The reason authoring and folding are separate policies. This conversation holds tags an admin has since disallowed; if the *fold* rejected them, its owner could no longer send, regenerate or continue \u2014 over state the console now hides from them. Instead the tags are silently dropped from the prompt (and logged as `conversations.tags.dropped`).\n\n\u26a0 SSE. Without a model credential the assistant turn finalizes to `error` while the user turn stays `complete`; the HTTP status is **200** either way."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "E \u00b7 Removing a key narrows the fold",
+      "item": [
+        {
+          "name": "1 \u00b7 Re-enable restricted tagging",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('enabled and restricted', () => { const b = pm.response.json(); pm.expect(b.tags_enabled).to.eql(true); pm.expect(b.tags_restricted).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags_enabled\": true,\n  \"tags_restricted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Back to the state folder C ended in, so the removal below is the only variable."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Disallow the key the conversation is tagged with",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys/severity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys",
+                "severity"
+              ]
+            },
+            "description": "`evaluations:update`. Soft-deletes the allow-list row. Note the key is addressed by its **name** in the path, not by the row id."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 It is gone from the allow-list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const keys = pm.response.json().map(k => k.key);",
+                  "pm.test('severity removed, technique kept', () => { pm.expect(keys).to.not.include('severity'); pm.expect(keys).to.include('technique'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys"
+              ]
+            },
+            "description": "A sibling removal leaves the rest of the schema alone."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Removing it again \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));",
+                  "pm.test('says the key is not defined', () => pm.expect(pm.response.json().detail).to.include('severity'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/tag-keys/severity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "tag-keys",
+                "severity"
+              ]
+            },
+            "description": "Idempotent in effect but explicit about it \u2014 a second delete is a 404, not a silent 204."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 The conversation keeps the now-disallowed tag",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('history is not rewritten by a schema change', () => pm.expect(pm.response.json().tags.severity).to.eql('critical'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "description": "The stored map is untouched by the allow-list shrinking \u2014 an admin narrowing the schema does not mutate anyone's conversations."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 And it can still be sent to",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the turn is accepted', () => pm.expect(pm.response.text()).to.include('event:'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"after the key was removed\",\n  \"client_message_id\": \"{{client_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The payoff of the two-policy split: `severity` is no longer allowed, so it is dropped from the prompt \u2014 but the conversation is not bricked. Rejecting here would strand every conversation tagged before the change."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Re-writing that tag is now refused \u2192 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 400', () => pm.response.to.have.status(400));",
+                  "pm.test('authoring is refused even though the stored copy survives', () => pm.expect(pm.response.json().detail).to.include('severity'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversations/{{tg_conv_restricted}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversations",
+                "{{tg_conv_restricted}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": {\n    \"severity\": \"critical\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The other half of the split: *replaying* the stored tag is fine, *authoring* it again is not. Same key, same conversation, different act \u2014 this pair is the whole design in two requests."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 \u00b7 Delete the conversation group (cascades its conversations)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}/conversation-groups/{{tg_cg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}",
+                "conversation-groups",
+                "{{tg_cg_id}}"
+              ]
+            },
+            "description": "Children before parents."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Delete the evaluation (cascades the tag keys)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{tg_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{tg_eval_id}}"
+              ]
+            },
+            "description": "The remaining allow-list row goes with its evaluation."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Delete the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{tg_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{tg_model_id}}"
+              ]
+            },
+            "description": "The evaluation group leaks \u2014 groups have no DELETE route; `run_suffix` keeps its title unique."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

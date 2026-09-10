@@ -1,0 +1,7 @@
+# Monorepo root — only root-level cruft.
+# Subprojects (backend/, frontend/) carry their own .gitignore.
+.DS_Store
+*.local
+*.log
+.idea/
+.vscode/

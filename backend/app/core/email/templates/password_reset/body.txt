@@ -1,0 +1,8 @@
+Hi{% if recipient_name %} {{ recipient_name }}{% endif %},
+
+{% if triggered_by_admin %}An administrator has started a password reset for your {{ brand.product }} account. Please use the link below to choose a new password:{% else %}We received a request to reset your {{ brand.product }} password. Please use the link below to choose a new one:{% endif %}
+{{ reset_url }}
+
+This link expires on {{ expires_at | datetimefmt }}. {% if triggered_by_admin %}If you weren't expecting this, contact your administrator before using it.{% else %}If you didn't request a reset, you can safely ignore this email.{% endif %} Your password will not change until you set a new one.
+
+{% include "_footer.txt" %}

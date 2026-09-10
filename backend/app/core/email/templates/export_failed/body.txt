@@ -1,0 +1,10 @@
+Hi {{ recipient_name }},
+
+Your export "{{ export_label }}" could not be generated.
+
+Reason: {{ error }}
+
+You can sign in and request it again:
+{{ target_url }}
+
+{% include "_footer.txt" %}

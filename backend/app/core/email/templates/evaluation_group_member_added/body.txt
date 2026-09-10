@@ -1,0 +1,6 @@
+{{ inviter_name }} added you to the evaluation group "{{ group_title }}" as a {{ role_names | join(", ") }}.
+
+Sign in to get started:
+{{ brand.site_url }}
+
+{% include "_footer.txt" %}

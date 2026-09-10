@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, button %}
+{% block content %}
+{{ heading("You've been added to an evaluation group") }}
+{% call paragraph() %}<strong>{{ inviter_name }}</strong> added you to the evaluation group <strong>{{ group_title }}</strong> as a <strong>{{ role_names | join(", ") }}</strong>.{% endcall %}
+{% call paragraph() %}Sign in to get started.{% endcall %}
+{{ button(brand.site_url, "Sign in") }}
+{% endblock %}

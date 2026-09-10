@@ -1,0 +1,760 @@
+{
+	"info": {
+		"name": "07 · RBAC negatives",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "The denial surface — every request that should be refused, and why. Two identities: seeded **admin** (owner) and seeded **viewer** (a low-privilege authenticated user).\n\n**Flow.** A) **401** — unauthenticated reads; B) **403** — `viewer` is authenticated but lacks the permission (`users:read` / `models:read` / `evaluation_groups:create`); C) **404** — `viewer` can't see admin's `invitation_only` group (invisible, not 403 — no existence leak); D) break-glass — admin sees and edits the same group.\n\n**Auth model.** Per-request: `{{admin_token}}` (owner) / `{{viewer_token}}` (insufficient) / `noauth`. Self-contained — **no manual token** (uses the seeded `viewer` instead of a provisioned outsider), no `00-bootstrap`.\n\n**Leftovers.** The private evaluation group leaks (no group DELETE; `run_suffix`-unique). The seeded viewer is left intact.\n\n**Verified:** 16/16 checks green end-to-end against a live stack (`make up` + `make seedlocal`)."
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "run_suffix",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "viewer_email",
+			"value": "viewer@test.com"
+		},
+		{
+			"key": "viewer_password",
+			"value": "password123"
+		},
+		{
+			"key": "viewer_token",
+			"value": ""
+		},
+		{
+			"key": "o7_private_group_id",
+			"value": ""
+		},
+		{
+			"key": "o7_model_id",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1 · Log in as admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded admin. Sets `run_suffix` (collision-free re-runs) and captures `admin_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('admin_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Register a model (for the group's allowed-model subset)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('o7_model_id', pm.response.json().id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ai-models",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ai-models"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"o7-{{run_suffix}}\",\n  \"model_alias\": \"o7-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "A group create requires a non-empty `allowed_model_ids`, so the engagement needs a registered model first. No credential is set \u2014 nothing here talks to the provider. Captures `o7_model_id`."
+					},
+					"response": []
+				},
+				{
+					"name": "3 · Admin creates a private (invitation_only) group",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Private group {{run_suffix}}\",\n  \"description\": \"Invisible to non-members.\",\n  \"access_level\": \"invitation_only\",\n  \"start_date\": \"2026-09-01\",\n  \"allowed_model_ids\": [\"{{o7_model_id}}\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups"
+							]
+						},
+						"description": "An `invitation_only` group only its owner/members can see — the target of the cross-user 404 check."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('o7_private_group_id', pm.response.json().id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "4 · Log in as viewer (non-admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded `viewer` (a non-admin identity) for the RBAC/isolation checks. Captures `viewer_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "A · 401 — no token",
+			"item": [
+				{
+					"name": "1 · GET /auth/me (no token) → 401",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"me"
+							]
+						},
+						"description": "No bearer token → 401 before anything else."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · GET /evaluation-groups (no token) → 401",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups"
+							]
+						},
+						"description": "Unauthenticated list is rejected."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · GET /ai-models (no token) → 401",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/ai-models",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ai-models"
+							]
+						},
+						"description": "Unauthenticated list is rejected."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "B · 403 — authenticated, insufficient permission",
+			"item": [
+				{
+					"name": "1 · GET /auth/users (lacks users:read) → 403",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"users"
+							]
+						},
+						"description": "`viewer` is authenticated but lacks `users:read` → forbidden (not 401)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · GET /ai-models (lacks models:read) → 403",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/ai-models",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ai-models"
+							]
+						},
+						"description": "`viewer` lacks `models:read`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · POST /evaluation-groups (lacks evaluation_groups:create) → 403",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"nope {{run_suffix}}\",\n  \"description\": \"x\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-09-01\",\n  \"allowed_model_ids\": [\"{{o7_model_id}}\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups"
+							]
+						},
+						"description": "`viewer` holds `evaluation_groups:read` but not `:create` — the permission gate fires before body validation."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "C · 404 — invisible group (cross-user)",
+			"item": [
+				{
+					"name": "1 · GET admin's private group → 404",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups/{{o7_private_group_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups",
+								"{{o7_private_group_id}}"
+							]
+						},
+						"description": "`viewer` has `evaluation_groups:read` but isn't a member/owner — the group reads as **404**, not 403 (no existence leak)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · List groups excludes the private one",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups?limit=100",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						},
+						"description": "The invisible group never appears in a non-member's list."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('private group not listed', () => pm.expect(pm.response.json().items.map(g => g.id)).to.not.include(pm.collectionVariables.get('o7_private_group_id')));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "D · Break-glass — admin sees what the viewer can't",
+			"item": [
+				{
+					"name": "1 · GET the private group → 200",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups/{{o7_private_group_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups",
+								"{{o7_private_group_id}}"
+							]
+						},
+						"description": "The owner/admin sees the same group that read as 404 for the viewer."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · PATCH the private group → 200",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"Edited by the owner {{run_suffix}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/evaluation-groups/{{o7_private_group_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"evaluation-groups",
+								"{{o7_private_group_id}}"
+							]
+						},
+						"description": "And can edit it."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Teardown",
+			"item": [
+				{
+					"name": "1 · Delete the model fixture",
+					"request": {
+						"method": "DELETE",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ai-models/{{o7_model_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ai-models",
+								"{{o7_model_id}}"
+							]
+						},
+						"description": "Self-containment: the collection created this model in Setup, so it deletes it. The groups leak — there is no group DELETE."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

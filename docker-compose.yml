@@ -1,0 +1,15 @@
+# Monorepo dev stack: backend (app/worker/beat/flower/db/redis) + frontend (vite).
+# Each subdir's compose is included as-is; the root only pins the shared project
+# name so root, per-subdir, and bare `docker compose` invocations all target one
+# stack (not the per-directory default).
+#
+# No top-level service override: overriding an `include`d service (e.g. adding
+# `depends_on` to `web`) isn't portable — older compose raises "conflicts with
+# imported resource" while newer merges. The FE reaches the backend at request
+# time over the compose network (BACKEND_URL=http://app:8000, exported by the
+# root Makefile), so it needs no startup `depends_on`.
+name: ai-red-teaming
+
+include:
+  - backend/docker-compose.yml
+  - frontend/docker-compose.yml

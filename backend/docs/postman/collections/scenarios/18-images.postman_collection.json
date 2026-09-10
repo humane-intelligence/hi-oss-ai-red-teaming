@@ -1,0 +1,542 @@
+{
+	"info": {
+		"name": "18 · Images",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Generic image upload + serving (covers, avatars, icons) — the byte store behind evaluation covers, plus the public serve paths and the uploader-only delete.\n\n**Flow.** A) upload (⚠ manual file), fetch the bytes by key (public), mint a time-limited signed URL, fetch by that token; B) delete is **uploader-only** (a non-uploader is 403), the uploader deletes (204), fetch-after-delete is 404, an unauthenticated upload is 401, and a signed URL for an unknown key is 404.\n\n**⚠ Manual file (GUI-only run).** A Postman collection can't embed a binary, so the upload's `file` form-field has an empty `src` — in the Collection Runner / GUI, pick any JPEG/PNG/WebP. Because the downstream steps chain off the uploaded key, this collection is **run in the GUI** (the Collection Runner).\n\n**Auth model.** `{{admin_token}}` uploads/deletes; `{{viewer_token}}` probes the uploader-only 403; the serve paths (`GET /images/{key}`, `/signed`, `/signed-url`) are **public** (no auth) — the key/token is the capability. Self-contained — no `00-bootstrap`.\n\n**No dedicated permission** — images are non-sensitive; the boundary is *ownership* (delete) and *authentication* (upload), not a role.\n\n**Leftovers.** None — the asset is deleted in folder B.\n\n**Verified:** 13/13 checks green end-to-end against a live stack (`make up` + `make seedlocal`) — full flow run with a mounted file; the committed collection is GUI-run (the upload `file` `src` is empty for a manual pick)."
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "run_suffix",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "viewer_email",
+			"value": "viewer@test.com"
+		},
+		{
+			"key": "viewer_password",
+			"value": "password123"
+		},
+		{
+			"key": "viewer_token",
+			"value": ""
+		},
+		{
+			"key": "img_key",
+			"value": ""
+		},
+		{
+			"key": "img_token",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1 · Log in as admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded admin. Sets `run_suffix` (collision-free re-runs) and captures `admin_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('admin_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Log in as viewer (non-admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded `viewer` (a non-admin identity) for the RBAC/isolation checks. Captures `viewer_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "A · Upload + serve",
+			"item": [
+				{
+					"name": "1 · Upload an image  ⚠ manual file",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "Pick any JPEG/PNG/WebP (<=20 MB)."
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images"
+							]
+						},
+						"description": "**FE note:** any authenticated user uploads a cover/avatar/icon. **⚠ manual file:** in the GUI, select a JPEG/PNG/WebP for the `file` form-field (a collection can't embed a binary). The service sniffs the format with Pillow (not the Content-Type), caps at 20 MB, and downscales to <=1200x1200. Captures `img_key` (the opaque storage key)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"const d = pm.response.json();",
+									"pm.collectionVariables.set('img_key', d.key);",
+									"pm.test('returns key + url + dimensions', () => { pm.expect(d).to.have.property('key'); pm.expect(d).to.have.property('url'); pm.expect(d).to.have.property('width'); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Fetch by key (public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/{{img_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"{{img_key}}"
+							]
+						},
+						"description": "The bytes are served **unauthenticated** — the UUID key is the capability — with a long-lived immutable `Cache-Control`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Mint a signed URL (public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/signed-url?key={{img_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"signed-url"
+							],
+							"query": [
+								{
+									"key": "key",
+									"value": "{{img_key}}"
+								}
+							]
+						},
+						"description": "A time-limited `itsdangerous`-signed token wrapping the key + timestamp (TTL `MEDIA_SIGNED_URL_TTL_SECONDS`, ~15 min). Deliberately not S3-presigned, so it stays backend-agnostic. Captures `img_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json();",
+									"pm.test('url + expiry', () => { pm.expect(d).to.have.property('url'); pm.expect(d).to.have.property('expires_at'); });",
+									"pm.collectionVariables.set('img_token', d.url.split('/').pop());"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "4 · Fetch via signed token (public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/signed/{{img_token}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"signed",
+								"{{img_token}}"
+							]
+						},
+						"description": "Streams the same bytes by token; the fetch path carries no key of its own. An expired/forged token is 403."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "B · Delete + negatives",
+			"item": [
+				{
+					"name": "1 · Delete by a non-uploader → 403",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/{{img_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"{{img_key}}"
+							]
+						},
+						"description": "Delete is **uploader-only** — another authenticated user cannot remove someone else's asset."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Delete by the uploader → 204",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/{{img_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"{{img_key}}"
+							]
+						},
+						"description": "The uploader (admin) removes their own asset."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Fetch after delete → 404",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/{{img_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"{{img_key}}"
+							]
+						},
+						"description": "Confirms the delete."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "4 · Upload with no token → 401",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "Pick any JPEG/PNG/WebP (<=20 MB)."
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images"
+							]
+						},
+						"description": "Upload requires authentication — the 401 fires before body validation, so this needs no file."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "5 · Signed URL for an unknown key → 404",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/images/signed-url?key=2026/01/01/deadbeefdeadbeefdeadbeefdeadbeef.png",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"images",
+								"signed-url"
+							],
+							"query": [
+								{
+									"key": "key",
+									"value": "2026/01/01/deadbeefdeadbeefdeadbeefdeadbeef.png"
+								}
+							]
+						},
+						"description": "Minting a signed URL for a non-existent asset is a 404."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

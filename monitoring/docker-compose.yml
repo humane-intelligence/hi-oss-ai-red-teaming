@@ -1,0 +1,217 @@
+# Opt-in monitoring stack for wherever ../deploy/docker-compose.dev.yml is
+# deployed. A separate compose project — not part of CD, brought up manually
+# per README.md. Joins that stack's network externally (`deploy_default`, the
+# default network for a compose project run from a directory named `deploy` —
+# see README.md) to scrape app/db/redis and to let that stack's Caddy reach
+# Grafana, without publishing any of this stack's ports.
+name: monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=14d
+      - --web.enable-lifecycle
+    # Reach node-exporter's host-network listener (see node-exporter below) —
+    # Docker Engine on Linux needs this alias spelled out explicitly.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - deploy_default
+
+  loki:
+    image: grafana/loki:3.3.2
+    restart: unless-stopped
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    restart: unless-stopped
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Own subdomain (Caddy site block, ../deploy/Caddyfile), not a sub-path —
+      # matches GlitchTip's pattern below, one less moving part than carrying
+      # a single exception. GF_SERVER_PROTOCOL stays the default (http):
+      # Caddy terminates TLS and reverse-proxies over plain HTTP internally —
+      # setting GF_SERVER_PROTOCOL to https makes Grafana's own listener
+      # expect TLS and reject Caddy's plain-HTTP connection.
+      # docker-compose.local.yml serves Grafana on :3000 locally, no Caddy.
+      GF_SERVER_ROOT_URL: "https://grafana.${APP_DOMAIN:-localhost}/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      # SMTP for the alert rule's email contact point (provisioning/alerting/).
+      # Unset host = disabled, same "opt-in, absent is safe" pattern as
+      # GlitchTip's EMAIL_URL below. docker-compose.local.yml overrides these
+      # against Mailpit. The From address must be a verified identity when the
+      # transport is SES — the box sets GRAFANA_SMTP_FROM in monitoring/.env.
+      GF_SMTP_ENABLED: ${GF_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GF_SMTP_HOST:-}
+      GF_SMTP_USER: ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-grafana-alerts@monitoring.local}
+      # Contact point recipient (provisioning/alerting/contactpoints.yml), via
+      # Grafana's own $__env{} provisioning interpolation. Placeholder
+      # default: mail has nowhere real to go until this is set, matching SMTP
+      # disabled by default above. The `:-default` here is load-bearing beyond
+      # alerting too — if this var is truly absent (not just falling back),
+      # Grafana's whole process refuses to start, so don't drop it as
+      # dead-looking boilerplate.
+      GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:-alerts@monitoring.local}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - default
+      - deploy_default
+
+  # Consumes Celery events (worker_send_task_events/task_send_sent_event,
+  # both enabled in the worker config) from the broker — no code in the app talks to it directly.
+  celery-exporter:
+    image: danihodovic/celery-exporter:0.10.0
+    restart: unless-stopped
+    environment:
+      # Must match the app's own CELERY_BROKER_URL (backend/.env.example) — the
+      # exporter watches this broker directly, not through the app's Celery
+      # config, so it can't inherit an override (e.g. to RabbitMQ —
+      # CELERY_BROKER_URL's own doc comment). Set in this project's .env.
+      CE_BROKER_URL: ${CE_BROKER_URL}
+    networks:
+      - default
+      - deploy_default
+
+  # network_mode: host (not the compose network) — the only way for node_exporter
+  # to see the real host's filesystems/network devices instead of its own container netns.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    # Raw cgroup/device access for full container metrics — standard cAdvisor
+    # requirement, acceptable on a single dev-only host.
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  # Synthetic uptime signal nothing else in the stack produces — probes the app
+  # directly (not through Caddy; Caddy only exists on the box, not in local
+  # `make dev`, and this stack must stay testable via `make mon-up` either way).
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - default
+      - deploy_default
+
+  # Same shape as the local pair (backend/docker-compose.yml): all-in-one
+  # image (embedded worker + auto-migrate), Postgres-backed queue/cache
+  # (VALKEY_URL="") so no Redis coupling. Own subdomain rationale (BASE_PATH
+  # fragility, why CSRF_TRUSTED_ORIGINS is load-bearing) — see README.md
+  # "GlitchTip activation".
+  glitchtip:
+    image: glitchtip/glitchtip:6.2.0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD}@glitchtip-db:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      PORT: "8080"
+      GLITCHTIP_DOMAIN: https://glitchtip.${APP_DOMAIN:-localhost}
+      CSRF_TRUSTED_ORIGINS: https://glitchtip.${APP_DOMAIN:-localhost},http://localhost:8090
+      # Unset = today's no-op (consolemail:// only prints to the container's own
+      # logs) — same "opt-in, absent is safe" pattern as postgres_monitoring_password.
+      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+      # Must be a verified identity when EMAIL_URL points at SES; the default
+      # is the image default, intended only with consolemail://.
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-webmaster@localhost}
+      VALKEY_URL: ""
+      GLITCHTIP_EMBED_WORKER: "true"
+      ENABLE_ORGANIZATION_CREATION: "true"
+      # Public endpoint (glitchtip.<APP_DOMAIN>) — block self-signup;
+      # invitations still work. docker-compose.local.yml re-enables it, and a
+      # fresh box bootstraps its first account via manage.py (see README.md
+      # "GlitchTip activation").
+      ENABLE_USER_REGISTRATION: "False"
+    ports:
+      - "127.0.0.1:8090:8080"
+    depends_on:
+      glitchtip-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/_health/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - default
+      - deploy_default
+
+  glitchtip-db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD}
+      POSTGRES_DB: glitchtip
+    volumes:
+      - glitchtip_db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  glitchtip_db_data:
+
+networks:
+  deploy_default:
+    external: true

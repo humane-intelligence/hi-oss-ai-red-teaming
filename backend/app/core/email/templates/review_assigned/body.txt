@@ -1,0 +1,8 @@
+Hi {{ assignee_name }},
+
+{{ assigner_name }} assigned you to review a flagged submission in "{{ evaluation_title }}".
+
+Please sign in to review:
+{{ brand.site_url }}
+
+{% include "_footer.txt" %}

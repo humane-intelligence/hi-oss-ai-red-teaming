@@ -1,0 +1,8 @@
+Hi {{ recipient_name }},
+
+Your export "{{ export_label }}" has finished generating and is ready to download:
+{{ target_url }}
+
+It will be available to download for {{ retention_hours }} hours.
+
+{% include "_footer.txt" %}

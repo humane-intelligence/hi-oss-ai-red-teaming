@@ -1,0 +1,7 @@
+# Copy to backend.hcl (gitignored) and pass with:
+#   terraform init -backend-config=backend.hcl
+#
+# Bootstrap the bucket itself first — see "State backend" in ../../README.md. It is
+# deliberately not managed by Terraform: it holds the state that would manage it.
+bucket = "your-tfstate-bucket"
+region = "us-east-1"

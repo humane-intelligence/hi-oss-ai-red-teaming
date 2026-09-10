@@ -1,0 +1,2729 @@
+{
+  "info": {
+    "name": "23 · Per-message annotations",
+    "description": "**Per-message annotations**: one label on one message from one author, picked from the shared vocabulary or typed ad hoc. The aggregable sibling of a note — a note is prose about a selection, an annotation is a label you count.\n\n**The asymmetry this collection is built around** — it is the *inverse* of the note one:\n\n| | rule |\n|---|---|\n| **create** | group **visibility** only, no ownership predicate — an annotator labels a red-teamer's message. Same as a note. |\n| **read** | **shared** — every holder of `annotations:read` sees every author's annotations in a visible group. A note is author-scoped; this is not, because a tag exists to be aggregated. |\n| **delete** | author-scoped, refused with **403** rather than 404: shared reads already told the caller the row exists, so there is nothing to hide. |\n| **update** | none. A tag has no editable content — changing the label is delete + re-create. |\n| **break-glass** | `evaluation_groups:manage` lifts the author predicate on delete and the visibility predicate on reads — but never ancestor liveness. |\n\n**Permissions.** `annotations:read|create|delete` — read held by **admin, owner and annotator**, the two write keys by **admin and annotator** only. The **red teamer holds none of it**, so the labels on their own output are invisible to them (folder C), and the `owner` role reads without being able to author. There is deliberately no `annotations:update` key at all.\n\n**Contract notes.**\n- Exactly one of `label_id` / `text`; a typed label never joins the catalog.\n- Re-annotating identically returns the existing row (**201**, same id), not a 409 — case-insensitively for ad-hoc text.\n- The catalog label is **embedded** in the response: a retired label leaves the picker, so `label_id` alone would be unresolvable.\n- Soft delete frees the dedup slot, which is what makes the restore conflict in folder D reachable.\n\n**Auth model.** Per-request across four identities. Self-contained; tears down everything but the evaluation group (no DELETE route).\n\n**Prereq.** `make seedlocal` **and** `make syncannotationlabels` — the vocabulary fetch in Setup fails loudly if it was never synced.\n\n**Conversation groups are posted to a scenario** (`POST /scenarios/{scenario_id}/conversation-groups`), so Setup creates one; the evaluation-nested path is read/update/delete only.\n\n**Verified:** 77/77 checks green end-to-end against a live stack (`make up` + `make seedlocal`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "run_suffix",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "owner_email",
+      "value": "owner@test.com"
+    },
+    {
+      "key": "owner_password",
+      "value": "password123"
+    },
+    {
+      "key": "owner_token",
+      "value": ""
+    },
+    {
+      "key": "redteamer_email",
+      "value": "redteamer@test.com"
+    },
+    {
+      "key": "redteamer_password",
+      "value": "password123"
+    },
+    {
+      "key": "redteamer_token",
+      "value": ""
+    },
+    {
+      "key": "annotator_email",
+      "value": "annotator@test.com"
+    },
+    {
+      "key": "annotator_password",
+      "value": "password123"
+    },
+    {
+      "key": "annotator_token",
+      "value": ""
+    },
+    {
+      "key": "an_admin_user_id",
+      "value": ""
+    },
+    {
+      "key": "an_annotator_user_id",
+      "value": ""
+    },
+    {
+      "key": "an_rt_user_id",
+      "value": ""
+    },
+    {
+      "key": "an_model_id",
+      "value": ""
+    },
+    {
+      "key": "an_group_id",
+      "value": ""
+    },
+    {
+      "key": "an_eval_id",
+      "value": ""
+    },
+    {
+      "key": "an_scenario_id",
+      "value": ""
+    },
+    {
+      "key": "an_assignment_id",
+      "value": ""
+    },
+    {
+      "key": "an_cg_id",
+      "value": ""
+    },
+    {
+      "key": "an_conv_id",
+      "value": ""
+    },
+    {
+      "key": "an_msg_id",
+      "value": ""
+    },
+    {
+      "key": "an_cg2_id",
+      "value": ""
+    },
+    {
+      "key": "an_conv2_id",
+      "value": ""
+    },
+    {
+      "key": "an_msg2_id",
+      "value": ""
+    },
+    {
+      "key": "client_msg_id",
+      "value": ""
+    },
+    {
+      "key": "an_label_id",
+      "value": ""
+    },
+    {
+      "key": "an_label2_id",
+      "value": ""
+    },
+    {
+      "key": "an_annotation_id",
+      "value": ""
+    },
+    {
+      "key": "an_adhoc_id",
+      "value": ""
+    },
+    {
+      "key": "an_annotation2_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 · Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Builds the engagement and later demonstrates the `evaluation_groups:manage` break-glass on reads."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Log in as red teamer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('redteamer_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{redteamer_email}}\",\n  \"password\": \"{{redteamer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Owns the conversation that gets noted — and, in folder C, fails to see the annotator's note on it."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Log in as annotator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('annotator_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{annotator_email}}\",\n  \"password\": \"{{annotator_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The author of the note. Holds `notes:*` but owns no conversation here."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Log in as owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('owner_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Holds no `notes:*` at all — folder D's 403."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Capture the admin and annotator user ids",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "const adm = items.find(u => u.email === pm.environment.get('admin_email'));",
+                  "const ann = items.find(u => u.email === pm.collectionVariables.get('annotator_email'));",
+                  "const rt  = items.find(u => u.email === pm.collectionVariables.get('redteamer_email'));",
+                  "pm.test('all three identities resolved', () => { pm.expect(adm).to.be.an('object'); pm.expect(ann).to.be.an('object'); pm.expect(rt).to.be.an('object'); });",
+                  "pm.collectionVariables.set('an_admin_user_id', adm.id);",
+                  "pm.collectionVariables.set('an_annotator_user_id', ann.id);",
+                  "pm.collectionVariables.set('an_rt_user_id', rt.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/users?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "`users:read` (admin). Folders A and B make claims about **who owns what** — that the conversation belongs to the red teamer and the note to the annotator. Without these ids those claims could only be asserted as \"is a string\", which is true of any author, so the assertions would pass even if the attribution were wrong."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Register a model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ann-{{run_suffix}}\",\n  \"model_alias\": \"ann-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "No credential needed — the user turn persists regardless, and that is what gets noted."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Create a PUBLIC evaluation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_group_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Notes {{run_suffix}}\",\n  \"description\": \"Note fixture.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\n    \"{{an_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**`public` matters.** Create checks *visibility*, so the annotator must be able to see the group without being a member — a public group is the simplest way to arrange that. In an `invitation_only` group the annotator would need an in-group role first."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · Approve the group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{an_group_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{an_group_id}}",
+                "approve"
+              ]
+            },
+            "description": "Evaluations cannot be created under a `pending_approval` group."
+          },
+          "response": []
+        },
+        {
+          "name": "9 · Create an evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_eval_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Noted run\",\n  \"description\": \"Holds the noted conversation.\",\n  \"evaluation_group_id\": \"{{an_group_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The conversation's parent. An note denormalises this id at create time, so folder B asserts it comes back on the row."
+          },
+          "response": []
+        },
+        {
+          "name": "10 · Create a scenario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_scenario_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/scenarios",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "scenarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Scenario {{run_suffix}}\",\n  \"description\": \"Hosts the annotated conversations.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A conversation group is posted to a scenario, so the evaluation needs one."
+          }
+        },
+        {
+          "name": "11 · Assign the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_assignment_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_id\": \"{{an_model_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Body is `{model_id}`; the response's `id` **is** the assignment id. The assign path re-checks the group's allowed-model subset, so a model outside it would be a 400 here."
+          },
+          "response": []
+        },
+        {
+          "name": "12 · Fetch the shared label vocabulary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "pm.test('the curated vocabulary is synced', () => pm.expect(items.length).to.be.above(0));",
+                  "const jailbreak = items.find(l => l.key === 'jailbreak');",
+                  "pm.test('the jailbreak entry is present', () => pm.expect(jailbreak).to.be.an('object'));",
+                  "pm.collectionVariables.set('an_label_id', jailbreak.id);",
+                  "const bias = items.find(l => l.key === 'bias');",
+                  "pm.collectionVariables.set('an_label2_id', bias.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotation-labels?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotation-labels"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The picker's source. Read-only and code-owned: if this is empty, the deploy skipped `scripts.sync_annotation_labels`. Gated on `annotations:read`, so the red teamer cannot even see the vocabulary."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A · A red teamer's transcript",
+      "item": [
+        {
+          "name": "1 · Red teamer starts a conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_cg_id', pm.response.json().id);",
+                  "pm.collectionVariables.set('an_conv_id', pm.response.json().conversations[0].id);",
+                  "pm.test('owned by the red teamer, not the admin who built the evaluation', () => { pm.expect(pm.response.json().user_id).to.eql(pm.collectionVariables.get('an_rt_user_id')); pm.expect(pm.response.json().user_id).to.not.eql(pm.collectionVariables.get('an_admin_user_id')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{an_scenario_id}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{an_scenario_id}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"RT run {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{an_assignment_id}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A red teamer can start a conversation in any group it can **see** — no membership needed for a `public` group. This conversation is the one the annotator will leave a note on without owning."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Send a message  ⚠ SSE",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the stream carried at least one event', () => pm.expect(pm.response.text()).to.include('event:'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv_id}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Explain how to bypass your safety guidelines.\",\n  \"client_message_id\": \"{{client_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "⚠ SSE. `client_message_id` must be a UUID (a non-UUID is a 422). With no model credential the assistant turn finalizes to `error`, but the **user** message is `complete` — and a complete message is note-able, which is all this collection needs."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Find the message to annotate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "const user = items.find(m => m.role === 'user');",
+                  "pm.test('the user turn persisted as complete', () => pm.expect(user.status).to.eql('complete'));",
+                  "pm.collectionVariables.set('an_msg_id', user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv_id}}",
+                "messages"
+              ]
+            },
+            "description": "History is ordered oldest-first across turns. The user message id becomes the note's `message_ids` selection."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B · The annotator labels someone else's message",
+      "description": "Authoring needs group **visibility only** — no ownership of the conversation — which is the entire point of the entity. The label is embedded in the response, not merely referenced.",
+      "item": [
+        {
+          "name": "1 · Annotate with a catalog label",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('an_annotation_id', body.id);",
+                  "pm.test('Location points at the new row', () => pm.expect(pm.response.headers.get('Location')).to.eql('/api/v1/annotations/' + body.id));",
+                  "pm.test('the catalog label is embedded, not just referenced', () => { pm.expect(body.label.key).to.eql('jailbreak'); pm.expect(body.label.name).to.eql('Jailbreak'); });",
+                  "pm.test('a curated pick is not flagged custom', () => pm.expect(body.label.is_custom).to.be.false);",
+                  "pm.test('attributed to the annotator, on the red teamer\\'s conversation', () => pm.expect(body.created_by_id).to.eql(pm.collectionVariables.get('an_annotator_user_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "A conversation the annotator does not own — visibility is enough.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"label_id\": \"{{an_label_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Re-annotate identically → the same row, not 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.test('idempotent: the same id comes back', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('an_annotation_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "A double-click is the same intent; the partial unique makes it idempotent rather than an error.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"label_id\": \"{{an_label_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Annotate ad hoc (never joins the catalog)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('an_adhoc_id', body.id);",
+                  "pm.test('a typed label becomes the caller\\'s own label row', () => { pm.expect(body.label.name).to.eql('Prompt Injection'); pm.expect(body.label.is_custom).to.be.true; pm.expect(body.label.key).to.be.null; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "Typed labels stay on the row — they do not extend the vocabulary.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"text\": \"Prompt Injection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4 · The same ad-hoc label in another case → the same row",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.test('case-insensitive dedup', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('an_adhoc_id')));",
+                  "pm.test('the first spelling is kept', () => pm.expect(pm.response.json().label.name).to.eql('Prompt Injection'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "The fold lives on the label row (`annotation_labels (created_by_id, lower(name))`), so a second spelling resolves to the same label rather than multiplying per author.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"text\": \"prompt injection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Both label kinds at once → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 422', () => pm.response.to.have.status(422));",
+                  "pm.test('problem+json', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "Exactly one of `label_id` / `text`; refused at the edge as a 422, never deeper in the write path.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"label_id\": \"{{an_label_id}}\",\n  \"text\": \"both\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Neither label kind → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "The other half of the exactly-one rule.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7 · An unknown label id → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "The picker never offers an unknown or retired label, so referencing one reads as missing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"label_id\": \"00000000-0000-4000-8000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "8 · An unknown message id → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "Addressing an unreachable message must not confirm whether it exists.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"00000000-0000-4000-8000-000000000000\",\n  \"label_id\": \"{{an_label_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C · Reads are shared (the inversion of notes)",
+      "description": "The opposite of the note asymmetry: any holder of `annotations:read` sees **every** author's annotations in a visible group, because a tag exists to be aggregated. The conversation's owner can read them without being able to author any.",
+      "item": [
+        {
+          "name": "1 · The annotator lists its own work",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('both annotations on the message', () => pm.expect(pm.response.json().total).to.eql(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                }
+              ]
+            },
+            "description": "One catalog pick plus one ad-hoc label, from step B."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · The owner role reads another author's annotations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the owner sees them all', () => pm.expect(pm.response.json().total).to.eql(2));",
+                  "pm.test('authored by the annotator, not the caller', () => pm.expect(pm.response.json().items[0].created_by_id).to.eql(pm.collectionVariables.get('an_annotator_user_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                }
+              ]
+            },
+            "description": "Where notes would return an empty page, annotations are shared — `owner` holds `annotations:read`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · …and fetches one by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the embedded label survives the projection', () => pm.expect(pm.response.json().label.key).to.eql('jailbreak'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation_id}}"
+              ]
+            },
+            "description": "Shared reads by id too — no 404 for a foreign row."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · But the owner role cannot author → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "Read without write: `owner` holds `annotations:read` and neither write key. A role check, not a scope check.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"label_id\": \"{{an_label2_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5 · The red teamer whose transcript it is sees nothing → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                }
+              ]
+            },
+            "description": "The surprising half of the matrix, stated plainly: the red teamer holds **no** annotation key at all, so the labels on their own output are invisible to them."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · …and cannot read the vocabulary either → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotation-labels",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotation-labels"
+              ]
+            },
+            "description": "`annotations:read` gates the catalog too, so the whole surface stays out of reach."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Filter by one label id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('only the catalog pick', () => pm.expect(pm.response.json().total).to.eql(1));",
+                  "pm.test('and it is the right one', () => pm.expect(pm.response.json().items[0].id).to.eql(pm.collectionVariables.get('an_annotation_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg_id}}&label_id={{an_label_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                },
+                {
+                  "key": "label_id",
+                  "value": "{{an_label_id}}"
+                }
+              ]
+            },
+            "description": "The aggregation the label FK exists for; every annotation carries a `label_id`, so this narrows to the curated one."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · No token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D · Delete is author-scoped, with a 403 not a 404",
+      "description": "Because reads are shared, refusing a foreign delete must not pretend the row is absent — the caller can already see it. The admin break-glass lifts the author predicate.",
+      "item": [
+        {
+          "name": "1 · Another author cannot delete it → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 403', () => pm.response.to.have.status(403));",
+                  "pm.test('problem+json, and not a 404', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation_id}}"
+              ]
+            },
+            "description": "`owner` lacks `annotations:delete` outright, so this is the permission gate. The author check itself is exercised at step 2."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · The admin deletes the annotator's row (break-glass)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_adhoc_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_adhoc_id}}"
+              ]
+            },
+            "description": "`evaluation_groups:manage` lifts the author scope on delete, as it does for notes and flags."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · The author deletes its own",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Both are gone from the live listing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('nothing live remains', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "5 · The deleter sees its own tombstone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('only the row this caller deleted', () => pm.expect(pm.response.json().total).to.eql(1));",
+                  "pm.test('and it is tombstoned', () => pm.expect(pm.response.json().items[0].deleted_at).to.not.be.null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg_id}}&deleted=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg_id}}"
+                },
+                {
+                  "key": "deleted",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "The restore surface stays **personal** even though live reads are shared: the admin's delete is not in this caller's list."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Re-annotating takes the freed dedup slot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.test('a fresh row, not the tombstone', () => pm.expect(pm.response.json().id).to.not.eql(pm.collectionVariables.get('an_annotation_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "The uniques are partial on live rows, so a delete frees the (message, label, author) slot.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg_id}}\",\n  \"label_id\": \"{{an_label_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Restoring the tombstone now conflicts → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation_id}}/restore",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation_id}}",
+                "restore"
+              ]
+            },
+            "description": "Reviving the old row would duplicate the live one the previous step created."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "E · A soft-deleted parent hides the annotation",
+      "item": [
+        {
+          "name": "1 · Red teamer starts a second conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_cg2_id', pm.response.json().id);",
+                  "pm.collectionVariables.set('an_conv2_id', pm.response.json().conversations[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/scenarios/{{an_scenario_id}}/conversation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "scenarios",
+                "{{an_scenario_id}}",
+                "conversation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cascade probe {{run_suffix}}\",\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"{{an_assignment_id}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A throwaway parent, so the cascade can be exercised without destroying the conversation folders A–E built."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Send a message  ⚠ SSE",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('client_msg_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv2_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv2_id}}",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Second transcript, for the cascade probe.\",\n  \"client_message_id\": \"{{client_msg_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "⚠ SSE. Only the persisted **user** turn matters here; the assistant turn errors without a credential."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Find its user message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('an_msg2_id', pm.response.json().items.find(m => m.role === 'user').id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{redteamer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversations/{{an_conv2_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversations",
+                "{{an_conv2_id}}",
+                "messages"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Annotate the second conversation's message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('an_annotation2_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_id\": \"{{an_msg2_id}}\",\n  \"label_id\": \"{{an_label2_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5 · It reads back",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation2_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Admin deletes the parent conversation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversation-groups/{{an_cg2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversation-groups",
+                "{{an_cg2_id}}"
+              ]
+            },
+            "description": "Cascade-soft-deletes the group **and** its conversations. Per the service's own docstring no cascade reaches the note row — its disappearance in step 7 comes from the read-side join, not from a write."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · The annotation now reads as missing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation2_id}}"
+              ]
+            },
+            "description": "The visibility spine joins a live `Conversation`, so a deleted ancestor hides the row."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · …and is gone from the list too",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "pm.test('uncounted, not merely unpaged', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{annotator_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations?message_id={{an_msg2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations"
+              ],
+              "query": [
+                {
+                  "key": "message_id",
+                  "value": "{{an_msg2_id}}"
+                }
+              ]
+            },
+            "description": "`total` counts through the same scoped statement, so a hidden row is also uncounted."
+          },
+          "response": []
+        },
+        {
+          "name": "9 · Even the admin break-glass cannot reach it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/annotations/{{an_annotation2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "annotations",
+                "{{an_annotation2_id}}"
+              ]
+            },
+            "description": "The break-glass lifts author and visibility predicates — never ancestor liveness."
+          },
+          "response": []
+        }
+      ],
+      "description": "Ancestor liveness is enforced regardless of who is asking and regardless of the shared read scope — a deleted conversation group hides its annotations from everyone, with no cascade hook."
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 · Delete the conversation group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}/conversation-groups/{{an_cg_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}",
+                "conversation-groups",
+                "{{an_cg_id}}"
+              ]
+            },
+            "description": "Admin can delete the red teamer's conversation group through the `evaluation_groups:manage` break-glass. Cascades to its conversations."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Delete the evaluation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/{{an_eval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                "{{an_eval_id}}"
+              ]
+            },
+            "description": "Parent of the conversation group deleted above — children first, then parents."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Delete the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{an_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{an_model_id}}"
+              ]
+            },
+            "description": "The evaluation group leaks — no DELETE route; `run_suffix` keeps its title unique."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

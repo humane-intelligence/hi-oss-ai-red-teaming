@@ -1,0 +1,64 @@
+name: Bug report
+description: Something behaves differently from what the docs or the code say it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems do **not** belong here — see [SECURITY.md](https://github.com/humane-intelligence/hi-oss-ai-red-teaming/blob/main/SECURITY.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      description: Which part of the monorepo. Pick the one you can reproduce it in.
+      options:
+        - backend (API, workers, data model)
+        - frontend (operator console)
+        - deploy (CD, the box, Terraform)
+        - monitoring (Prometheus, Loki, Grafana, GlitchTip)
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you observed, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The smallest sequence that shows it. If it is an API problem, the request (method, path, body
+        with secrets removed) and the response status beat a description of them.
+      placeholder: |
+        1. make setup && make dev
+        2. Log in as redteamer@test.com
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The commit you are on — `git rev-parse --short HEAD`, or the SHA from `GET /version`.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or errors
+      description: |
+        Relevant output from `make logs`, the browser console, or the response body. Pasted text is
+        easier to search than a screenshot. **Remove tokens, API keys and transcript content.**
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed credentials and any real conversation data from what I pasted.
+          required: true
+        - label: I can reproduce this on a freshly seeded stack (`make be-resetdata && make be-seedlocal`), or I said why I cannot.

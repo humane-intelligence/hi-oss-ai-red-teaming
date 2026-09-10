@@ -1,0 +1,182 @@
+# Shared with the monorepo root so `cd backend && docker compose ...` (or a bare
+# `docker compose up`) joins the one stack, not a `backend`-named project.
+name: ai-red-teaming
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # gid 0 (not ${DOCKER_GID}) so the runtime user can write the export_data volume: the image
+    # seeds /src/var/exports as app:0, group-writable (see Dockerfile), the OpenShift arbitrary-uid
+    # pattern — on a host whose uid != 1000 only group 0 grants write. See `worker` (shares the volume).
+    user: "${DOCKER_UID:-1000}:0"
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./app:/src/app
+      - ./alembic:/src/alembic
+      - ./alembic.ini:/src/alembic.ini
+      - ./scripts:/src/scripts
+      # Shared with `worker` so the worker-generated export file is readable by the
+      # download endpoint served here. Path matches Settings.export_storage_dir.
+      - export_data:/src/var/exports
+      # Uploaded images: written on upload and served by `app` only (no worker involved).
+      # Path matches Settings.media_storage_dir.
+      - media_data:/src/var/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # gid 0 so the worker can WRITE generated exports to the group-writable export_data volume
+    # (image seeds it app:0 — see Dockerfile / `app`); ${DOCKER_GID} would fail EACCES off uid 1000.
+    user: "${DOCKER_UID:-1000}:0"
+    env_file: .env
+    environment:
+      SERVICE_NAME: ai-red-teaming-worker
+    volumes:
+      - ./app:/src/app
+      # Shared with `app`: the worker writes generated exports here, the app streams them.
+      - export_data:/src/var/exports
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app worker
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.workers.celery_app", "inspect", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    env_file: .env
+    environment:
+      SERVICE_NAME: ai-red-teaming-worker
+    volumes:
+      - ./app:/src/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app beat --schedule=/tmp/celerybeat-schedule
+    restart: unless-stopped
+
+  flower:
+    image: mher/flower:2.0.1
+    env_file: .env
+    ports:
+      - "5555:5555"
+    volumes:
+      - flower_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery flower --port=5555 --persistent=True --db=/data/flower.db
+    restart: unless-stopped
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 1s
+    restart: unless-stopped
+
+  # Postgres metrics for the opt-in monitoring stack (../monitoring/), scraped by
+  # Prometheus's `postgresql` job. Behind the `monitoring` profile — plain `up`
+  # skips it; bring up with `make upmonitoring`. Connects as its own `monitoring`
+  # role (`pg_monitor`, read-only stats access — see ../monitoring/README.md,
+  # created by `make seedlocal`), not DATABASE_USER.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://monitoring:${POSTGRES_MONITORING_PASSWORD}@db:5432/${DATABASE_NAME}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Local SMTP sink for dev: catches mail when EMAIL_BACKEND=smtp + SMTP_HOST=mailpit
+  # (SMTP_TLS=none, no auth). Web inbox on 8025, SMTP on 1025. Ephemeral — no volume.
+  mailpit:
+    image: axllent/mailpit:v1.30
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    restart: unless-stopped
+
+  slm:
+    # Pinned to a numbered build — the bare `server` tag is a rolling build. Bump deliberately.
+    image: ghcr.io/ggml-org/llama.cpp:server-b9853
+    profiles: ["llm"]
+    command: >
+      -hf Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+      --alias qwen2.5-0.5b-instruct
+      --host 0.0.0.0 --port 8080
+      --api-key ${SLM_API_KEY:-local}
+      -c 4096
+    environment:
+      LLAMA_CACHE: /models
+    ports:
+      - "8081:8080"
+    volumes:
+      - slm_models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 300s
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  flower_data:
+  slm_models:
+  export_data:
+  media_data:

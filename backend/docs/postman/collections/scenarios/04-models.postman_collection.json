@@ -1,0 +1,629 @@
+{
+  "info": {
+    "name": "04 · AI model registry & credentials",
+    "description": "The `AiModel` registry lifecycle and the credential workflow, with the **at-rest masking** invariant asserted throughout: the raw `api_key` is **never** returned — responses carry only `has_api_key: boolean`.\n\n**Prereqs:** run `00-bootstrap` first (for `{{access_token}}`), or set it another way. Otherwise self-contained — it creates and deletes its own models.\n\nFully unattended. Run top-to-bottom: **Lifecycle → Credentials → Create-with-inline-key → Health check & bulk → Teardown**.\n\n**Folder D** covers the async per-model health probe and the two bulk registry paths. Contract notes worth knowing before editing it:\n- `POST /ai-models/{id}/health-check` answers **202** with `health_check_status: \"checking\"` — the probe runs in the worker and the verdict lands asynchronously; a recent enough result comes back as 200 instead, so the status is asserted as one-of.\n- Two bulk rows claiming the same `name` are an **envelope-level 422** (no `results` array), while a row colliding with an already-stored model is a **per-row 409**. The two look alike and answer differently.\n- `POST /ai-models/api-keys/bulk` addresses models by **`name`**, not by id; an unmatched name is a per-row 404.\n- List pagination caps `limit` at **100** (a higher value is a 422), and the list has no name filter — so \"the dry run wrote nothing\" is asserted by re-creating the row for real, not by scanning a page.\n\nVerified green on a live stack: 40/40 assertions (Newman, chained after `00-bootstrap`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }] },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "run_suffix", "value": "", "type": "string" },
+    { "key": "model_id_d", "value": "", "type": "string" },
+    { "key": "model_id_inline", "value": "", "type": "string" },
+    { "key": "model_id_hc", "value": "", "type": "string" },
+    { "key": "model_id_blk", "value": "", "type": "string" },
+    { "key": "model_id_dry", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "A · Model lifecycle",
+      "item": [
+        {
+          "name": "1 · Create model (no key)",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('run_suffix', Date.now().toString(36));"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('→ 201', () => pm.response.to.have.status(201));",
+              "const m = pm.response.json();",
+              "pm.collectionVariables.set('model_id_d', m.id);",
+              "pm.test('starts with no key', () => pm.expect(m.has_api_key).to.be.false);",
+              "pm.test('raw api_key never returned (masking)', () => pm.expect(m).to.not.have.property('api_key'));"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/ai-models", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"registry-{{run_suffix}}\",\n  \"model_alias\": \"registry-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Register a model without a credential. `model_alias` is unique → `{{run_suffix}}` avoids 409 on re-run. Requires permission `models:create`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · List models",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/ai-models?limit=10", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models"], "query": [{ "key": "limit", "value": "10" }] }, "description": "List the registry. Requires permission `models:read`." },
+          "response": []
+        },
+        {
+          "name": "3 · Get model",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('→ 200', () => pm.response.to.have.status(200));",
+            "pm.test('has_api_key is false', () => pm.expect(pm.response.json().has_api_key).to.be.false);"
+          ] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}"] }, "description": "Fetch the model. Requires permission `models:read`." },
+          "response": []
+        },
+        {
+          "name": "4 · Update model",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"registry-{{run_suffix}} (renamed)\",\n  \"is_disabled\": false\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Patch model fields (not the credential — that has its own sub-resource). Requires permission `models:update`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B · Credentials",
+      "item": [
+        {
+          "name": "1 · Set API key",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}/api-key", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}", "api-key"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api_key\": \"sk-example-initial-credential\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Store an encrypted credential (JWE at rest). Credential rotation rides on `models:update`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Get model (key present)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('→ 200', () => pm.response.to.have.status(200));",
+            "pm.test('has_api_key flipped to true', () => pm.expect(pm.response.json().has_api_key).to.be.true);",
+            "pm.test('raw api_key still not returned', () => pm.expect(pm.response.json()).to.not.have.property('api_key'));"
+          ] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}"] }, "description": "Confirm the credential registers as present without exposing it." },
+          "response": []
+        },
+        {
+          "name": "3 · Rotate API key",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}/api-key", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}", "api-key"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api_key\": \"sk-example-rotated-credential\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Overwrite the credential — same idempotent PUT."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Clear API key",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}/api-key", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}", "api-key"] }, "description": "Remove the stored credential." },
+          "response": []
+        },
+        {
+          "name": "5 · Get model (key gone)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('→ 200', () => pm.response.to.have.status(200));",
+            "pm.test('has_api_key back to false', () => pm.expect(pm.response.json().has_api_key).to.be.false);"
+          ] } }],
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}"] }, "description": "Confirm the credential is gone." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C · Create with inline key",
+      "item": [
+        {
+          "name": "1 · Create model (with key)",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('run_suffix', Date.now().toString(36));"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('→ 201', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('model_id_inline', pm.response.json().id);",
+              "pm.test('has_api_key true from the inline key', () => pm.expect(pm.response.json().has_api_key).to.be.true);",
+              "pm.test('raw api_key not echoed back', () => pm.expect(pm.response.json()).to.not.have.property('api_key'));"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/ai-models", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"registry-inline-{{run_suffix}}\",\n  \"model_alias\": \"registry-inline-{{run_suffix}}\",\n  \"provider\": \"openai\",\n  \"provider_model_id\": \"gpt-4o\",\n  \"api_key\": \"sk-example-inline\"\n}", "options": { "raw": { "language": "json" } } },
+            "description": "Create with the credential supplied inline at create time — it's encrypted immediately and reported only via `has_api_key`."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Delete inline model",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_inline}}", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_inline}}"] }, "description": "Clean up the inline-key model. Requires permission `models:delete`." },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D · Health check & bulk paths",
+      "item": [
+        {
+          "name": "1 · Register a model to health-check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('model_id_hc', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"hc-{{run_suffix}}\",\n  \"model_alias\": \"hc-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A throwaway model with **no credential** — enough to exercise the endpoint's contract without a provider round-trip."
+          },
+          "response": []
+        },
+        {
+          "name": "2 · Run a health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 202 (the probe is dispatched to the worker)', () => pm.response.to.have.status(202));",
+                  "const b = pm.response.json();",
+                  "pm.test('and reads back as checking, not yet a verdict', () => pm.expect(b.health_check_status).to.eql('checking'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{model_id_hc}}/health-check",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{model_id_hc}}",
+                "health-check"
+              ]
+            },
+            "description": "`models:update`. The probe runs in the **worker**, so the route answers **202** with `health_check_status: \"checking\"` and the verdict (`alive`/`dead` + `last_health_reason`) lands asynchronously — a caller polls the model detail for it. A model probed recently enough is answered **200** from the stored result instead \u2014 unreachable here, because step 1 creates the model fresh, so this asserts the exact **202** (verified 3/3 on fresh models) rather than a one-of that could not fail. \u26a0 The probe outlives this folder: step 11 deletes the model while the queued task may still be in flight, so the worker log will usually carry one `run_model_health_check ... NotFoundError` for it. That is an artefact of the fixture being torn down, not a defect \u2014 but if an error tracker is wired up (GlitchTip) it will show there too."
+          },
+          "response": []
+        },
+        {
+          "name": "3 · Unknown model → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/11111111-1111-4111-8111-111111111111/health-check",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "11111111-1111-4111-8111-111111111111",
+                "health-check"
+              ]
+            },
+            "description": "No existence leak for an id that matches no live model."
+          },
+          "response": []
+        },
+        {
+          "name": "4 · Bulk create — one fresh row + one colliding with an existing model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('partial success: 1 ok, 1 failed', () => { pm.expect(b.succeeded).to.eql(1); pm.expect(b.failed).to.eql(1); });",
+                  "pm.test('the collision is a per-row 409', () => pm.expect(b.results.find(r => r.row_key === 'collides').error.status).to.eql(409));",
+                  "const ok = b.results.find(r => r.status === 'ok');",
+                  "pm.test('the fresh row returns the created model', () => pm.expect(ok.data.has_api_key).to.eql(false));",
+                  "pm.collectionVariables.set('model_id_blk', ok.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"fresh\",\n      \"data\": {\n        \"name\": \"blk-{{run_suffix}}\",\n        \"model_alias\": \"blk-{{run_suffix}}\",\n        \"provider\": \"anthropic\",\n        \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n      }\n    },\n    {\n      \"row_key\": \"collides\",\n      \"data\": {\n        \"name\": \"hc-{{run_suffix}}\",\n        \"model_alias\": \"other-{{run_suffix}}\",\n        \"provider\": \"anthropic\",\n        \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n      }\n    }\n  ],\n  \"dry_run\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`models:create` via the platform `BulkRequest` envelope. Row `collides` reuses step 1's `name`: each row has its own savepoint, so it fails **alone** and the fresh row still commits."
+          },
+          "response": []
+        },
+        {
+          "name": "5 · Duplicate rows inside one batch → 422 (envelope-level)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 422', () => pm.response.to.have.status(422));",
+                  "pm.test('rejected as a whole batch, not per row', () => { const b = pm.response.json(); pm.expect(b).to.not.have.property('results'); pm.expect(JSON.stringify(b)).to.include('Duplicate name'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"a\",\n      \"data\": {\n        \"name\": \"dup-{{run_suffix}}\",\n        \"model_alias\": \"dup-a-{{run_suffix}}\",\n        \"provider\": \"anthropic\",\n        \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n      }\n    },\n    {\n      \"row_key\": \"b\",\n      \"data\": {\n        \"name\": \"dup-{{run_suffix}}\",\n        \"model_alias\": \"dup-b-{{run_suffix}}\",\n        \"provider\": \"anthropic\",\n        \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n      }\n    }\n  ],\n  \"dry_run\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Two rows claiming the same `name` are contradictory **as a request**, so the envelope is refused at validation before any row runs — unlike step 4's collision with already-stored state, which is a per-row 409. Worth pinning: the two look alike but answer differently."
+          },
+          "response": []
+        },
+        {
+          "name": "6 · Bulk set API keys (one hit, one miss)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('1 credential set, 1 unmatched', () => { pm.expect(b.succeeded).to.eql(1); pm.expect(b.failed).to.eql(1); });",
+                  "pm.test('an unmatched name is a per-row 404', () => pm.expect(b.results.find(r => r.row_key === 'miss').error.status).to.eql(404));",
+                  "const ok = b.results.find(r => r.status === 'ok');",
+                  "pm.test('the raw key is never echoed back', () => { pm.expect(ok.data.has_api_key).to.eql(true); pm.expect(JSON.stringify(ok.data)).to.not.include('sk-test'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/api-keys/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "api-keys",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"hit\",\n      \"data\": {\n        \"name\": \"blk-{{run_suffix}}\",\n        \"api_key\": \"sk-test-not-a-real-key\"\n      }\n    },\n    {\n      \"row_key\": \"miss\",\n      \"data\": {\n        \"name\": \"no-such-model-{{run_suffix}}\",\n        \"api_key\": \"sk-test-not-a-real-key\"\n      }\n    }\n  ],\n  \"dry_run\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`models:update`. This path addresses models by **`name`**, not by id — it exists to load a batch of credentials from an operator's spreadsheet. The at-rest masking invariant holds here too: only `has_api_key` comes back."
+          },
+          "response": []
+        },
+        {
+          "name": "7 · Dry run reports without writing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('reported as a dry run', () => { pm.expect(b.dry_run).to.eql(true); pm.expect(b.succeeded).to.eql(1); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/bulk",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "bulk"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rows\": [\n    {\n      \"row_key\": \"probe\",\n      \"data\": {\n        \"name\": \"dry-{{run_suffix}}\",\n        \"model_alias\": \"dry-{{run_suffix}}\",\n        \"provider\": \"anthropic\",\n        \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n      }\n    }\n  ],\n  \"dry_run\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`dry_run` runs every row and rolls back instead of committing — the operator's pre-flight. Step 8 proves nothing was written."
+          },
+          "response": []
+        },
+        {
+          "name": "8 · Creating the dry-run model for real succeeds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('model_id_dry', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"dry-{{run_suffix}}\",\n  \"model_alias\": \"dry-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The assertion that makes step 7 mean something: the same `name` is still free. Had the dry run committed, this would be the per-row 409 of step 4 instead. Asserted this way round because the list endpoint has no name filter, so \"absent from a page\" would be a weaker claim than \"still creatable\"."
+          },
+          "response": []
+        },
+        {
+          "name": "9 · Delete the dry-run model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{model_id_dry}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{model_id_dry}}"
+              ]
+            },
+            "description": "Teardown for this folder's own fixtures."
+          },
+          "response": []
+        },
+        {
+          "name": "10 · Delete the bulk-created model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{model_id_blk}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{model_id_blk}}"
+              ]
+            },
+            "description": "The row that bulk create actually committed in step 4 \u2014 removed before the health-check model, so the folder leaves the registry as it found it."
+          },
+          "response": []
+        },
+        {
+          "name": "11 · Delete the health-check model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{model_id_hc}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{model_id_hc}}"
+              ]
+            },
+            "description": "Leaves the registry as the folder found it."
+          },
+          "response": []
+        }
+      ],
+      "description": "The async per-model health probe and the two bulk registry paths — bulk create and bulk credential load — including the partial-success semantics of the platform `BulkRequest` envelope. Self-contained: creates and deletes its own models."
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 · Delete lifecycle model",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('→ 204', () => pm.response.to.have.status(204));"] } }],
+          "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/api/v1/ai-models/{{model_id_d}}", "host": ["{{base_url}}"], "path": ["api", "v1", "ai-models", "{{model_id_d}}"] }, "description": "Delete the model created in folder A. Requires permission `models:delete`." },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

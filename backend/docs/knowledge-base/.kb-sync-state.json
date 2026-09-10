@@ -1,0 +1,6 @@
+{
+  "last_synced_commit": "5c6dc950c8d6b232c6cff59c1e1804d1a69f2de4",
+  "synced_at": "2026-09-10",
+  "synced_branch": "main",
+  "note": "Reset to the initial import — the previous cursor named a commit from before this repository's history. The vault reflects state of 2026-08-31, slightly behind the import, so treat the import as the baseline. See .claude/skills/kb-sync/SKILL.md."
+}

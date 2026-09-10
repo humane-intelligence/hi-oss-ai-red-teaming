@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("Your export is ready") }}
+{% call paragraph() %}Hi {{ recipient_name }},{% endcall %}
+{% call paragraph() %}Your export <a href="{{ target_url }}">{{ export_label }}</a> has finished generating and is ready to download.{% endcall %}
+{{ button(target_url, "Sign in to download") }}
+{% call note() %}It will be available to download for {{ retention_hours }} hours.{% endcall %}
+{% endblock %}

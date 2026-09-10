@@ -1,0 +1,163 @@
+# Stack for the deployed dev EC2 box. Unlike the local docker-compose.yml: pulls
+# a pre-built image (no bind mounts, no --reload), terminates TLS in Caddy, and
+# keeps db/redis off the host network (no published ports).
+#
+# Pinned so `monitoring/docker-compose.yml`'s `deploy_default` external-network
+# join doesn't depend on this checkout directory being named `deploy` on the box.
+name: deploy
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+  app:
+    image: ${BACKEND_IMAGE:-ghcr.io/humane-intelligence/hi-oss-ai-red-teaming-backend:main}
+    restart: unless-stopped
+    env_file: .env
+    # --proxy-headers so the app trusts Caddy's X-Forwarded-* (real client scheme/IP).
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    # Gate Caddy on readiness: urllib is stdlib (no curl in the image), raises on non-200.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ${BACKEND_IMAGE:-ghcr.io/humane-intelligence/hi-oss-ai-red-teaming-backend:main}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: ai-red-teaming-worker
+    command: celery -A app.workers.celery_app worker
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME -t 10 || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Schedules the periodic tasks in app.workers.celery_app; the worker executes
+  # them. Schedule state is throwaway (/tmp) — safe to lose on recreation.
+  beat:
+    image: ${BACKEND_IMAGE:-ghcr.io/humane-intelligence/hi-oss-ai-red-teaming-backend:main}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: ai-red-teaming-worker
+    command: celery -A app.workers.celery_app beat --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+
+  redis:
+    image: redis:8
+    restart: unless-stopped
+    # AOF + a named volume so session-revocation markers (a security artifact with
+    # a 30d retention need) survive a container recreation on `compose pull`.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 1s
+
+  # Built static SPA (Caddy-served, no Node). Sits behind the edge caddy, which
+  # proxies all non-backend paths here; no published ports.
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/humane-intelligence/hi-oss-ai-red-teaming-frontend:main}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+  # Postgres metrics for the opt-in monitoring stack (../monitoring/), scraped by
+  # Prometheus's `postgresql` job. Off unless COMPOSE_PROFILES=monitoring (set by
+  # deploy.sh from the MONITORING_ENABLED SSM flag). Connects as its own
+  # `monitoring` role (pg_monitor, read-only stats access — see
+  # ../monitoring/README.md), created manually on the box (no `make seedlocal` here).
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://monitoring:${POSTGRES_MONITORING_PASSWORD}@db:5432/${DATABASE_NAME}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Small model (llama.cpp / Qwen2.5-0.5B, CPU-only) for exercising warmup on the box —
+  # always-on here (no profile, unlike local `make upllm`). Disable the image's built-in
+  # /health check so a slow/failed first-run GGUF download can't gate or fail the whole
+  # `deploy.sh` roll (warmup's own probe is the readiness check); no host port (in-network).
+  slm:
+    # Pinned build — the bare `server` tag rolls. Bump deliberately.
+    image: ghcr.io/ggml-org/llama.cpp:server-b9853
+    restart: unless-stopped
+    command: >
+      -hf Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+      --alias qwen2.5-0.5b-instruct
+      --host 0.0.0.0 --port 8080
+      --api-key ${SLM_API_KEY:-local}
+      -c 4096
+    healthcheck:
+      disable: true
+    environment:
+      LLAMA_CACHE: /models
+    volumes:
+      - slm_models:/models
+
+volumes:
+  db_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  slm_models:

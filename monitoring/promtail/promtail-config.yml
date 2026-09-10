@@ -1,0 +1,28 @@
+# Docker service discovery — no static targets, ships every container's
+# stdout/stderr automatically. The `docker` pipeline stage parses the json-file
+# log driver's wrapper ({"log":...,"stream":...,"time":...}) to recover the
+# real message + the stdout/stderr `stream` label + timestamp.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: [container]
+        regex: "monitoring-(prometheus|loki|promtail|grafana|celery-exporter|node-exporter|cadvisor|glitchtip|glitchtip-db)-.*"
+        action: drop
+    pipeline_stages:
+      - docker: {}

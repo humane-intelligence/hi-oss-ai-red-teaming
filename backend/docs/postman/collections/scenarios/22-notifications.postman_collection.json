@@ -1,0 +1,1753 @@
+{
+  "info": {
+    "name": "22 \u00b7 In-app notifications",
+    "description": "The **in-app notification feed** behind the console bell: read the feed, count what is unread, and mark rows read or unread.\n\n**There is no HTTP create.** Rows are minted only by domain emitters (`create_notification`, which flushes but never commits), so a notice lands **atomically with the transaction that caused it** \u2014 a rolled-back verdict announces nothing. This collection therefore has to *earn* its notifications by driving a real emitter rather than posting one.\n\n**The emitter it uses.** The owner creates an evaluation group, the **admin** then moderates it (`request-changes`, later `reject`). Both are group-lifecycle verdicts, and both notify the group's owner. The actor matters: a verdict is **skipped when the actor is the owner** \u2014 a self-verdict is not news \u2014 which folder A asserts explicitly by having the owner self-approve a second group and produce nothing.\n\n**Flow.** A) mint notifications through the moderation emitters, and prove the self-verdict is silent; B) read the feed \u2014 list, filter, unread count, single get; C) mark read / unread, including the \"only rows that actually changed\" rule and the mark-all form; D) owner-scoping \u2014 the feed has **no break-glass**, so not even an admin can read someone else's notification.\n\n**Contract notes.**\n- `POST /notifications/mark` returns `{updated: N}` counting **only rows that actually changed state** \u2014 re-marking an already-read row returns `updated: 0`. An empty (or omitted) `ids` means *all of the caller's* rows in the opposite state.\n- The unread count is `total` on `?read=false` \u2014 there is no dedicated count endpoint.\n- `object_type` / `object_id` is a **loose pointer** (a validated string, no FK), so the deep-link target may already be gone; the client must tolerate a dangling reference.\n- `notifications:read|update` are held by **every** role, like `saved_views:*` \u2014 this is personal data, not a privileged view. There is no create or delete member.\n- Strictly owner-scoped with **no** break-glass: another user's notification is a **404**.\n\n**Auth model.** Per-request: `{{owner_token}}` is the recipient, `{{admin_token}}` the moderator and the failed snooper. Self-contained apart from the two evaluation groups, which leak (groups have no DELETE route).\n\n**Prereq.** `make seedlocal`.\n\nVerified green on a live stack: 64/64 assertions (Newman).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "run_suffix",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "owner_email",
+      "value": "owner@test.com"
+    },
+    {
+      "key": "owner_password",
+      "value": "password123"
+    },
+    {
+      "key": "owner_token",
+      "value": ""
+    },
+    {
+      "key": "nt_model_id",
+      "value": ""
+    },
+    {
+      "key": "nt_group_id",
+      "value": ""
+    },
+    {
+      "key": "nt_self_group_id",
+      "value": ""
+    },
+    {
+      "key": "nt_note_id",
+      "value": ""
+    },
+    {
+      "key": "nt_before",
+      "value": ""
+    },
+    {
+      "key": "nt_unread_before",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "1 \u00b7 Log in as admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The **moderator** \u2014 holds `evaluation_groups:manage`, so it can request changes on and reject someone else's group. Also the failed snooper in folder D."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Log in as owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('owner_token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The **recipient** \u2014 creates the group whose moderation notifies it."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Register a model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('nt_model_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ntf-{{run_suffix}}\",\n  \"model_alias\": \"ntf-{{run_suffix}}\",\n  \"provider\": \"anthropic\",\n  \"provider_model_id\": \"claude-3-5-sonnet-20241022\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Only needed because a group create requires a non-empty `allowed_model_ids`. Registered by the admin (`models:create` is admin-only) and referenced by the owner \u2014 a group may allow a model its creator cannot manage."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Owner's baseline notification counts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('nt_before', pm.response.json().total);",
+                  "pm.test('the feed is readable by a plain role', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "`notifications:read` is held by every role. The seeded owner may already carry notifications from an earlier run, so folder A asserts against this **baseline** rather than assuming an empty feed."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Owner's baseline unread count",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('nt_unread_before', pm.response.json().total);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?read=false&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "read",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "**FE note:** the bell's badge is exactly this \u2014 `total` on `?read=false`. There is no separate count endpoint."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A \u00b7 Earn the notifications (moderation emitters)",
+      "item": [
+        {
+          "name": "1 \u00b7 Owner creates a group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('nt_group_id', pm.response.json().id);",
+                  "pm.test('a full create lands as pending_approval', () => pm.expect(pm.response.json().status).to.eql('pending_approval'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Notify me {{run_suffix}}\",\n  \"description\": \"Subject of the moderation verdicts.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\n    \"{{nt_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A complete create is submitted for review straight away (`pending_approval`), which is the source state both moderation verdicts need."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Admin requests changes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the non-terminal verdict', () => pm.expect(pm.response.json().status).to.eql('changes_requested'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{nt_group_id}}/request-changes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{nt_group_id}}",
+                "request-changes"
+              ]
+            },
+            "description": "`evaluation_groups:manage` \u2014 **admin only**, deliberately not the owner-or-manage rule used by approve/publish, so an owner cannot bounce their own group. `changes_requested` is the state the owner can `submit` from again. Takes **no request body** \u2014 unlike `reject`, which requires `rejection_reason`."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 The owner cannot bounce their own group \u2192 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 403', () => pm.response.to.have.status(403));",
+                  "pm.test('names the manage permission', () => pm.expect(pm.response.json().detail).to.include('evaluation_groups:manage'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{nt_group_id}}/request-changes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{nt_group_id}}",
+                "request-changes"
+              ]
+            },
+            "description": "The other half of step 2's rule, which was previously only asserted in prose. `request-changes` and `reject` are gated on `evaluation_groups:manage` **alone** \u2014 unlike `approve`/`publish`, which follow owner-or-manage \u2014 so the group's own owner is refused even on their own group. The gate fires before the state machine, so this is a 403 and not the 409 the current `changes_requested` state would otherwise give."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 The owner was notified",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('exactly one new notification', () => pm.expect(b.total).to.eql(Number(pm.collectionVariables.get('nt_before')) + 1));",
+                  "const n = b.items[0];",
+                  "const ts = b.items.map(i => Date.parse(i.created_at));",
+                  "pm.test('the page really is newest-first', () => pm.expect(ts).to.eql([...ts].sort((x, y) => y - x)));",
+                  "pm.test('it is about the group', () => { pm.expect(n.object_type).to.eql('evaluation_group'); pm.expect(n.object_id).to.eql(pm.collectionVariables.get('nt_group_id')); });",
+                  "pm.test('and arrives unread', () => { pm.expect(n.read).to.eql(false); pm.expect(n.read_at).to.eql(null); });",
+                  "pm.collectionVariables.set('nt_note_id', n.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The emitter fired inside the verdict's transaction. `object_type` + `object_id` are what the bell deep-links with \u2014 a loose pointer, so the client must cope with a target that has since been deleted."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 The unread badge went up by one",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('unread count incremented', () => pm.expect(pm.response.json().total).to.eql(Number(pm.collectionVariables.get('nt_unread_before')) + 1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?read=false&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "read",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Asserted as a delta against the Setup baseline, so a seeded owner with pre-existing notices does not make this brittle."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 Owner creates a second group and approves it themselves",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('nt_self_group_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Self verdict {{run_suffix}}\",\n  \"description\": \"Proves a self-verdict is silent.\",\n  \"access_level\": \"public\",\n  \"start_date\": \"2026-12-01\",\n  \"allowed_model_ids\": [\n    \"{{nt_model_id}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A second subject, for the self-verdict case."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Owner self-approves it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('approved', () => pm.expect(pm.response.json().status).to.eql('approved'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{nt_self_group_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{nt_self_group_id}}",
+                "approve"
+              ]
+            },
+            "description": "Approve follows the **owner-or-manage** rule, so an owner may approve their own group (a deliberate decision). Contrast `request-changes` and `reject`, which are manage-only \u2014 step 3 proves that with a 403."
+          },
+          "response": []
+        },
+        {
+          "name": "8 \u00b7 \u2026and was NOT notified about it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a self-verdict emits nothing', () => pm.expect(pm.response.json().total).to.eql(Number(pm.collectionVariables.get('nt_before')) + 1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "**The skip rule.** The emitter is bypassed when the actor *is* the owner \u2014 telling someone what they just did themselves is noise. Still `nt_before + 1`, i.e. only folder A step 2's notification exists."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "B \u00b7 Read the feed",
+      "item": [
+        {
+          "name": "1 \u00b7 Get the single notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('it is ours', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('nt_note_id')));",
+                  "pm.test('the name identifies what emitted it', () => pm.expect(pm.response.json().name.toLowerCase()).to.include('change'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{nt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{nt_note_id}}"
+              ]
+            },
+            "description": "The detail read the bell uses when a row is expanded."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Filter the feed by object type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "pm.test('ours is included', () => pm.expect(items.map(i => i.id)).to.include(pm.collectionVariables.get('nt_note_id')));",
+                  "pm.test('and every row really is of that type', () => pm.expect(items.every(i => i.object_type === 'evaluation_group')).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?object_type=evaluation_group&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "object_type",
+                  "value": "evaluation_group"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "`object_type` accepts `evaluation` or `evaluation_group`. The second assertion checks the filter narrows rather than merely including our row."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Oldest-first ordering",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const ts = pm.response.json().items.map(i => Date.parse(i.created_at));",
+                  "pm.test('ascending by created_at', () => pm.expect(ts).to.eql([...ts].sort((a, b) => a - b)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?order_by=created_at&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "order_by",
+                  "value": "created_at"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "`order_by` takes `created_at` or `-created_at` (the default, newest first \u2014 what a bell wants)."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 Unknown id \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/11111111-1111-4111-8111-111111111111",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "11111111-1111-4111-8111-111111111111"
+              ]
+            },
+            "description": "A well-formed id matching no row of the caller's \u2014 indistinguishable from another user's row (folder D), which is the point: the feed leaks no existence."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 No token \u2192 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ]
+            },
+            "description": "`notifications:read` is held by every role, but the feed is still per-user, so it is never anonymous."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "C \u00b7 Mark read & unread",
+      "item": [
+        {
+          "name": "1 \u00b7 Mark it read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('one row changed', () => pm.expect(pm.response.json().updated).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/mark",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "mark"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{nt_note_id}}\"\n  ],\n  \"read\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`notifications:update`. The response counts rows whose state actually flipped."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 It reads as read, with a timestamp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('read', () => pm.expect(b.read).to.eql(true));",
+                  "pm.test('and stamped when', () => pm.expect(b.read_at).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{nt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{nt_note_id}}"
+              ]
+            },
+            "description": "`read` is the boolean the UI binds to; `read_at` is when it happened."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Marking it read again changes nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('updated: 0 \u2014 only real transitions count', () => pm.expect(pm.response.json().updated).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/mark",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "mark"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{nt_note_id}}\"\n  ],\n  \"read\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "**The rule worth pinning.** `updated` is not \"rows addressed\" but \"rows that changed\" \u2014 the endpoint flips only rows in the *opposite* state. A UI can use the number to decide whether to refresh the badge at all."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 The unread count is back to the baseline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('our notification left the unread set', () => pm.expect(pm.response.json().total).to.eql(Number(pm.collectionVariables.get('nt_unread_before'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?read=false&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "read",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Closes the loop with folder A step 4: the badge went up by one, and now it is back down."
+          },
+          "response": []
+        },
+        {
+          "name": "5 \u00b7 Mark it unread again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('one row changed back', () => pm.expect(pm.response.json().updated).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/mark",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "mark"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{nt_note_id}}\"\n  ],\n  \"read\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The flag is a toggle, not a one-way latch \u2014 \"mark as unread\" is a real product action."
+          },
+          "response": []
+        },
+        {
+          "name": "6 \u00b7 read_at is cleared",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('unread, and the stamp is gone', () => { pm.expect(pm.response.json().read).to.eql(false); pm.expect(pm.response.json().read_at).to.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{nt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{nt_note_id}}"
+              ]
+            },
+            "description": "Unmarking clears the timestamp, so `read_at` never claims a read that was undone."
+          },
+          "response": []
+        },
+        {
+          "name": "7 \u00b7 Mark ALL read (empty ids)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('at least our row flipped', () => pm.expect(pm.response.json().updated).to.be.at.least(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/mark",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "mark"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"read\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "An omitted or empty `ids` means **all of the caller's** rows in the opposite state \u2014 the bell's \"mark all as read\". Asserted as *at least* one, because a seeded owner may have had other unread rows."
+          },
+          "response": []
+        },
+        {
+          "name": "8 \u00b7 Nothing is unread any more",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the unread set is empty', () => pm.expect(pm.response.json().total).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?read=false&limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "read",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "What \"mark all\" means, stated as a count."
+          },
+          "response": []
+        },
+        {
+          "name": "9 \u00b7 Mark-all again is a no-op",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('updated: 0', () => pm.expect(pm.response.json().updated).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/mark",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "mark"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"read\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Idempotent by the same only-real-transitions rule as step 3."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "D \u00b7 Owner-scoped, no break-glass",
+      "item": [
+        {
+          "name": "1 \u00b7 Admin cannot read the owner's notification \u2192 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 404', () => pm.response.to.have.status(404));",
+                  "pm.test('404, not 403 \u2014 no existence leak', () => pm.expect(pm.response.json().status).to.eql(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{nt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{nt_note_id}}"
+              ]
+            },
+            "description": "The admin **caused** this notification and still cannot read it. The feed is strictly owner-scoped with **no break-glass** \u2014 unlike annotations or flags, where `evaluation_groups:manage` lifts the read scope.\n\nThe service documents the reason as the scope itself: notifications are **owner-scoped personal data**, with no admin break-glass and no HTTP create path. For an administrative view of what happened to an object, the audit trail (`17`) is the surface, not someone else's feed."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Admin's own feed does not contain it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('it is not in the moderator\\'s feed either', () => pm.expect(pm.response.json().items.map(i => i.id)).to.not.include(pm.collectionVariables.get('nt_note_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?limit=100",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The list path is scoped the same way \u2014 the moderator sees its own notices only."
+          },
+          "response": []
+        },
+        {
+          "name": "3 \u00b7 Admin cannot mark it either",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the foreign id silently matches nothing', () => pm.expect(pm.response.json().updated).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/mark",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "mark"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{nt_note_id}}\"\n  ],\n  \"read\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Marking is scoped too, and an out-of-scope id is simply **not matched** \u2014 `updated: 0` rather than a 404, because `mark` is a set operation over the caller's own rows, not an addressed fetch."
+          },
+          "response": []
+        },
+        {
+          "name": "4 \u00b7 \u2026and it really is untouched",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 200', () => pm.response.to.have.status(200));",
+                  "pm.test('still read, as the owner left it', () => pm.expect(pm.response.json().read).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{owner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{nt_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{nt_note_id}}"
+              ]
+            },
+            "description": "Confirms step 3 changed nothing, checked from the only account that can see the row."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "1 \u00b7 Admin rejects the first group \u2192 409 (wrong source state, so nothing is emitted)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 409', () => pm.response.to.have.status(409));",
+                  "pm.test('names the illegal transition', () => { const d = pm.response.json().detail; pm.expect(d).to.include('changes_requested'); pm.expect(d).to.include('not_approved'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{nt_group_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{nt_group_id}}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejection_reason\": \"Superseded \u2014 closing out the scenario fixture.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`reject` is the **terminal** moderation verdict (`pending_approval \u2192 not_approved`) and records `rejection_reason`.\n\nAsserted as an exact **409**, not a one-of: folder A step 2 moved this group to `changes_requested`, and the only legal source for `reject` is `pending_approval`, so the outcome is deterministic (verified live \u2014 `Cannot move evaluation group ... from 'changes_requested' to 'not_approved'`). To see the success path instead, `submit` the group first; the 200 branch is deliberately not asserted here because nothing in this collection can reach it."
+          },
+          "response": []
+        },
+        {
+          "name": "2 \u00b7 Delete the model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('\u2192 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai-models/{{nt_model_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-models",
+                "{{nt_model_id}}"
+              ]
+            },
+            "description": "Both evaluation groups leak \u2014 groups have no DELETE route; `run_suffix` keeps their titles unique. The owner is left with the notifications this run produced, which is what a real feed would look like."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

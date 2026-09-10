@@ -1,0 +1,444 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: write            # labeler runs here now (label.yml folded in — this job bills its floor minute anyway)
+    outputs:
+      backend: ${{ steps.filter.outputs.ci_yml == 'true' || steps.backend_code.outputs.backend_code == 'true' }}
+      backend_docker: ${{ steps.filter.outputs.backend_docker }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      frontend_docker: ${{ steps.filter.outputs.frontend_docker }}
+      shared: ${{ steps.filter.outputs.shared }}
+      terraform: ${{ steps.filter.outputs.terraform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            ci_yml:
+              - '.github/workflows/ci.yml'
+            # Deps + docker plumbing. App code also lands in the image, but PRs validate
+            # it via lint/test and every push:main still runs the full build+scan —
+            # skipping the PR build on code-only changes is the accepted residual.
+            backend_docker:
+              - 'backend/Dockerfile'
+              - 'backend/.dockerignore'
+              - 'backend/pyproject.toml'
+              - 'backend/uv.lock'
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/**'      # the patch-stage guard runs here; edits to it must re-run the build
+            frontend:
+              - 'frontend/**'
+              - 'backend/docs/openapi.yaml'   # contract change must re-run the FE drift gate
+              - '.github/workflows/ci.yml'
+            # Deps + docker plumbing FE. The build stage COPYs all sources, so a code-only
+            # change can even fail `vite build` — that surfaces on push:main (full build+scan
+            # there; CD holds on red), not on the PR. Accepted residual.
+            frontend_docker:
+              - 'frontend/Dockerfile'
+              - 'frontend/.dockerignore'
+              - 'frontend/package.json'
+              - 'frontend/package-lock.json'
+              - 'frontend/.npmrc'
+              - 'frontend/Caddyfile'
+              - '.github/workflows/ci.yml'
+              - '.github/scripts/**'      # the patch-stage guard runs here; edits to it must re-run the build
+            terraform:
+              - 'deploy/terraform/**'
+              - '.github/workflows/ci.yml'
+            # Cross-cutting: unified stack, deploy, workflows (subdir composes too → Stack config re-checks the merge).
+            shared:
+              - 'docker-compose.yml'
+              - 'Makefile'
+              - 'backend/docker-compose.yml'
+              - 'frontend/docker-compose.yml'
+              - 'frontend/Caddyfile'           # Stack config caddy-validates it; nothing else does
+              - 'deploy/**'
+              - 'monitoring/**'
+              - '.github/**'
+      # Negation needs predicate-quantifier: every, which is global to the step —
+      # hence a second paths-filter step just for the backend-code filter.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: backend_code
+        with:
+          predicate-quantifier: every
+          filters: |
+            backend_code:
+              - 'backend/**'
+              - '!backend/docs/**'
+      # Plain pull_request + pull-requests: write. A fork PR's token is read-only, so
+      # labelling silently no-ops there — acceptable, labels are triage, not a gate:
+      # a labeler hiccup must not fail `changes` and with it the required check.
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        with:
+          sync-labels: true
+
+  lint:
+    name: Lint
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: make install
+      - run: make lint
+      - run: make audit
+
+  # Repo-wide housekeeping (whitespace/EOF/EOL, yaml/json/toml syntax). `make lint`
+  # already sweeps --all-files, so this runs on every PR the backend Lint job skips —
+  # FE-only, docs-only, deploy/monitoring/CI-config — complementary by construction,
+  # with no paths filter to keep in step with the repo layout. Not redundant with
+  # Frontend lint: Prettier ignores *.md (frontend/.prettierignore).
+  docs-lint:
+    name: Docs lint
+    needs: changes
+    if: needs.changes.outputs.backend != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: make install
+      - run: make docslint
+
+  test:
+    name: Test and coverage
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: make install
+      - id: test-cov
+        run: make test-cov
+      - name: Coverage summary
+        if: steps.test-cov.outcome == 'success' || steps.test-cov.outcome == 'failure'
+        run: |
+          {
+            echo "## Coverage"
+            echo ""
+            make coverage-md
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Tear down services
+        if: always()
+        run: docker compose down -v
+
+  build:
+    name: Build image
+    needs: changes
+    # PRs build only on an image-manifest change; every merge to main still builds + scans.
+    if: >-
+      ${{ needs.changes.outputs.backend_docker == 'true'
+        || (github.event_name == 'push' && needs.changes.outputs.backend == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PATCH_STAGE: runtime
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Assert the patch stage still patches
+        run: .github/scripts/assert-patch-stage.sh "$PATCH_STAGE" backend/Dockerfile
+      - name: Build image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: backend
+          tags: ai-red-teaming-backend:ci
+          load: true                    # load into the local daemon so Trivy can scan it
+          cache-from: type=gha,scope=build
+          cache-to: type=gha,scope=build,mode=max
+          # Never reuse the runtime stage: it carries `apt-get upgrade`, and a cached copy
+          # applies the patches of whenever it was built while the scan below still passes.
+          no-cache-filters: ${{ env.PATCH_STAGE }}
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-red-teaming-backend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true          # don't gate on CVEs with no upstream fix (base-image noise)
+          exit-code: "1"
+          cache: true                   # persist the vuln DB in the GHA cache across runs
+        env:
+          # Fall back to the ECR mirror when GHCR rate-limits the DB pull, so a
+          # transient registry hiccup can't fail an otherwise-clean scan.
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db,public.ecr.aws/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db,public.ecr.aws/aquasecurity/trivy-java-db
+
+  # FE checks as parallel jobs (mirrors backend); each re-runs npm ci, cushioned by the setup-node cache.
+  frontend-lint:
+    name: Frontend lint
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      # Drift gate: regenerate the client from the committed spec (no backend) and fail if it differs.
+      - name: Regenerate the typed client from the committed contract
+        run: OPENAPI_URL=../backend/docs/openapi.yaml npm run gen
+      - name: Fail on API client drift
+        run: git diff --exit-code src/lib/api/schema.d.ts
+
+  frontend-test:
+    name: Frontend test
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test
+
+  # Build + Trivy-scan the prod image — mirrors the backend `build` job and
+  # validates the artifact that actually ships.
+  frontend-build:
+    name: Frontend build
+    needs: changes
+    # PRs build only on an image-manifest change; every merge to main still builds + scans.
+    if: >-
+      ${{ needs.changes.outputs.frontend_docker == 'true'
+        || (github.event_name == 'push' && needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PATCH_STAGE: prod
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Assert the patch stage still patches
+        run: .github/scripts/assert-patch-stage.sh "$PATCH_STAGE" frontend/Dockerfile
+      - name: Build image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: frontend
+          target: prod
+          tags: ai-red-teaming-frontend:ci
+          load: true                    # load into the local daemon so Trivy can scan it
+          cache-from: type=gha,scope=build-frontend
+          cache-to: type=gha,scope=build-frontend,mode=max
+          # Never reuse the prod stage: it carries `apk upgrade`, and a cached copy applies
+          # the patches of whenever it was built while the scan below still passes.
+          no-cache-filters: ${{ env.PATCH_STAGE }}
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-red-teaming-frontend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true          # don't gate on CVEs with no upstream fix (base-image noise)
+          # The prebuilt caddy binary is upstream-owned — its Go stdlib/module CVEs clear only on a
+          # caddy rebuild we can't force, so gating on them just blocks unrelated merges. Gate on what
+          # we control (alpine pkgs, refreshed via `apk upgrade`); caddy findings are tracked by a
+          # separate non-blocking scan, not gated.
+          skip-files: usr/bin/caddy
+          exit-code: "1"
+          cache: true                   # persist the vuln DB in the GHA cache across runs
+        env:
+          # Fall back to the ECR mirror when GHCR rate-limits the DB pull, so a
+          # transient registry hiccup can't fail an otherwise-clean scan.
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db,public.ecr.aws/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db,public.ecr.aws/aquasecurity/trivy-java-db
+      # The caddy binary is excluded from the gate above (upstream-owned, can't patch), but we still
+      # want its advisories on the record — this scan reports them and never fails the build.
+      - name: Report caddy-binary advisories (non-blocking)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-red-teaming-frontend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"                # visibility only, never gates
+          cache: true
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db,public.ecr.aws/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db,public.ecr.aws/aquasecurity/trivy-java-db
+
+  # Validate orchestration no other job exercises: the unified dev stack, the deploy
+  # stack, the monitoring stack, and both Caddyfiles — all of which ship to the box
+  # without compile-time cover.
+  compose-validate:
+    name: Stack config
+    needs: changes
+    if: needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make env                 # create backend/.env + frontend/.env from examples
+      - run: docker compose config -q
+      # deploy/.env is rendered from SSM on the box (gitignored here), but env_file is
+      # required, so stub it — unset vars only warn, the structure still validates.
+      - run: touch deploy/.env && docker compose -f deploy/docker-compose.dev.yml config -q
+      - run: docker run --rm -e APP_DOMAIN=example.com -v "$PWD/deploy/Caddyfile:/c:ro" caddy:2-alpine caddy validate --config /c --adapter caddyfile
+      - run: docker run --rm -v "$PWD/frontend/Caddyfile:/c:ro" caddy:2-alpine caddy validate --config /c --adapter caddyfile
+      # monitoring/.env is rendered manually (opt-in, not part of CD) — no env_file
+      # directives here, so unset vars only warn; no stub needed.
+      - run: docker compose -f monitoring/docker-compose.yml config -q
+      - run: docker compose -f monitoring/docker-compose.yml -f monitoring/docker-compose.local.yml config -q
+
+  # Offline gate for deploy/terraform/: formatting + static validation. No AWS
+  # credentials — init only installs the provider (-backend=false), plan/apply
+  # stay a local, operator-run concern (see deploy/terraform/README.md).
+  terraform-check:
+    name: Terraform check
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.9"
+      - run: terraform fmt -check -recursive deploy/terraform
+      # every env dir, not a hardcoded one: the path filter covers the whole tree,
+      # so a second environment would otherwise be checked by fmt alone
+      - name: Validate every environment
+        run: |
+          set -euo pipefail
+          for env in deploy/terraform/envs/*/; do
+            echo "== $env"
+            terraform -chdir="$env" init -backend=false -input=false
+            terraform -chdir="$env" validate
+          done
+
+  # Every non-merge commit in a PR must carry a Signed-off-by trailer matching its author
+  # (see /DCO and CONTRIBUTING.md). Merge commits are exempt, as they are under the
+  # upstream DCO app: GitHub's own "Update branch" button produces one, unsigned.
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the PR branch, with enough history to walk base..head
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      # Dependabot cannot sign off. The exemption is on the PR's author as GitHub reports
+      # it, not on a string in the commit — anyone can set an author name.
+      - name: Every commit signed off by its author
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Read the range up front: a `while read` fed by process substitution reports
+          # nothing if git fails, and neither `set -e` nor `pipefail` sees it — the job
+          # would go green having verified no commits at all. `base.sha` is only
+          # guaranteed reachable while the base branch still contains it, so a
+          # force-push mid-PR really does land here.
+          if ! shas="$(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")"; then
+            echo "::error::Cannot list commits in $BASE_SHA..$HEAD_SHA. If the base branch"
+            echo "::error::was force-pushed or rewritten, rebase the PR and push again."
+            exit 1
+          fi
+          missing=0
+          for sha in $shas; do
+            author="$(git show -s --format='%an <%ae>' "$sha")"
+            # -i: email case is not significant, and the DCO app does not treat it as such.
+            if git show -s --format='%B' "$sha" | grep -qixF "Signed-off-by: $author"; then
+              echo "ok      ${sha::7}  $author"
+            else
+              echo "::error::Commit ${sha::7} has no 'Signed-off-by: $author' trailer."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo
+            echo "Add the trailer with 'git commit -s'. To fix a whole branch:"
+            echo "  git rebase --signoff ${BASE_SHA::7} && git push --force-with-lease"
+            echo "See CONTRIBUTING.md, section 'Licensing and sign-off'."
+            exit 1
+          fi
+
+  # The single required check (ruleset points only here, so leaf jobs change freely).
+  # Passes on success/skipped, fails on any failure/cancellation — incl. a failed
+  # `changes`, which would otherwise skip every leaf into a vacuous pass.
+  ci-ok:
+    name: CI passed
+    if: always()
+    needs: [changes, dco, lint, docs-lint, test, build, frontend-lint, frontend-test, frontend-build, compose-validate, terraform-check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Verify no required job failed
+        run: |
+          results='${{ join(needs.*.result, ',') }}'
+          echo "needs results: $results"
+          case ",$results," in
+            *,failure,*|*,cancelled,*)
+              echo "::error::A required CI job failed or was cancelled."
+              exit 1 ;;
+            *)
+              echo "All required CI jobs passed or were skipped." ;;
+          esac
+      # `lint` and `docs-lint` are complementary by construction (see their `if:`), and
+      # `skipped` counts as a pass above — so without this, narrowing one gate without
+      # mirroring the other would go green with no housekeeping coverage at all.
+      - name: Verify one of the two lint jobs actually ran
+        if: needs.changes.result == 'success'
+        run: |
+          [ "${{ needs.lint.result }}" = "success" ] \
+            || [ "${{ needs['docs-lint'].result }}" = "success" ] \
+            || { echo "::error::Neither Lint nor Docs lint ran — the complement broke."; exit 1; }

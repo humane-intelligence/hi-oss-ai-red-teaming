@@ -1,0 +1,142 @@
+version: 2
+
+updates:
+  # GitHub Actions — bumps `uses:` references in workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      time: "08:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    groups:
+      # Patch + minor land as one grouped PR per cycle; majors get their own PR.
+      actions-non-major:
+        update-types:
+          - patch
+          - minor
+
+  # Python deps via uv — bumps pyproject.toml + uv.lock.
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: monthly
+      time: "08:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    groups:
+      python-non-major:
+        update-types:
+          - patch
+          - minor
+
+  # Frontend npm deps — bumps frontend/package.json + package-lock.json.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+      time: "08:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    ignore:
+      # typescript-eslint's parser (typescript-estree) reads TS compiler internals
+      # that TS 7.0 (the native port) dropped, so a TS major crashes `eslint .` at
+      # parser load (TypeError reading '.Cjs'). Latest typescript-eslint (8.63.0)
+      # still pins `typescript <6.1.0` — no parser version to move to. Take TS
+      # minor/patch; hold majors until typescript-eslint ships TS 7 support, then
+      # bump both together.
+      - dependency-name: "typescript"
+        update-types:
+          - version-update:semver-major
+    groups:
+      npm-non-major:
+        update-types:
+          - patch
+          - minor
+
+  # Container images — Dockerfile base images + docker-compose service images.
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: monthly
+      time: "08:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    ignore:
+      # Base image major.minor is a deliberate choice; only take patch bumps.
+      # Also dodges Dockerhub PEP 440 prerelease tags (e.g. 3.15.0b2), which
+      # Dependabot's Docker parser mis-reads as a stable minor.
+      - dependency-name: "python"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
+    groups:
+      docker-non-major:
+        update-types:
+          - patch
+          - minor
+
+  # Deploy-stack images (caddy/postgres/redis in deploy/docker-compose.dev.yml).
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: monthly
+      time: "08:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    groups:
+      docker-deploy-non-major:
+        update-types:
+          - patch
+          - minor
+
+  # Frontend Dockerfile base images (node + caddy in frontend/Dockerfile).
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: monthly
+      time: "08:00"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+    ignore:
+      # Hold Node at the current Active LTS (24). The Dockerfile pins the rolling
+      # `<major>-alpine` tag, so Dependabot only ever proposes a major jump — and
+      # we want those manual. 25 is the non-LTS Current line; 26 ships a native
+      # experimental localStorage global that returns undefined without
+      # --localstorage-file and shadows jsdom's Storage in the vitest env, breaking
+      # the whole FE test suite. Scoped to node, so caddy bumps
+      # still flow. Revisit when Node 26 reaches Active LTS (~Oct 2026) and the
+      # jsdom/vitest stack handles native Web Storage; then bump frontend/Dockerfile
+      # and ci.yml setup-node together.
+      - dependency-name: "node"
+        update-types:
+          - version-update:semver-major
+    groups:
+      docker-frontend-non-major:
+        update-types:
+          - patch
+          - minor

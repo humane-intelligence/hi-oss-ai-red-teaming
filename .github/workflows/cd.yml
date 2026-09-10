@@ -1,0 +1,274 @@
+# Continuous deployment. Chained off CI: it fires only after the CI workflow
+# completes on main, and the publish jobs run only when that CI run was green
+# (see the `if:` guards). A branch ruleset on main already blocks red merges, so
+# this is a redundant safety net, not the sole gate.
+# Everything keys off the exact commit CI validated (`workflow_run.head_sha`),
+# not the branch HEAD, which may already have moved on.
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# Deploy target. Image names follow the repository, so they need no configuration;
+# everything account-specific comes from repository variables (Settings > Secrets and
+# variables > Actions > Variables), which is what a fork sets instead of editing this
+# file. `run:` steps still get them all as plain $ENV vars.
+#
+# GHCR paths must be lowercase — an owner or repo with capitals needs these two spelled
+# out rather than derived.
+env:
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}-frontend
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  DEPLOY_ROLE_ARN: ${{ vars.DEPLOY_ROLE_ARN }}      # unset disables the deploy jobs below
+  INSTANCE_ID: ${{ vars.INSTANCE_ID }}
+  DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/aibackend' }}   # repo checkout on the box (sparse: deploy/, monitoring/)
+  SSM_PREFIX: ${{ vars.SSM_PREFIX }}      # empty falls back to deploy.sh's own default
+  SHA: ${{ github.event.workflow_run.head_sha }}   # the exact commit CI validated
+
+jobs:
+  # workflow_run can't filter by paths, so diff the merged commit here. Each path
+  # gates its own image build; any of the three triggers a redeploy. Assumes
+  # squash-merge to main (one commit per PR), so SHA^..SHA is the full PR diff.
+  changes:
+    name: Detect deploy-relevant changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    # Green CI only (ruleset already blocks red merges — belt-and-suspenders); a red CI skips this, publish/deploy follow.
+    # head_repository: the `sub` condition on the deploy role pins the repository, not the
+    # branch, and a workflow_run job always runs in the default-branch context — so a CI run
+    # triggered by a fork's pull request would otherwise reach a job holding a root shell on
+    # the box. Anyone can fork a public repo. Do not remove this.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.head_repository.full_name == github.repository }}
+    outputs:
+      backend_changed: ${{ steps.diff.outputs.backend_changed }}
+      frontend_changed: ${{ steps.diff.outputs.frontend_changed }}
+      deploy_changed: ${{ steps.diff.outputs.deploy_changed }}
+      monitoring_changed: ${{ steps.diff.outputs.monitoring_changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 2
+      - id: diff
+        name: Which subsystems changed?
+        run: |
+          set -euo pipefail
+          # A root commit has no parent — true of this repository's first commit — and
+          # `git diff <sha>^` would fail the job. Diff against the empty tree there, so
+          # everything counts as changed and both images get published.
+          if parent=$(git rev-parse --verify --quiet "${SHA}^"); then
+            base="$parent"
+          else
+            base=$(git hash-object -t tree /dev/null)
+          fi
+          changed=$(git diff --name-only "$base" "${SHA}")
+          echo "Changed files in ${SHA::7}:"
+          echo "$changed"
+          if echo "$changed" | grep -qE '^backend/';    then echo "backend_changed=true";    else echo "backend_changed=false";    fi >> "$GITHUB_OUTPUT"
+          if echo "$changed" | grep -qE '^frontend/';   then echo "frontend_changed=true";   else echo "frontend_changed=false";   fi >> "$GITHUB_OUTPUT"
+          if echo "$changed" | grep -qE '^deploy/';     then echo "deploy_changed=true";     else echo "deploy_changed=false";     fi >> "$GITHUB_OUTPUT"
+          if echo "$changed" | grep -qE '^monitoring/'; then echo "monitoring_changed=true"; else echo "monitoring_changed=false"; fi >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish backend image to GHCR
+    needs: [changes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: ${{ needs.changes.outputs.backend_changed == 'true' }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PATCH_STAGE: runtime
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Assert the patch stage still patches
+        run: .github/scripts/assert-patch-stage.sh "$PATCH_STAGE" backend/Dockerfile
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: backend
+          push: true
+          build-args: |
+            GIT_SHA=${{ env.SHA }}
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:main
+            ${{ env.BACKEND_IMAGE }}:${{ env.SHA }}
+          cache-from: type=gha,scope=build
+          cache-to: type=gha,scope=build,mode=max
+          # Same reason as the CI scan build: a cached runtime stage would ship the security
+          # patches of whenever that layer was first built, not of this deploy.
+          no-cache-filters: ${{ env.PATCH_STAGE }}
+
+  publish-frontend:
+    name: Publish frontend image to GHCR
+    needs: [changes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: ${{ needs.changes.outputs.frontend_changed == 'true' }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PATCH_STAGE: prod
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Assert the patch stage still patches
+        run: .github/scripts/assert-patch-stage.sh "$PATCH_STAGE" frontend/Dockerfile
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: frontend
+          target: prod
+          push: true
+          build-args: |
+            GIT_SHA=${{ env.SHA }}
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:main
+            ${{ env.FRONTEND_IMAGE }}:${{ env.SHA }}
+          cache-from: type=gha,scope=build-frontend
+          cache-to: type=gha,scope=build-frontend,mode=max
+          # Same reason as the CI scan build: a cached prod stage would ship the security
+          # patches of whenever that layer was first built, not of this deploy.
+          no-cache-filters: ${{ env.PATCH_STAGE }}
+
+  deploy:
+    name: Deploy to dev EC2
+    needs: [changes, publish, publish-frontend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Run unless cancelled or a publish failed; deploy when anything relevant changed.
+    # A skipped publish (subsystem unchanged) is fine — its image stays at :main.
+    # No DEPLOY_ROLE_ARN variable means no deploy target is configured (a fork, or this
+    # repo with its dev box retired): skip rather than fail the OIDC exchange.
+    if: >-
+      ${{ !cancelled()
+        && vars.DEPLOY_ROLE_ARN != ''
+        && vars.INSTANCE_ID != ''
+        && needs.publish.result != 'failure'
+        && needs.publish-frontend.result != 'failure'
+        && (needs.changes.outputs.backend_changed == 'true'
+          || needs.changes.outputs.frontend_changed == 'true'
+          || needs.changes.outputs.deploy_changed == 'true') }}
+    permissions:
+      contents: read
+      id-token: write            # required for OIDC token exchange
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: SSM deploy
+        run: |
+          set -euo pipefail
+          # Pin each image to :SHA only if it was rebuilt this run; an empty ref
+          # leaves deploy.sh on the compose :main default (unchanged subsystem).
+          backend_ref=""
+          frontend_ref=""
+          if [ "${{ needs.changes.outputs.backend_changed }}" = "true" ]; then backend_ref="$BACKEND_IMAGE:$SHA"; fi
+          if [ "${{ needs.changes.outputs.frontend_changed }}" = "true" ]; then frontend_ref="$FRONTEND_IMAGE:$SHA"; fi
+          # Sync the box's checkout to the deployed commit, then run its deploy.sh,
+          # so the deploy scripts move in lockstep with the images. The box doesn't
+          # auto-pull; without this it would run whatever deploy.sh it last had.
+          remote="git -C $DEPLOY_DIR fetch --quiet origin main && git -C $DEPLOY_DIR checkout --quiet $SHA && SSM_PREFIX='$SSM_PREFIX' bash $DEPLOY_DIR/deploy/deploy.sh '$backend_ref' '$frontend_ref'"
+          cmd_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${SHA::7}" \
+            --parameters commands="[\"$remote\"]" \
+            --query Command.CommandId --output text)
+          # Poll to a terminal status (not `ssm wait`: its waiter caps at ~100s,
+          # which a deploy will eventually cross). timeout-minutes bounds the loop;
+          # empty status = invocation not registered yet (brief 404 after send).
+          while :; do
+            status=$(aws ssm get-command-invocation --command-id "$cmd_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || true)
+            case "$status" in
+              ""|Pending|InProgress|Delayed) sleep 5 ;;
+              *) break ;;
+            esac
+          done
+          aws ssm get-command-invocation --command-id "$cmd_id" --instance-id "$INSTANCE_ID"
+          test "$status" = "Success"
+
+  deploy-monitoring:
+    name: Deploy monitoring stack to dev EC2
+    needs: [changes, deploy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Sequenced after `deploy` (not parallel with it) — both jobs `git checkout`
+    # the same box working tree ($DEPLOY_DIR); running them concurrently would
+    # race two checkouts against each other. `deploy` being skipped (no
+    # backend/frontend/deploy change) doesn't block this: GitHub Actions'
+    # default success() only fails on an upstream failure/cancellation, not a skip.
+    if: >-
+      ${{ !cancelled()
+        && vars.DEPLOY_ROLE_ARN != ''
+        && vars.INSTANCE_ID != ''
+        && needs.deploy.result != 'failure'
+        && needs.changes.outputs.monitoring_changed == 'true' }}
+    permissions:
+      contents: read
+      id-token: write            # required for OIDC token exchange
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: SSM deploy monitoring stack
+        run: |
+          set -euo pipefail
+          # Only rolls if the stack was already activated once (monitoring/.env
+          # present) — first activation stays the deliberate manual runbook step
+          # (../monitoring/README.md "One-time setup"); this job just keeps an
+          # already-activated box from drifting out of sync after that.
+          remote="git -C $DEPLOY_DIR fetch --quiet origin main && git -C $DEPLOY_DIR checkout --quiet $SHA && if [ -f $DEPLOY_DIR/monitoring/.env ]; then cd $DEPLOY_DIR/monitoring && docker compose up -d --wait; else echo 'monitoring/.env absent - stack not yet activated, skipping'; fi"
+          cmd_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy-monitoring ${SHA::7}" \
+            --parameters commands="[\"$remote\"]" \
+            --query Command.CommandId --output text)
+          # Same polling pattern as the `deploy` job above — not `ssm wait` (its
+          # waiter caps at ~100s); see that job's comment for the full reasoning.
+          while :; do
+            status=$(aws ssm get-command-invocation --command-id "$cmd_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || true)
+            case "$status" in
+              ""|Pending|InProgress|Delayed) sleep 5 ;;
+              *) break ;;
+            esac
+          done
+          aws ssm get-command-invocation --command-id "$cmd_id" --instance-id "$INSTANCE_ID"
+          test "$status" = "Success"

@@ -1,0 +1,10 @@
+# Explicit module definition (not relying on the image's built-in default) —
+# matching this project's style of spelling out config elsewhere (prometheus.yml,
+# loki-config.yml).
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200]
+      method: GET

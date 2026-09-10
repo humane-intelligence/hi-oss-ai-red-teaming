@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("Your account is active") }}
+{% call paragraph() %}Hi {{ user_name }},{% endcall %}
+{% call paragraph() %}Your account is set up and ready. Sign in to start red-teaming engagements, join evaluation groups, and submit your findings.{% endcall %}
+{{ button(brand.site_url, "Sign in") }}
+{% if password_cleared|default(false) %}
+{% call note() %}Signing in with an identity provider clears any password on the account. If you'd like to set one, use "Forgot password" on the sign-in page.{% endcall %}
+{% endif %}
+{% endblock %}

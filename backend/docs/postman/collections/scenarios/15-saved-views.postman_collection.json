@@ -1,0 +1,846 @@
+{
+	"info": {
+		"name": "15 · Saved views",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Personal saved list-views — per-user filters/sort/hidden-columns for each list page, plus the ownership isolation.\n\n**Flow.** A) full CRUD — create, get, list (with `?resource=`), rename, replace `state` wholesale, delete, 404-after-delete; B) `(resource, name)` uniqueness **409** and an explicit-null **422**; C) isolation — a second user (`viewer`) can't see the owner's view (**404**, no existence leak) and its own list excludes it; no-token **401**.\n\n**Auth model.** Per-request: `{{admin_token}}` owns the views, `{{viewer_token}}` (also holds `saved_views:*`) probes isolation, `noauth` for the 401. Self-contained — no `00-bootstrap`, no manual token.\n\n**Permissions.** `saved_views:read|create|update|delete` are held broadly (admin, owner, red_teamer, annotator, viewer) — this is a personal convenience feature, so the interesting boundary is **ownership**, not role.\n\n**Contract notes.** `state` is a fixed envelope (`order_by`/`filters`/`hidden_columns`/`search`/`limit`/`offset`) but its `filters` values + column ids are opaque to the backend; PATCH replaces `state` wholesale; `resource` is immutable.\n\n**Leftovers.** None — both views are deleted.\n\n**Verified:** 26/26 checks green end-to-end against a live stack (`make up` + `make seedlocal`)."
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "run_suffix",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "viewer_email",
+			"value": "viewer@test.com"
+		},
+		{
+			"key": "viewer_password",
+			"value": "password123"
+		},
+		{
+			"key": "viewer_token",
+			"value": ""
+		},
+		{
+			"key": "sv_id",
+			"value": ""
+		},
+		{
+			"key": "sv_id2",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "1 · Log in as admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded admin. Sets `run_suffix` (collision-free re-runs) and captures `admin_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set('run_suffix', Date.now().toString(36));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('admin_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Log in as viewer (non-admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{viewer_email}}\",\n  \"password\": \"{{viewer_password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate the seeded `viewer` (a non-admin identity) for the RBAC/isolation checks. Captures `viewer_token`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.collectionVariables.set('viewer_token', pm.response.json()['access_token']);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "A · CRUD",
+			"item": [
+				{
+					"name": "1 · Create a saved view",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resource\": \"evaluations\",\n  \"name\": \"Published, newest {{run_suffix}}\",\n  \"state\": {\n    \"order_by\": \"-created_at\",\n    \"filters\": {\n      \"status\": \"published\"\n    },\n    \"hidden_columns\": [\n      \"created_at\"\n    ]\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views"
+							]
+						},
+						"description": "**FE note:** persists a list page's filters/sort/hidden-columns so the operator can re-open it. Owner = the caller. `state` is normalized to the full envelope (omitted sub-fields default). Captures `sv_id`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"const d = pm.response.json();",
+									"pm.collectionVariables.set('sv_id', d.id);",
+									"pm.test('echoes resource + name', () => { pm.expect(d.resource).to.eql('evaluations'); pm.expect(d.name).to.include(pm.collectionVariables.get('run_suffix')); });",
+									"pm.test('state normalized to full envelope', () => { pm.expect(d.state.order_by).to.eql('-created_at'); pm.expect(d.state).to.have.property('search'); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Get it by id",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id}}"
+							]
+						},
+						"description": "Read a single saved view (owner-scoped)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('same view', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('sv_id')));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · List (filter by resource)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views?resource=evaluations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views"
+							],
+							"query": [
+								{
+									"key": "resource",
+									"value": "evaluations"
+								}
+							]
+						},
+						"description": "List the caller's views; `?resource=` narrows to one list page's views. Standard `Page[SavedViewResponse]`."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json();",
+									"pm.test('page envelope', () => { pm.expect(d).to.have.property('total'); pm.expect(d.items).to.be.an('array'); });",
+									"pm.test('includes the created view', () => pm.expect(d.items.map(v => v.id)).to.include(pm.collectionVariables.get('sv_id')));",
+									"pm.test('resource filter honoured', () => d.items.forEach(v => pm.expect(v.resource).to.eql('evaluations')));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "4 · Rename (PATCH name)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Renamed {{run_suffix}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id}}"
+							]
+						},
+						"description": "Partial update. `name` and `state` are editable; `resource` is immutable. Omitted fields stay unchanged."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('name changed', () => pm.expect(pm.response.json().name).to.include('Renamed'));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "5 · Replace state (PATCH state)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"state\": {\n    \"order_by\": \"name\",\n    \"limit\": 25\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id}}"
+							]
+						},
+						"description": "`state` is replaced **wholesale** when given (not merged) — the prior `filters`/`hidden_columns` are gone."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('state replaced wholesale', () => { const s = pm.response.json().state; pm.expect(s.order_by).to.eql('name'); pm.expect(s.limit).to.eql(25); pm.expect(s.filters).to.eql({}); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "6 · Delete",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id}}"
+							]
+						},
+						"description": "Delete the view (owner-only)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "7 · Get after delete → 404",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id}}"
+							]
+						},
+						"description": "Confirms the delete (soft-delete is invisible to reads)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "B · Conflict + validation",
+			"item": [
+				{
+					"name": "1 · Create view #2",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resource\": \"conversations\",\n  \"name\": \"Dup probe {{run_suffix}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views"
+							]
+						},
+						"description": "Omitting `state` saves the defaults. Captures `sv_id2` (used by the conflict + isolation checks)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 201', () => pm.response.to.have.status(201));",
+									"pm.collectionVariables.set('sv_id2', pm.response.json().id);",
+									"pm.test('state defaults when omitted', () => pm.expect(pm.response.json().state.filters).to.eql({}));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Duplicate (same resource + name) → 409",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resource\": \"conversations\",\n  \"name\": \"Dup probe {{run_suffix}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views"
+							]
+						},
+						"description": "`(resource, name)` is unique per user — a repeat is a conflict."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 409', () => pm.response.to.have.status(409));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · Explicit null name → 422",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id2}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id2}}"
+							]
+						},
+						"description": "`name`/`state` back NOT NULL columns; an explicit `null` is rejected at the edge (omit the field to leave it unchanged)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 422', () => pm.response.to.have.status(422));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "C · Cross-user isolation",
+			"item": [
+				{
+					"name": "1 · Viewer gets admin's view → 404",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id2}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id2}}"
+							]
+						},
+						"description": "Saved views are private. Another user (who also holds `saved_views:read`) cannot see them — invisible, not 403 (no existence leak)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 404', () => pm.response.to.have.status(404));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "2 · Viewer list excludes admin's view",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{viewer_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views"
+							]
+						},
+						"description": "The viewer's own list never contains another user's views."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 200', () => pm.response.to.have.status(200));",
+									"pm.test('does not include admin view', () => pm.expect(pm.response.json().items.map(v => v.id)).to.not.include(pm.collectionVariables.get('sv_id2')));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "3 · No token → 401",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views"
+							]
+						},
+						"description": "Unauthenticated access is rejected."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Teardown",
+			"item": [
+				{
+					"name": "1 · Delete view #2",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/saved-views/{{sv_id2}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"saved-views",
+								"{{sv_id2}}"
+							]
+						},
+						"description": "Remove the second view (view #1 was deleted in folder A)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('→ 204', () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

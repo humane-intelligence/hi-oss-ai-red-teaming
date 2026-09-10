@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("A model has been sitting idle") }}
+{% call paragraph() %}Hi {{ recipient_name }},{% endcall %}
+{% call paragraph() %}No messages have been sent to <a href="{{ target_url }}">{{ model_name }}</a> for {{ idle_hours }} hour{% if idle_hours != 1 %}s{% endif %}.{% endcall %}
+{% if still_warmed %}
+{% call paragraph() %}It is still being warmed, so the endpoint keeps waking for conversations nobody sends a message in — that is the time you are paying for.{% endcall %}
+{% else %}
+{% call paragraph() %}Nothing is warming it either, so it should be scaled down already — disabling it just takes it out of the pickers.{% endcall %}
+{% endif %}
+{% call note() %}Last message: {% if last_used_at %}{{ last_used_at | datetimefmt }}{% else %}never — no messages since setup{% endif %}. Last warmed: {% if last_warmup_at %}{{ last_warmup_at | datetimefmt }}{% else %}never warmed{% endif %}.{% endcall %}
+{% call paragraph() %}Disable it if nobody needs it.{% endcall %}
+{{ button(target_url, "Review the model") }}
+{% endblock %}

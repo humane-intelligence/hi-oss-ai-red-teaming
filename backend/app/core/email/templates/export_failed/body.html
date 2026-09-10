@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heading, paragraph, note, button %}
+{% block content %}
+{{ heading("Your export failed") }}
+{% call paragraph() %}Hi {{ recipient_name }},{% endcall %}
+{% call paragraph() %}Your export <a href="{{ target_url }}">{{ export_label }}</a> could not be generated.{% endcall %}
+{% call note() %}{{ error }}{% endcall %}
+{% call paragraph() %}You can sign in and request it again.{% endcall %}
+{{ button(target_url, "Open") }}
+{% endblock %}
