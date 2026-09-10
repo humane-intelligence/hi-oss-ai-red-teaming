@@ -82,7 +82,7 @@ the typed-client workflow) live in [CLAUDE.md](CLAUDE.md) — read it before add
 
 ## Contributing
 
-- Branch off `main`. Commit subjects are one line saying what changed (the team prefixes its tracker id); `main` squash-merges every PR, so the PR title is what lands in the history.
+- Branch off `main`. Commit subjects are one line saying what changed; `main` squash-merges every PR, so the PR title is what lands in the history.
 - Run `make lint`, `make test`, and `make build` before pushing — CI runs them as independent checks on every PR and must be green to merge.
 - A push carrying frontend changes is gated locally by the prek pre-push hooks: `make eslint` and `make format-check`. Run `make format` first if the formatter has anything to say; `tsc` and Vitest stay CI-only.
 - Don't hand-edit generated files (`src/lib/api/schema.d.ts`); change the backend and `make gen`.

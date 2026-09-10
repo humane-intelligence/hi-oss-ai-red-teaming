@@ -9,15 +9,8 @@
 
 **A platform for running human-centered red teaming evaluations on AI models and systems.**
 
-<!-- Waiting on the repo going public. (1) The workflow badges stay commented out until then:
-     GitHub proxies README images anonymously, so a private repo's badge.svg answers 404 and renders as
-     a broken image for everyone, collaborators included — uncomment both lines. (2) Turn on private
-     vulnerability reporting under Settings > Code security, plus secret scanning with push protection;
-     GitHub only offers those on public repos, and SECURITY.md already names private reporting as the
-     preferred route.
 [![CI](https://github.com/humane-intelligence/hi-oss-ai-red-teaming/actions/workflows/ci.yml/badge.svg)](https://github.com/humane-intelligence/hi-oss-ai-red-teaming/actions/workflows/ci.yml)
 [![CD](https://github.com/humane-intelligence/hi-oss-ai-red-teaming/actions/workflows/cd.yml/badge.svg)](https://github.com/humane-intelligence/hi-oss-ai-red-teaming/actions/workflows/cd.yml)
--->
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)](backend/pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](backend/README.md)

@@ -2,9 +2,9 @@
 
 ## Supported versions
 
-There are no tagged releases yet, so `main` is the only supported line and security fixes land
-there. Anyone running this in production is running their own deployment from their own commit, and
-should track `main` until releases exist.
+The latest release and `main` are the supported lines: security fixes land on `main` and ship in the
+next release. Older tags are not patched, so a deployment pinned to one should move forward rather
+than wait for a backport.
 
 ## Reporting a vulnerability
 
