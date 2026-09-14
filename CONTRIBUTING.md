@@ -4,6 +4,14 @@ Thanks for taking the time to contribute! This is a monorepo — a Python/FastAP
 React/Vite operator console — and the two are coupled by the OpenAPI contract, which shapes most of
 the workflow below.
 
+## What to contribute
+
+Bug fixes, documentation, tests and new integrations are welcome as pull requests without asking
+first. New features, and anything that changes the API contract or the database schema, should start
+as an issue, so the shape can be agreed before you write the code.
+
+Questions about contributing go to <oss@humane-intelligence.org>.
+
 ## Getting set up
 
 The host needs Docker, make, and [uv](https://docs.astral.sh/uv/) — the backend's dependencies, git
@@ -66,6 +74,9 @@ before pushing a frontend change**, or the push hook will reject it.
   the exception — it mirrors merged `main` and is synced afterwards, in its own PR.
 - **Say how you verified it.** The PR template asks for this because it is the part reviewers cannot
   reconstruct: what you ran, what it printed, and what you could not check.
+
+Pull requests are reviewed by the maintainers on a rolling basis. Each is assessed for its
+complexity and dependencies before the number of required reviews is determined.
 
 ## Licensing and sign-off
 
