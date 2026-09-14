@@ -88,3 +88,10 @@ The setup, the contract loop between backend and frontend, and the gates a PR ha
 [CONTRIBUTING.md](CONTRIBUTING.md). Security problems take the private route in
 [SECURITY.md](SECURITY.md) — never a public issue. Participation is under the
 [Code of Conduct](CODE_OF_CONDUCT.md). The code is licensed under [Apache 2.0](LICENSE).
+All non-code text based content is licensed under [CC-By-4.0](https://creativecommons.org/licenses/by/4.0/).
+
+## Disclaimer - Creating Your Own Instance
+
+This codebase does not include any template terms of service, acceptable use policy, privacy policy, or data handling agreements. Anyone who forks or deploys this codebase — including for use with third parties — is solely responsible for establishing their own terms of service, acceptable use policy, privacy practices, and data agreements appropriate to their deployment and regulatory environment. Humane Intelligence assumes no liability for how the codebase is used, configured, or deployed by others.
+
+This repository is licensed under the Apache 2.0 license only. This disclaimer supplements that license and does not modify, limit, or add restrictions to the rights the Apache 2.0 license grants. While the Apache 2.0 license does not place limits on how you may use the codebase, Humane Intelligence’s mission is to responsibly enable AI deployment for social good, and to that end, we encourage use of this codebase to advance social good and mitigate harm.
