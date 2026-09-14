@@ -73,6 +73,10 @@ This project is licensed under [Apache 2.0](LICENSE), and contributions come in 
 licence. You keep the copyright in what you write; submitting it licenses it to the project on those
 terms. There is no CLA to sign and no copyright to assign.
 
+The documentation is additionally available under [CC BY 4.0](LICENSE-docs), at your option, and
+that covers every Markdown file in the repository. Contributions to those files come in under both
+licences.
+
 What we do ask is that every commit carries a Developer Certificate of Origin sign-off. The [DCO](DCO)
 is a short statement that you wrote the patch, or otherwise hold the right to submit it under this
 licence. You accept it per commit by adding a `Signed-off-by` trailer, which git writes for you:

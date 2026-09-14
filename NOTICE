@@ -5,6 +5,14 @@ This product is licensed under the Apache License, Version 2.0 (the "License").
 You may obtain a copy of the License in the LICENSE file distributed with this
 work, or at http://www.apache.org/licenses/LICENSE-2.0
 
+The documentation is additionally available under the Creative Commons
+Attribution 4.0 International License, at your option. That grant covers every
+Markdown file in this repository and nothing else: source code, configuration,
+generated machine-readable artifacts, and any file carrying its own licence
+notice stay under Apache 2.0 or the licence stated for them, the third-party
+notices below included. The CC BY 4.0 text is in the LICENSE-docs file
+distributed with this work, or at https://creativecommons.org/licenses/by/4.0/
+
 ================================================================================
 Third-party components
 ================================================================================

@@ -87,8 +87,9 @@ Setup and the conventions of each subsystem stay in the subsystem READMEs linked
 The setup, the contract loop between backend and frontend, and the gates a PR has to pass are in
 [CONTRIBUTING.md](CONTRIBUTING.md). Security problems take the private route in
 [SECURITY.md](SECURITY.md) — never a public issue. Participation is under the
-[Code of Conduct](CODE_OF_CONDUCT.md). The code is licensed under [Apache 2.0](LICENSE).
-All non-code text based content is licensed under [CC-By-4.0](https://creativecommons.org/licenses/by/4.0/).
+[Code of Conduct](CODE_OF_CONDUCT.md). The project is licensed under [Apache 2.0](LICENSE), and the
+documentation — every Markdown file here — is additionally available under
+[CC BY 4.0](LICENSE-docs), at your option.
 
 ## Disclaimer - Creating Your Own Instance
 
