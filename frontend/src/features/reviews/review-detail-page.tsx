@@ -119,7 +119,7 @@ function TranscriptRowView({
         )}
         <span
           className={cn(
-            'text-muted-foreground text-xs font-medium tracking-wide uppercase',
+            'text-muted-foreground text-xs font-medium tracking-wide',
             kind === 'superseded' && 'opacity-60',
           )}
         >
@@ -133,11 +133,8 @@ function TranscriptRowView({
       {m.image_keys && m.image_keys.length > 0 && (
         <MessageAttachments imageKeys={m.image_keys} className="mb-1" />
       )}
-      {/* Dim the stale text, not the row. The tag chip starts at 4.70:1, so inheriting a 0.6
-          ancestor puts it at 2.23:1 (light) / 2.80:1 (dark) — under the 3.0 large-text floor, and
-          the same reason the conversation header marks unsent tags instead of dimming them. Body
-          text survives the dimming; the badges and the record do not, so they keep full opacity and
-          the `superseded` badge is what names the state. */}
+      {/* Dim the stale text, not the row: the badges and the tag record keep full opacity, and the
+          `superseded` badge is what names the state. */}
       <div className={cn(kind === 'superseded' && 'opacity-60')}>
         <Markdown content={m.content} />
       </div>

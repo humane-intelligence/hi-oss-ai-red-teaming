@@ -97,9 +97,7 @@ export function OverviewPage() {
       )}
 
       <div className="space-y-3">
-        <h2 className="text-muted-foreground font-mono text-[10px] tracking-[0.2em] uppercase">
-          All sections
-        </h2>
+        <h2 className="text-muted-foreground font-mono text-[10px]">All sections</h2>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map(({ to, title, description, icon: Icon }) => (
             <Link key={to} to={to} className="group">

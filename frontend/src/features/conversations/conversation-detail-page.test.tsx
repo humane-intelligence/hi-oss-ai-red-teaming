@@ -1020,8 +1020,7 @@ describe('ConversationDetailPage — tags', () => {
     renderWithPerms(['conversations:read', 'conversations:update'])
 
     expect(await screen.findByText(/kept but not sent to the model: legacy/i)).toBeInTheDocument()
-    // Marked per chip with text a reader gets, not with opacity: dimming measured 2.35:1 against the
-    // chip's own background at 12px (4.70:1 undimmed), and a `title` reaches neither keyboard nor touch.
+    // Marked per chip with text a reader gets, not with opacity or a `title`.
     const items = within(screen.getByRole('list', { name: 'Tags' })).getAllByRole('listitem')
     const legacy = items.find((li) => li.textContent?.includes('legacy'))
     const env = items.find((li) => li.textContent?.startsWith('env'))

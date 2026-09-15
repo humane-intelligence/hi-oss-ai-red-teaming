@@ -57,7 +57,7 @@ export function ModelKindDialog({
                 at the start of the second line. */}
             <span
               id={`kind-${kind}-providers`}
-              className="text-muted-foreground/70 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] tracking-[0.14em] uppercase"
+              className="text-muted-foreground/70 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px]"
             >
               {providersForKind(kind).map((p) => (
                 <span key={p}>{providerLabel(p)}</span>

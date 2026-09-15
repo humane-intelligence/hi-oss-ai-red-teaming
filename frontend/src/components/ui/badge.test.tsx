@@ -9,9 +9,8 @@ describe('Badge variants', () => {
     // is loaded, and CSS casing never reaches the accessible name).
     render(<Badge variant="tag">persona: Dr. Smith</Badge>)
 
-    // The family and the tracking are pinned alongside the case: a variant that dropped only
-    // `uppercase` and kept `font-mono tracking-wide` still renders free text in the machine-token
-    // face, which is the regression this test would otherwise wave through.
+    // The family and the tracking are pinned alongside the case: free text in the machine-token
+    // face misreads the same way a case transform does.
     const chip = screen.getByText('persona: Dr. Smith')
     expect(chip).toHaveClass('bg-muted') // the variant exists and is the muted chip face
     expect(chip).not.toHaveClass('uppercase')
@@ -19,9 +18,26 @@ describe('Badge variants', () => {
     expect(chip).not.toHaveClass('tracking-wide')
   })
 
-  it('keeps uppercase on the machine-token variant', () => {
-    render(<Badge variant="neutral">pending</Badge>)
+  it.each(['ok', 'warn', 'new', 'err', 'neutral'] as const)(
+    'renders the %s status pill as typed, in the body face',
+    (variant) => {
+      render(<Badge variant={variant}>pending approval</Badge>)
 
-    expect(screen.getByText('pending')).toHaveClass('uppercase')
+      const pill = screen.getByText('pending approval')
+      expect(pill).not.toHaveClass('uppercase')
+      expect(pill).not.toHaveClass('font-mono')
+    },
+  )
+
+  it.each([
+    ['ok', 'bg-ok-surface', 'text-ok'],
+    ['warn', 'bg-warn-surface', 'text-warn'],
+    ['new', 'bg-new-surface', 'text-new'],
+    ['err', 'bg-err-surface', 'text-err'],
+  ] as const)('pairs the %s tone with its own surface', (variant, surface, ink) => {
+    // A tint fallback like `bg-ok/15` would look close enough to pass a glance, so pin both halves.
+    render(<Badge variant={variant}>status</Badge>)
+
+    expect(screen.getByText('status')).toHaveClass(surface, ink)
   })
 })

@@ -231,7 +231,7 @@ export function ExportDialog({ open, onOpenChange, scope, title = 'Export' }: Ex
                       checked={format === fmt}
                       onChange={() => setFormat(fmt)}
                     />
-                    <span className="uppercase">{fmt}</span>
+                    <span>{fmt}</span>
                   </label>
                 ))}
               </div>

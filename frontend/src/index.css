@@ -7,76 +7,86 @@
   --radius: 5px;
   color-scheme: light;
 
-  /* Light — paper telemetry: same instrument, printed on light stock. */
-  --background: #e9efed;
-  --foreground: #0b1417;
-  --card: #fbfdfc;
-  --card-foreground: #0b1417;
-  --popover: #fbfdfc;
-  --popover-foreground: #0b1417;
-  --primary: #e59a33;
-  --primary-foreground: #1a1206;
-  --secondary: #dce6e3;
-  --secondary-foreground: #0b1417;
-  --muted: #dce6e3;
-  --muted-foreground: #51676b;
-  --accent: #dce6e3;
-  --accent-foreground: #0b1417;
-  --destructive: #c2342d;
-  --destructive-foreground: #ffffff;
-  --border: #c5d3d0;
-  --input: #c5d3d0;
-  --ring: #0c8478;
-  --sidebar: #fbfdfc;
-  --sidebar-foreground: #0b1417;
-  --sidebar-primary: #e59a33;
-  --sidebar-primary-foreground: #1a1206;
-  --sidebar-accent: #dce6e3;
-  --sidebar-accent-foreground: #0b1417;
-  --sidebar-border: #c5d3d0;
-  --sidebar-ring: #0c8478;
-  --ok: #157a4a;
-  --warn: #9c620a;
-  --err: #b5302a;
-  --grid: rgba(11, 20, 23, 0.05);
-  --glow: rgba(12, 132, 120, 0.07);
+  /* Light — Tailwind zinc throughout: page 100, cards 50, chips 200, borders 300. */
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --card: #fafafa;
+  --card-foreground: #18181b;
+  --popover: #fafafa;
+  --popover-foreground: #18181b;
+  --primary: #1447e6;
+  --primary-foreground: #fafafa;
+  --secondary: #e4e4e7;
+  --secondary-foreground: #18181b;
+  --muted: #e4e4e7;
+  --muted-foreground: #52525b;
+  --accent: #e4e4e7;
+  --accent-foreground: #18181b;
+  --destructive: #82181a;
+  --destructive-foreground: #ffe2e2;
+  --border: #d4d4d8;
+  --input: #d4d4d8;
+  --ring: #1447e6;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #1447e6;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #e4e4e7;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #d4d4d8;
+  --sidebar-ring: #1447e6;
+  /* Each status tone is a pair: `--x` is the ink (also used alone for dots and inline
+     text), `--x-surface` the pill behind it. */
+  --ok: #004f3b;
+  --ok-surface: #d0fae5;
+  --warn: #7b3306;
+  --warn-surface: #fef3c6;
+  --new: #861043;
+  --new-surface: #fce7f3;
+  --err: #82181a;
+  --err-surface: #ffe2e2;
 }
 
 .dark {
-  /* Dark — telemetry palette ported from the legacy console. */
+  /* Dark — the zinc ramp inverted, each status pair swapping ink and surface. The accent
+     lightens: the light theme's #1447e6 is too dim on this card for links, icons and the
+     focus ring. */
   color-scheme: dark;
-  --background: #0b1417;
-  --foreground: #e9f1ef;
-  --card: #101c20;
-  --card-foreground: #e9f1ef;
-  --popover: #101c20;
-  --popover-foreground: #e9f1ef;
-  --primary: #f2a93b;
-  --primary-foreground: #0b1417;
-  --secondary: #15262b;
-  --secondary-foreground: #e9f1ef;
-  --muted: #15262b;
-  --muted-foreground: #7e9ca2;
-  --accent: #15262b;
-  --accent-foreground: #e9f1ef;
-  --destructive: #ff5b54;
-  --destructive-foreground: #0b1417;
-  --border: #203a41;
-  --input: #203a41;
-  --ring: #54d4c6;
-  --sidebar: #101c20;
-  --sidebar-foreground: #e9f1ef;
-  --sidebar-primary: #f2a93b;
-  --sidebar-primary-foreground: #0b1417;
-  --sidebar-accent: #15262b;
-  --sidebar-accent-foreground: #e9f1ef;
-  --sidebar-border: #203a41;
-  --sidebar-ring: #54d4c6;
-  --ok: #6fe3a0;
-  --warn: #f2a93b;
-  --err: #ff5b54;
-  --grid: rgba(255, 255, 255, 0.035);
-  --glow: rgba(84, 212, 198, 0.1);
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #2b7fff;
+  --primary-foreground: #09090b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ffe2e2;
+  --destructive-foreground: #82181a;
+  --border: #3f3f46;
+  --input: #3f3f46;
+  --ring: #2b7fff;
+  --sidebar: #18181b;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #2b7fff;
+  --sidebar-primary-foreground: #09090b;
+  --sidebar-accent: #27272a;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #3f3f46;
+  --sidebar-ring: #2b7fff;
+  --ok: #d0fae5;
+  --ok-surface: #004f3b;
+  --warn: #fef3c6;
+  --warn-surface: #7b3306;
+  --new: #fce7f3;
+  --new-surface: #861043;
+  --err: #ffe2e2;
+  --err-surface: #82181a;
 }
 
 @theme inline {
@@ -84,9 +94,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --font-display: 'Space Grotesk', var(--font-sans);
+  --font-sans: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+  --font-display: var(--font-sans);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -115,8 +125,13 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-ok: var(--ok);
+  --color-ok-surface: var(--ok-surface);
   --color-warn: var(--warn);
+  --color-warn-surface: var(--warn-surface);
+  --color-new: var(--new);
+  --color-new-surface: var(--new-surface);
   --color-err: var(--err);
+  --color-err-surface: var(--err-surface);
 }
 
 @layer base {
@@ -125,10 +140,7 @@
   }
   body {
     @apply text-foreground font-sans;
-    background:
-      radial-gradient(120% 80% at 80% -10%, var(--glow) 0%, transparent 55%),
-      repeating-linear-gradient(0deg, var(--grid) 0 1px, transparent 1px 64px),
-      repeating-linear-gradient(90deg, var(--grid) 0 1px, transparent 1px 64px), var(--background);
+    background: var(--background);
     min-height: 100svh;
   }
   ::selection {

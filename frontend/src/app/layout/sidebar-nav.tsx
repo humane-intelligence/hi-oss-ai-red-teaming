@@ -126,9 +126,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         <div className="font-display text-lg font-bold tracking-[0.16em]">
           RED<span className="text-primary">·</span>TEAM
         </div>
-        <div className="text-muted-foreground mt-0.5 font-mono text-[9px] tracking-[0.32em] uppercase">
-          console
-        </div>
+        <div className="text-muted-foreground mt-0.5 font-mono text-[9px]">console</div>
       </NavLink>
       <nav>
         <NavLink to="/" end className={linkClass} onClick={onNavigate}>
@@ -144,7 +142,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           if (visibleItems.length === 0) return null
           return (
             <div key={group.label}>
-              <div className="text-muted-foreground mt-5 mb-1 px-3 font-mono text-[9.5px] tracking-[0.2em] uppercase">
+              <div className="text-muted-foreground mt-5 mb-1 px-3 font-mono text-[9.5px]">
                 {group.label}
               </div>
               {visibleItems.map(({ to, label, icon: Icon }) => (

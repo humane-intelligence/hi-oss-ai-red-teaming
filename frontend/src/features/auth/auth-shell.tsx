@@ -6,8 +6,7 @@ import { cn } from '@/lib/utils'
 function ReadoutRow({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div className="flex gap-4">
-      {/* Full-strength muted: at 12px the /70 tint failed AA against the card and the page. */}
-      <dt className="text-muted-foreground w-16 shrink-0 tracking-[0.2em] uppercase">{k}</dt>
+      <dt className="text-muted-foreground w-16 shrink-0">{k}</dt>
       <dd className="text-foreground/90">{v}</dd>
     </div>
   )
@@ -21,9 +20,7 @@ function Wordmark({ className }: { className?: string }) {
       <div className="font-bold">
         RED<span className="text-primary">·</span>TEAM
       </div>
-      <div className="text-muted-foreground mt-1 font-mono text-[10px] tracking-[0.34em] uppercase">
-        operator console
-      </div>
+      <div className="text-muted-foreground mt-1 font-mono text-[10px]">operator console</div>
     </div>
   )
 }

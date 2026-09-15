@@ -13,7 +13,7 @@ const toneByStatus: Record<string, BadgeProps['variant']> = {
   changes_requested: 'warn',
   draft: 'warn',
   invited: 'warn',
-  new: 'warn',
+  new: 'new',
   open: 'warn',
   rejected: 'err',
   not_approved: 'err',

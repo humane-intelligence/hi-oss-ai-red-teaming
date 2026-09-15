@@ -2,7 +2,7 @@ import { Badge, type BadgeProps } from '@/components/ui/badge'
 import type { EvaluationStatus } from '@/lib/api/types'
 
 const variantByStatus: Record<EvaluationStatus, BadgeProps['variant']> = {
-  new: 'warn',
+  new: 'new',
   draft: 'warn',
   under_review: 'warn',
   rejected: 'err',

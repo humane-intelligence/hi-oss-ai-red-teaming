@@ -168,7 +168,7 @@ export function ReviewQueuePage() {
         <div className="flex flex-col items-start gap-0.5">
           <ReviewProgress completed={item.completed_reviews} required={item.required_reviews} />
           {item.submission.scenario_id == null && (
-            <span className="text-muted-foreground/70 font-mono text-[9px] tracking-wide uppercase">
+            <span className="text-muted-foreground/70 font-mono text-[9px] tracking-wide">
               no challenge · default 1
             </span>
           )}

@@ -21,7 +21,7 @@ export function MessageMeta({ extra }: { extra?: Record<string, unknown> | null 
 
   return (
     <div className="text-muted-foreground flex flex-wrap items-center gap-2 pt-0.5 font-mono text-[10px] tracking-wide">
-      {parts.length > 0 && <span className="uppercase">{parts.join(' · ')}</span>}
+      {parts.length > 0 && <span>{parts.join(' · ')}</span>}
       {error && <span className="text-destructive">⚠ {error}</span>}
     </div>
   )

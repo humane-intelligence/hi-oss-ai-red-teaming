@@ -30,10 +30,7 @@ export function TagContext({
       {/* The label names the list: a message-tag list (tags as stored, possibly unsent) can sit
           directly above this one (tags proven sent), and unnamed they are indistinguishable in a
           screen reader's element list. */}
-      <span
-        id={labelId}
-        className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase"
-      >
+      <span id={labelId} className="text-muted-foreground font-mono text-[10px] tracking-wide">
         {partial ? 'sent with the continuation only' : 'sent with'}
       </span>
       <ul role="list" aria-labelledby={labelId} className="flex flex-wrap gap-1">

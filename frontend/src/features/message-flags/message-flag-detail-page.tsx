@@ -225,7 +225,7 @@ export function MessageFlagDetailPage() {
                     m.role === 'user' ? 'bg-muted/40' : 'bg-card',
                   )}
                 >
-                  <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wide uppercase">
+                  <div className="text-muted-foreground mb-1 text-xs font-medium tracking-wide">
                     {m.role}
                   </div>
                   <Markdown content={m.content} />

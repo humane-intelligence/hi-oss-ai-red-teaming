@@ -459,11 +459,8 @@ export function ConversationDetailPage() {
                       <span className="truncate">
                         {k}: {v}
                       </span>
-                      {/* The state rides an icon plus text for a reader, never opacity: at `opacity-60`
-                          this chip measured 2.35:1 against its own background in the light theme
-                          (4.70:1 undimmed) at 12px, so the only marker of "not sent" would be the
-                          thing that makes it unreadable — and hover/`title` reaches neither keyboard
-                          nor touch. */}
+                      {/* Marked with an icon and text, not opacity: `title` alone reaches neither
+                          keyboard nor touch. */}
                       {unsentTags.has(k) && (
                         <>
                           <BanIcon className="ml-1 size-3 shrink-0" aria-hidden />
@@ -532,7 +529,7 @@ export function ConversationDetailPage() {
 
                 {flagList.length > 0 && (
                   <div className="bg-card space-y-2 rounded-lg border p-4">
-                    <div className="text-muted-foreground font-mono text-[10px] tracking-[0.2em] uppercase">
+                    <div className="text-muted-foreground font-mono text-[10px]">
                       Flags ({flagList.length})
                     </div>
                     <div className="space-y-1.5">
