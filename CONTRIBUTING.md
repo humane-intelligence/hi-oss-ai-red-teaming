@@ -110,6 +110,10 @@ squash-merging lands on `main`.
 Sign-off is a statement about provenance, not identity: GPG or SSH commit signatures are welcome but
 not required.
 
+### A note on dependency licenses
+
+Almost everything here is permissively licensed (MIT, BSD, Apache 2.0), except `psycopg`, the PostgreSQL driver. Its license is LGPL-3.0; however, this is acceptable as an ordinary dependency, as long as we don't vendor or modify its source (we do not). New dependencies should stay permissive; flag anything copyleft (GPL, AGPL, LGPL) in the PR description.
+
 ## Tests
 
 pytest for the backend, Vitest for the frontend. The backend suite mirrors the source tree
