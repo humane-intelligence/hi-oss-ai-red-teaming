@@ -50,10 +50,8 @@ export function SubmissionsTimelineRecharts({ buckets }: { buckets: ChartBucket[
           itemStyle={TOOLTIP_ITEM_STYLE}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
-        {/* Not `--color-primary`, measured against the card in both themes: it is 2.28:1 in light
-            (below the 3:1 minimum for a graphical object) and in dark it resolves to the very same
-            #f2a93b as `--warn`, which would make the exploited share invisible. Slate is a neutral
-            baseline — 5.87:1 light / 5.93:1 dark — and a different hue from the amber above it. */}
+        {/* Not `--color-primary`: `--color-ring` resolves to the same accent and draws the total
+            line below, so the stack and that line would share a hue. */}
         <Bar
           yAxisId="daily"
           dataKey="other"

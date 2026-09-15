@@ -74,9 +74,7 @@ export function ScenarioRail({
 
   return (
     <div className="bg-card space-y-2 rounded-lg border p-4">
-      <div className="text-muted-foreground font-mono text-[10px] tracking-[0.2em] uppercase">
-        Scenario
-      </div>
+      <div className="text-muted-foreground font-mono text-[10px]">Scenario</div>
       {scenario ? (
         <>
           <p className="font-medium">{scenario.name}</p>
@@ -86,9 +84,7 @@ export function ScenarioRail({
           {tasks.length > 0 && (
             <div className="space-y-2 border-t pt-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-muted-foreground font-mono text-[10px] tracking-[0.2em] uppercase">
-                  Tasks
-                </div>
+                <div className="text-muted-foreground font-mono text-[10px]">Tasks</div>
                 {showProgress && (
                   <span className="text-muted-foreground font-mono text-[10px] tabular-nums">
                     {progressLabel}

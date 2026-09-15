@@ -62,12 +62,10 @@ export function GroupIdentityHeading({ groupId }: { groupId: string }) {
             <Link to={org.to} className="text-muted-foreground hover:text-foreground font-normal">
               {org.name}
             </Link>
-            {/* Not the breadcrumb's `/50`, which measures 2.04:1 here — at heading size this slash is
-                the only boundary between two entity names. It is decorative, so a reader needs its
-                own boundary: without one the heading's accessible name runs the organization and the
-                group together as a single phrase (measured — the computed name had no separator at
-                all). A comma is the boundary, not the slash, because punctuation announcement is a
-                verbosity setting while a comma reliably produces a pause. */}
+            {/* Full strength, not the breadcrumb's `/50`: at heading size this slash is the only
+                boundary between two entity names. It is decorative, so the accessible name gets its
+                own separator — a comma, because punctuation announcement is a verbosity setting
+                while a comma reliably produces a pause. */}
             <span aria-hidden className="text-muted-foreground font-normal">
               /
             </span>

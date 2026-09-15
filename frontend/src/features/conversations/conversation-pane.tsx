@@ -188,9 +188,8 @@ export function ConversationPane({
                     <span className="truncate">
                       {k}: {v}
                     </span>
-                    {/* Marked, not dimmed — see the full page: `opacity-60` measured 2.35:1 in the light
-                        theme, and it is invisible to a reader either way. This header has no room for
-                        the full page's inline copy, so the reason rides the `title` above. */}
+                    {/* Marked, not dimmed — see the full page. No room for its inline copy here, so
+                        the reason rides the `title` above. */}
                     {unsentTags.has(k) && (
                       <>
                         <BanIcon className="ml-1 size-3 shrink-0" aria-hidden />

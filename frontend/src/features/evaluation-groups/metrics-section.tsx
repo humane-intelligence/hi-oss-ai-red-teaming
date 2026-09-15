@@ -210,14 +210,8 @@ export function TokensCard({ tokens }: { tokens: TokenMetrics }) {
             </div>
             {hasSplit ? (
               <div className="space-y-1.5">
-                {/* One fill, not two segments. A two-colour bar needs both colours ≥3:1 from the
-                    track AND from each other, in both themes — measured against this palette, no
-                    pair of tokens satisfies all four (the ones that separate from the track sit too
-                    close to each other in dark, and the pairs that separate from each other are
-                    invisible against it). So the bar carries the input share and the rows below
-                    carry both amounts with their percentages. The remaining pair is still under
-                    1.4.11's 3:1 — allowed because the text beside it carries the same information,
-                    not because any pair measured clean. */}
+                {/* One fill, not two segments: the bar carries the input share and the rows below
+                    carry both amounts with their percentages. */}
                 <div className="bg-muted h-2 overflow-hidden rounded-full">
                   <div className="bg-primary h-2" style={{ width: segment(prompt_tokens) }} />
                 </div>
@@ -300,9 +294,8 @@ export function GroupTokensByModelCard({
 }
 
 // No column here carries `hideBelow`: the table sits in a card with no expander and no detail
-// route, so a dropped number is gone rather than one tap away. The uppercase, wide-tracked headers
-// were what would not fit (SUBMISSIONS alone measured 105px against a 291px card), so they
-// abbreviate instead.
+// route, so a dropped number is gone rather than one tap away. The headers are what would not fit
+// ("Submissions" needs 85px against the 58px its column gets), so they abbreviate instead.
 const scenarioColumns: Column<ScenarioMetrics>[] = [
   { header: 'Scenario', cell: (s) => <span className="font-medium">{s.name}</span> },
   {

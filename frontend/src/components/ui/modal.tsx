@@ -135,9 +135,7 @@ export function Modal({
           <div className="space-y-4">
             <header className="space-y-1">
               {eyebrow && (
-                <p className="text-muted-foreground/70 font-mono text-[10px] tracking-[0.2em] uppercase">
-                  {eyebrow}
-                </p>
+                <p className="text-muted-foreground/70 font-mono text-[10px]">{eyebrow}</p>
               )}
               <h2 id={titleId} className="font-display text-lg font-semibold tracking-tight">
                 {title}

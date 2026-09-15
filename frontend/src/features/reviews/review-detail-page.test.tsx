@@ -356,8 +356,7 @@ describe('ReviewDetailPage', () => {
 
     const chip = await screen.findByText('env: dev')
     expect(chip).toBeInTheDocument()
-    // The record has to stay legible on the row it was added for: inheriting a dimmed ancestor
-    // drops this chip to 2.23:1 (light) / 2.80:1 (dark), under the 3.0 large-text floor.
+    // The record has to stay legible on the row it was added for, so it sits outside the dimmed subtree.
     expect(chip.closest('.opacity-60')).toBeNull()
   })
 

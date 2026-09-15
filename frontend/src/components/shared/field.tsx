@@ -12,7 +12,7 @@ export function Field({
 }) {
   return (
     <div className={className}>
-      <dt className="text-muted-foreground text-xs tracking-wide uppercase">{label}</dt>
+      <dt className="text-muted-foreground text-xs tracking-wide">{label}</dt>
       <dd className="mt-0.5 text-sm break-words">{children}</dd>
     </div>
   )

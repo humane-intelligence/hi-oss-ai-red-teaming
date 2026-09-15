@@ -9,7 +9,7 @@ export function StatTile({ label, value, to }: { label: string; value: ReactNode
   const body = (
     <>
       {/* A long single-word label used to spill past the card; the value div stays the next sibling. */}
-      <div className="text-muted-foreground flex min-w-0 items-center justify-between gap-2 font-mono text-[10px] tracking-[0.2em] wrap-anywhere uppercase">
+      <div className="text-muted-foreground flex min-w-0 items-center justify-between gap-2 font-mono text-[10px] wrap-anywhere">
         {label}
         {to != null && <ChevronRight className="size-4 shrink-0" aria-hidden />}
       </div>

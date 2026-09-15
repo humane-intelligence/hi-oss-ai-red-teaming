@@ -27,7 +27,7 @@ export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCel
       className={cn(
         // `px-2` below `sm`: 8px per column back is what lets the narrowest tables keep every
         // column instead of dropping one.
-        'text-muted-foreground h-9 px-2 text-left align-middle font-mono text-[10px] font-medium tracking-[0.08em] uppercase sm:px-3 sm:tracking-[0.14em]',
+        'text-muted-foreground h-9 px-2 text-left align-middle font-mono text-[10px] font-medium sm:px-3',
         className,
       )}
       {...props}
