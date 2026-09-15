@@ -1,9 +1,18 @@
 hi-oss-ai-red-teaming
 Copyright 2026 Humane Intelligence
 
-This product is licensed under the Apache License, Version 2.0 (the "License").
-You may obtain a copy of the License in the LICENSE file distributed with this
-work, or at http://www.apache.org/licenses/LICENSE-2.0
+This product is licensed under the Apache License, Version 2.0 (the "License"),
+except for the documentation. You may obtain a copy of the License in the
+LICENSE file distributed with this work, or at
+http://www.apache.org/licenses/LICENSE-2.0
+
+The documentation — every Markdown file in this repository — is licensed under
+the Creative Commons Attribution 4.0 International License instead. Everything
+else stays under Apache 2.0 or the licence stated for it: source code,
+configuration, generated machine-readable artifacts, and any file carrying its
+own licence notice, the third-party components below included. The CC-By-4.0
+text is in the LICENSE-docs file distributed with this work, or at
+https://creativecommons.org/licenses/by/4.0/
 
 ================================================================================
 Third-party components

@@ -2,6 +2,7 @@
 name = "ai-red-teaming-backend"
 version = "0.1.0"
 description = "AI red teaming backend"
+license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [

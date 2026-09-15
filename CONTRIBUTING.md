@@ -4,6 +4,14 @@ Thanks for taking the time to contribute! This is a monorepo — a Python/FastAP
 React/Vite operator console — and the two are coupled by the OpenAPI contract, which shapes most of
 the workflow below.
 
+## What to contribute
+
+Bug fixes, documentation, tests and new integrations are welcome as pull requests without asking
+first. New features, and anything that changes the API contract or the database schema, should start
+as an issue, so the shape can be agreed before you write the code.
+
+Questions about contributing go to <oss@humane-intelligence.org>.
+
 ## Getting set up
 
 The host needs Docker, make, and [uv](https://docs.astral.sh/uv/) — the backend's dependencies, git
@@ -67,15 +75,20 @@ before pushing a frontend change**, or the push hook will reject it.
 - **Say how you verified it.** The PR template asks for this because it is the part reviewers cannot
   reconstruct: what you ran, what it printed, and what you could not check.
 
+Pull requests are reviewed by the maintainers on a rolling basis. Each is assessed for its
+complexity and dependencies before the number of required reviews is determined.
+
 ## Licensing and sign-off
 
 This project is licensed under [Apache 2.0](LICENSE), and contributions come in under the same
 licence. You keep the copyright in what you write; submitting it licenses it to the project on those
 terms. There is no CLA to sign and no copyright to assign.
 
-What we do ask is that every commit carries a Developer Certificate of Origin sign-off. The [DCO](DCO)
-is a short statement that you wrote the patch, or otherwise hold the right to submit it under this
-licence. You accept it per commit by adding a `Signed-off-by` trailer, which git writes for you:
+As an exception, the documentation contained in Markdown files in this repo is under a [CC-By-4.0 license](LICENSE-docs). Accordingly, contributions to those files come under CC-By-4.0.
+
+The maintainers of this repo require that every commit carries a Developer Certificate of Origin sign-off. The [DCO](DCO)
+is a short statement that you wrote the patch. Commits should only be made if they are allowed to be submitted under the repo
+licenses. DCOs are added per commit by adding a `Signed-off-by` trailer, which git can write:
 
 ```bash
 git commit -s -m "Reject an export request for a sealed conversation"
@@ -96,6 +109,10 @@ squash-merging lands on `main`.
 
 Sign-off is a statement about provenance, not identity: GPG or SSH commit signatures are welcome but
 not required.
+
+### A note on dependency licenses
+
+Almost everything here is permissively licensed (MIT, BSD, Apache 2.0), except `psycopg`, the PostgreSQL driver. Its license is LGPL-3.0; however, this is acceptable as an ordinary dependency, as long as we don't vendor or modify its source (we do not). New dependencies should stay permissive; flag anything copyleft (GPL, AGPL, LGPL) in the PR description.
 
 ## Tests
 
