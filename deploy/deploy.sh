@@ -140,6 +140,11 @@ if oidc_google_client_id="$(ssm OIDC_GOOGLE_CLIENT_ID 2>/dev/null)" &&
 	echo "OIDC_GOOGLE_CLIENT_SECRET=$oidc_google_client_secret" >> .env
 fi
 
+# OIDC domain allowlist — opt-in; absent → any domain may sign in via OIDC.
+if ssm_optional OIDC_ALLOWED_DOMAINS; then
+	echo "OIDC_ALLOWED_DOMAINS=$ssm_value" >> .env
+fi
+
 # Hostnames Caddy serves besides APP_DOMAIN (an IP, an sslip.io alias); compose appends them to APP_DOMAIN.
 if ssm_optional APP_EXTRA_HOSTS; then
 	echo "APP_EXTRA_HOSTS=$ssm_value" >> .env

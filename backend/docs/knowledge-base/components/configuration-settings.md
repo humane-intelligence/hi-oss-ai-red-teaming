@@ -78,6 +78,7 @@ class Settings(BaseSettings):
 | `CONVERSATION_SECRETS_KEY` | yes | — | min 32 chars, AES-256-GCM key sealing conversation **message text**; must not share a value with `MODEL_SECRETS_KEY` |
 | `CONVERSATION_SECRETS_KEY_RETIRED` | no | — | outgoing transcript key during rotation; droppable only after `make rewraptranscripts` reports zero |
 | `OIDC_GOOGLE_CLIENT_ID` / `OIDC_GOOGLE_CLIENT_SECRET` | no | — | Google OIDC client; **both unset** leaves Google out of the provider registry entirely, setting only one is a startup error |
+| `OIDC_ALLOWED_DOMAINS` | no | — | comma-separated e-mail domains an OIDC login must belong to (verified email + Google `hd` when sent); outside → `#error=domain_not_allowed`, existing accounts included, and an existing OIDC session is refused at its next refresh; without `hd` only the email domain is checked, so a consumer Google account on a listed domain passes unless the OAuth client is *Internal*; exact match, subdomains not implied; a malformed entry is a startup error; unset = any domain |
 | `EMAIL_FROM` | yes | — | sender address on outbound mail |
 | `FRONTEND_BASE_URL` | yes | — | SPA base URL embedded in transactional mail links, no trailing slash |
 | `LOG_LEVEL` | no | `INFO` | log level |

@@ -10,6 +10,7 @@ const ERROR_COPY: Record<string, string> = {
   // just a personal "cancel" on the consent screen — stay neutral on cause.
   access_denied: 'Your provider did not complete the sign-in.',
   email_unverified: 'Your provider has not verified this email address.',
+  domain_not_allowed: 'Sign-in with this provider is limited to approved email domains.',
   account_inactive: 'This account cannot sign in. Ask an administrator to reactivate it.',
   invalid_claims: 'Your provider did not return the details we need to sign you in.',
   // Same copy as the register page's invite-only note — one message for one policy.

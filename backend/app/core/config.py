@@ -1,13 +1,17 @@
 """Application settings — env-driven via pydantic-settings, accessed through ``get_settings()``."""
 
+import re
 from functools import lru_cache
+from typing import Annotated
 from typing import Literal
 
 from pydantic import EmailStr
 from pydantic import Field
 from pydantic import SecretStr
+from pydantic import field_validator
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
+from pydantic_settings import NoDecode
 from pydantic_settings import SettingsConfigDict
 
 # Safe at module load: catalog.py imports only the stdlib (no app modules), so there is no cycle.
@@ -21,6 +25,8 @@ from app.core.licenses.catalog import is_selectable_platform_default
 # task never leaves a row un-restartable — which is the other half of raising it: an operator whose
 # worker was SIGKILLed waits this much longer before a re-check is accepted.
 _HEALTH_CHECK_TASK_MARGIN_SECONDS = 45
+
+_DOMAIN_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+")
 
 
 class Settings(BaseSettings):
@@ -73,6 +79,9 @@ class Settings(BaseSettings):
     # a login would actually work and a deployment without an IdP is unaffected.
     oidc_google_client_id: str | None = None
     oidc_google_client_secret: SecretStr | None = None
+    # Comma-separated e-mail domains an OIDC login must belong to (checked against the
+    # verified email and Google's `hd` claim when sent). Empty = any domain.
+    oidc_allowed_domains: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # Symmetric key used to encrypt AI-model API keys at rest via JWE (`dir` + `A256GCM`). Conversation
     # message text is sealed with `conversation_secrets_key` and never with this one. Any ≥32-char value
@@ -260,6 +269,19 @@ class Settings(BaseSettings):
     db_pool_timeout: int = 30
     db_pool_recycle: int = 1800  # recycle connections after 30 min to avoid stale state
     db_echo: bool = False  # set DB_ECHO=true to log all SQL (development only)
+
+    @field_validator("oidc_allowed_domains", mode="before")
+    @classmethod
+    def _split_oidc_allowed_domains(cls, value: object) -> object:
+        entries = value.split(",") if isinstance(value, str) else value
+        if not isinstance(entries, (list, tuple, set)) or not all(isinstance(entry, str) for entry in entries):
+            return value
+        domains = [domain.strip().lower() for domain in entries if domain.strip()]
+        # A malformed entry never matches, silently locking its domain out of OIDC — fail at boot instead.
+        bad = [domain for domain in domains if not _DOMAIN_RE.fullmatch(domain)]
+        if bad:
+            raise ValueError(f"oidc_allowed_domains takes bare comma-separated domains, got {bad}")
+        return domains
 
     @model_validator(mode="after")
     def _validate_model_secret_keyring(self) -> Settings:

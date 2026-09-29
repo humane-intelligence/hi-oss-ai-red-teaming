@@ -445,3 +445,57 @@ def test_no_license_sentinel_as_platform_default_fails_settings_validation() -> 
             frontend_base_url="http://localhost:3000",
             platform_default_data_license="NONE",
         )
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_env_vars", "_clear_settings_cache")
+def test_oidc_allowed_domains_parses_a_comma_separated_env_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OIDC_ALLOWED_DOMAINS", " Example.org, b.example.com,, ")
+
+    assert get_settings().oidc_allowed_domains == ["example.org", "b.example.com"]
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_env_vars", "_clear_settings_cache")
+def test_oidc_allowed_domains_blank_allows_any_domain(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OIDC_ALLOWED_DOMAINS", " , ")
+
+    assert get_settings().oidc_allowed_domains == []
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_env_vars", "_clear_settings_cache")
+def test_oidc_allowed_domains_normalises_a_list_value() -> None:
+    assert Settings(oidc_allowed_domains=[" Example.org", ""]).oidc_allowed_domains == ["example.org"]
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_env_vars", "_clear_settings_cache")
+def test_oidc_allowed_domains_validates_a_list_value() -> None:
+    with pytest.raises(ValidationError, match="bare comma-separated domains"):
+        Settings(oidc_allowed_domains=["*.example.org"])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "@example.org",
+        "*.example.org",
+        '["example.org"]',
+        "example.org/x",
+        "a b.org",
+        "a.org;b.org",
+        "a.org|b.org",
+        "example.org.",
+        "example",
+        "a-.org",
+        "-.-",
+    ],
+)
+@pytest.mark.usefixtures("_env_vars", "_clear_settings_cache")
+def test_malformed_oidc_allowed_domains_fail_settings_validation(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    monkeypatch.setenv("OIDC_ALLOWED_DOMAINS", raw)
+
+    with pytest.raises(ValidationError, match="bare comma-separated domains"):
+        get_settings()

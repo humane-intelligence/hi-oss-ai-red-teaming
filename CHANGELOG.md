@@ -7,6 +7,14 @@ change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `OIDC_ALLOWED_DOMAINS`: optional comma-separated allowlist of e-mail domains for OIDC sign-in,
+  checked against the verified email and Google's `hd` claim. A login outside it is refused with
+  `#error=domain_not_allowed` before any account is resolved, existing accounts included, and an
+  OIDC session already outside it is refused at its next refresh; a malformed entry fails at
+  startup. Unset = any domain.
+
 ## 0.1.0 — 2026-09-10
 
 Initial public release.

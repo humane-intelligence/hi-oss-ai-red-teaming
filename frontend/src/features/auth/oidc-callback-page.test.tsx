@@ -127,6 +127,12 @@ describe('OidcCallbackPage', () => {
     expect(await screen.findByText(/registration is invite-only/i)).toBeInTheDocument()
   })
 
+  it('explains a domain allowlist refusal', async () => {
+    renderCallback('#error=domain_not_allowed')
+
+    expect(await screen.findByText(/limited to approved email domains/i)).toBeInTheDocument()
+  })
+
   it('moves focus to the recovery action after a failure', async () => {
     renderCallback('#error=account_inactive')
 

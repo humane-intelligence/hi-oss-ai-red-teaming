@@ -40,7 +40,7 @@ class MissingClaimError(Exception):
 
 
 class UnverifiedEmailError(Exception):
-    """The IdP returned `email_verified=false` and this provider does not trust it.
+    """The IdP returned `email_verified=false` and this provider does not trust it (or an allowlist is set).
 
     Treated as account-takeover risk: a session is not minted, the caller
     redirects with `#error=email_unverified`.
@@ -74,6 +74,14 @@ class InviteOnlyError(Exception):
     """
 
 
+class DomainNotAllowedError(Exception):
+    """The login's email domain (or Google `hd` claim) is outside `OIDC_ALLOWED_DOMAINS`.
+
+    Decided from the claims alone, before any account is resolved, so it refuses
+    existing and fresh accounts alike and says nothing about which emails exist.
+    """
+
+
 async def _get_identity(session: AsyncSession, *, provider: str, subject: str) -> ProviderIdentity | None:
     result = await session.execute(
         ProviderIdentity.live_select()
@@ -92,6 +100,14 @@ def _optional_str_claim(claims: dict[str, Any], key: str) -> str | None:
     """
     value = claims.get(key)
     return value if isinstance(value, str) else None
+
+
+def _domain_allowed(email: str, claims: dict[str, Any], allowed: list[str]) -> bool:
+    if "@" not in email or email.rpartition("@")[2] not in allowed:
+        return False
+    # `hd` is Google's Workspace-domain claim; absent on consumer accounts, where the email decides.
+    hd = claims.get("hd")
+    return hd is None or (isinstance(hd, str) and hd.strip().lower() in allowed)
 
 
 async def _activate(session: AsyncSession, user: User, *, email_verified: bool) -> None:
@@ -238,12 +254,15 @@ async def finalize_login(
     it — unless the platform is invite-only, which refuses the fresh-account arm
     (and only that arm). Linking also activates a `pending` / `invited` account —
     the IdP's verification is at least as strong as our own email loop — keeping
-    whatever roles it was invited with.
+    whatever roles it was invited with. With `OIDC_ALLOWED_DOMAINS` set, a login
+    outside those domains is refused before any account is looked up.
 
     Raises:
         MissingClaimError: `sub` or `email` is absent, non-string, or blank after
             stripping.
-        UnverifiedEmailError: The provider reports the email unverified and is not trusted.
+        UnverifiedEmailError: The provider reports the email unverified and is not trusted, or
+            `OIDC_ALLOWED_DOMAINS` is set.
+        DomainNotAllowedError: The email domain or `hd` claim is outside `OIDC_ALLOWED_DOMAINS`.
         InactiveAccountError: The resolved account is deactivated or gone.
         InviteOnlyError: No account owns the email and the platform is invite-only.
     """
@@ -274,10 +293,20 @@ async def finalize_login(
         if isinstance(raw_email_verified, bool)
         else str(raw_email_verified).strip().lower() == "true"
     )
-    if not email_verified and not provider_trusts_unverified_email(provider):
+    allowed_domains = settings.oidc_allowed_domains
+    # Under an allowlist an unverified email's domain proves nothing, even from a provider trusted to skip verification.
+    if not email_verified and (allowed_domains or not provider_trusts_unverified_email(provider)):
         raise UnverifiedEmailError(
             f"id_token email is not verified by provider {provider}",
         )
+
+    if allowed_domains and not _domain_allowed(email, claims, allowed_domains):
+        hd = claims.get("hd")
+        domain = email.rpartition("@")[2]
+        detail = (
+            f"email domain {domain!r} is not" if hd is None else f"email domain {domain!r} / hd {hd!r} are not both"
+        )
+        raise DomainNotAllowedError(f"{detail} in OIDC_ALLOWED_DOMAINS")
 
     user = await _resolve_user(
         session,
