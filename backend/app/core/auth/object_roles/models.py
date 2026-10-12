@@ -46,7 +46,7 @@ class ObjectRoleAssignment(BaseModel, table=True):
     )
 
     object_type: ObjectType = Field(
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             ObjectType,
             values_callable=lambda enum: [m.value for m in enum],
             name="objecttype",

@@ -60,7 +60,7 @@ class ExportJob(BaseModel, table=True):
     requested_by_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True, ondelete="CASCADE")
     status: ExportJobStatus = Field(
         default=ExportJobStatus.PENDING,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             ExportJobStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="exportjobstatus",
@@ -73,7 +73,7 @@ class ExportJob(BaseModel, table=True):
     error: str | None = Field(default=None, sa_type=Text)
     expires_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Client-supplied key that dedups a burst of identical creates (see module docstring).

@@ -35,6 +35,6 @@ class TermsDocument(BaseModel, table=True):
     # transaction-start time, and two documents written in one transaction would tie there
     # with nothing to break the tie by (the same wrinkle `User.invitations` orders around).
     published_at: datetime = Field(
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": False, "index": True},
     )

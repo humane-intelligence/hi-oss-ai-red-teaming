@@ -35,7 +35,7 @@ class Notification(BaseModel, table=True):
     description: str | None = Field(default=None, sa_type=Text, sa_column_kwargs={"nullable": True})
     read_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Loose reference to a domain row; a plain string (see NotificationObjectType),

@@ -232,7 +232,7 @@ class Message(BaseModel, table=True):
 
     turn_id: uuid.UUID = Field(foreign_key="turns.id", nullable=False, ondelete="CASCADE", index=True)
     role: MessageRole = Field(
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             MessageRole,
             values_callable=lambda enum: [m.value for m in enum],
             name="messagerole",
@@ -240,7 +240,7 @@ class Message(BaseModel, table=True):
         sa_column_kwargs={"nullable": False},
     )
     status: MessageStatus = Field(
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             MessageStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="messagestatus",

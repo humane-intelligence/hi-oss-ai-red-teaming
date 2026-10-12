@@ -48,7 +48,7 @@ class OutboundEmail(BaseModel, table=True):
     subject: str | None = Field(default=None, max_length=998)
     status: OutboundEmailStatus = Field(
         default=OutboundEmailStatus.QUEUED,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             OutboundEmailStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="outboundemailstatus",
@@ -74,7 +74,7 @@ class OutboundEmail(BaseModel, table=True):
     attempts: int = Field(default=0)
     sent_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     celery_task_id: str | None = Field(default=None, index=True, max_length=64)
