@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 # knobs (top_k) without breaking other providers. num_retries=0: retry is the
 # consumer's policy. telemetry off: no outbound pings (also keeps the sandbox happy).
 litellm.drop_params = True
-litellm.telemetry = False  # ty: ignore[invalid-assignment]
+litellm.telemetry = False
 litellm.num_retries = 0
 
 _DEFAULT_TIMEOUT = 60.0
