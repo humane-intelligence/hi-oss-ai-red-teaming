@@ -77,7 +77,7 @@ class Evaluation(BaseModel, table=True):
     data_license: DataLicense | None = Relationship(sa_relationship_kwargs={"lazy": "raise"})
     status: EvaluationStatus = Field(
         default=EvaluationStatus.NEW,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             EvaluationStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="evaluationstatus",
@@ -139,7 +139,7 @@ class EvaluationGroup(BaseModel, table=True):
     created_by_id: uuid.UUID = Field(foreign_key="users.id", nullable=False, index=True)
     status: PublicationStatus = Field(
         default=PublicationStatus.DRAFT,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             PublicationStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="publicationstatus",
@@ -149,7 +149,7 @@ class EvaluationGroup(BaseModel, table=True):
     rejection_reason: str | None = Field(default=None, sa_type=Text)
     access_level: EvaluationGroupAccessLevel = Field(
         default=EvaluationGroupAccessLevel.INVITATION_ONLY,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             EvaluationGroupAccessLevel,
             values_callable=lambda enum: [m.value for m in enum],
             name="evaluationgroupaccesslevel",
@@ -162,12 +162,12 @@ class EvaluationGroup(BaseModel, table=True):
     # default. Don't re-align the two — it would widen the backfill.
     metrics_access_during: MetricsAccessLevel = Field(
         default=MetricsAccessLevel.MEMBERS_PERSONAL_METRICS,
-        sa_type=_METRICS_ACCESS_LEVEL_ENUM,  # ty: ignore[invalid-argument-type]
+        sa_type=_METRICS_ACCESS_LEVEL_ENUM,
         sa_column_kwargs={"nullable": False, "server_default": text("'owner_only'")},
     )
     metrics_access_after: MetricsAccessLevel = Field(
         default=MetricsAccessLevel.MEMBERS_PERSONAL_METRICS,
-        sa_type=_METRICS_ACCESS_LEVEL_ENUM,  # ty: ignore[invalid-argument-type]
+        sa_type=_METRICS_ACCESS_LEVEL_ENUM,
         sa_column_kwargs={"nullable": False, "server_default": text("'owner_only'")},
     )
     # Tenancy: the organization this group *belongs to* — a separate axis from

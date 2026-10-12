@@ -7,7 +7,7 @@ break-glass admin passes). The bulk envelope adds per-row isolation, dry-run
 side-effect gating, duplicate-email rejection, and post-commit mail dispatch.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from unittest.mock import MagicMock
@@ -51,7 +51,7 @@ def _celery_enqueue_stub(celery_enqueue_stub: MagicMock) -> None:
 
 
 @contextmanager
-def as_user(user: User) -> Iterator[None]:
+def as_user(user: User) -> Generator[None]:
     app.dependency_overrides[current_user] = lambda: session_user_from(user)
     try:
         yield

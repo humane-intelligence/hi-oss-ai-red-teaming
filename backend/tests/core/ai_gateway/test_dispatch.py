@@ -48,7 +48,7 @@ def _session_provider(session: AsyncSession) -> Callable[[], AbstractAsyncContex
     uninitialised engine, whose swallowed RuntimeError spams ERROR logs per call."""
 
     @asynccontextmanager
-    async def provider() -> AsyncIterator[AsyncSession]:
+    async def provider() -> AsyncGenerator[AsyncSession]:
         yield session
 
     return provider

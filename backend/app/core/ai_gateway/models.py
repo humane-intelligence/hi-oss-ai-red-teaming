@@ -69,7 +69,7 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     description: str | None = Field(default=None, sa_type=Text)
     model_alias: str = Field(max_length=128, nullable=False)
     provider: ProviderVendor = Field(
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             ProviderVendor,
             values_callable=lambda enum: [m.value for m in enum],
             name="providervendor",
@@ -83,12 +83,12 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     # in enum order — the column itself enforces neither, nor set membership.
     input_modalities: list[Modality] = Field(
         default_factory=lambda: [Modality.TEXT],
-        sa_type=ARRAY(String),  # ty: ignore[invalid-argument-type]
+        sa_type=ARRAY(String),
         sa_column_kwargs={"nullable": False, "server_default": text("'{text}'")},
     )
     output_modalities: list[Modality] = Field(
         default_factory=lambda: [Modality.TEXT],
-        sa_type=ARRAY(String),  # ty: ignore[invalid-argument-type]
+        sa_type=ARRAY(String),
         sa_column_kwargs={"nullable": False, "server_default": text("'{text}'")},
     )
     provider_model_id: str = Field(max_length=255, nullable=False)
@@ -115,7 +115,7 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     # modality sets above — the column itself enforces neither.
     labels: list[str] = Field(
         default_factory=list,
-        sa_type=ARRAY(String),  # ty: ignore[invalid-argument-type]
+        sa_type=ARRAY(String),
         sa_column_kwargs={"nullable": False, "server_default": text("'{}'")},
     )
     # `extras` carries provider call-shape metadata (auth, apiUrl, body
@@ -132,13 +132,13 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     api_key_encrypted: str | None = Field(default=None, max_length=1024)
     disabled_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Manual per-model health check. All nullable; `null` health_check_status = never checked.
     health_check_status: HealthCheckStatus | None = Field(
         default=None,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             HealthCheckStatus,
             values_callable=lambda enum: [member.value for member in enum],
             name="healthcheckstatus",
@@ -147,7 +147,7 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     )
     last_health_check_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     last_health_reason: str | None = Field(default=None, max_length=64)
@@ -158,7 +158,7 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     capability_mismatch: str | None = Field(default=None, max_length=MISMATCH_MAX_LEN)
     last_healthy_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Inactivity alerting: usage and warmup stamps are kept apart because warmup-only
@@ -166,17 +166,17 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
     inactivity_alert_hours: int | None = Field(default=None, sa_column_kwargs={"nullable": True})
     last_used_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     last_warmup_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     inactivity_alerted_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
 

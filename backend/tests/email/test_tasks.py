@@ -1,5 +1,6 @@
 """Tests for app.core.email.tasks.send_email_task — task lifecycle against a real OutboundEmail row."""
 
+from collections.abc import Generator
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -52,7 +53,7 @@ def patched_session(
     session_factory = sessionmaker(engine, expire_on_commit=False)
 
     @contextmanager
-    def fake_scope() -> Iterator[Session]:
+    def fake_scope() -> Generator[Session]:
         session = session_factory()
         try:
             yield session

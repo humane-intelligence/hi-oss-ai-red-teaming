@@ -2,6 +2,7 @@
 
 import json
 from base64 import b64encode
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC
@@ -223,7 +224,7 @@ def audit_via_test_session(monkeypatch: pytest.MonkeyPatch, db_session: AsyncSes
     """
 
     @asynccontextmanager
-    async def _fake_standalone() -> AsyncIterator[AsyncSession]:
+    async def _fake_standalone() -> AsyncGenerator[AsyncSession]:
         yield db_session
 
     monkeypatch.setattr("app.core.middleware.audit.standalone_session", _fake_standalone)

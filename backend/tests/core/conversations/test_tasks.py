@@ -6,6 +6,7 @@ engine bound to the **test** DB, with the task's `session_scope` patched to it, 
 the message graph built synchronously via plain model constructors.
 """
 
+from collections.abc import Generator
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC
@@ -65,7 +66,7 @@ def sync_session(monkeypatch: pytest.MonkeyPatch, _test_db: str, db_engine: Asyn
     session_factory = sessionmaker(engine, expire_on_commit=False)
 
     @contextmanager
-    def fake_scope() -> Iterator[Session]:
+    def fake_scope() -> Generator[Session]:
         session = session_factory()
         try:
             yield session

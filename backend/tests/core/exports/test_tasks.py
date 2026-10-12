@@ -8,6 +8,7 @@ graph synchronously with a plain sync session, cleaning up by reverse-FK order.
 
 import asyncio
 import json
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -135,7 +136,7 @@ def patch_async_scope(monkeypatch: pytest.MonkeyPatch, _test_db: str, db_engine:
     async_url = make_url(get_settings().database_url).set(database=_test_db).render_as_string(hide_password=False)
 
     @asynccontextmanager
-    async def fake_scope() -> AsyncIterator[AsyncSession]:
+    async def fake_scope() -> AsyncGenerator[AsyncSession]:
         engine = create_async_engine(async_url, poolclass=NullPool)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         try:

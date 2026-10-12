@@ -11,8 +11,8 @@ task in the same process reuses them.  No explicit lifecycle is needed —
 Celery handles worker startup/shutdown and the connection pool drains on exit.
 """
 
-from collections.abc import AsyncIterator
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator
+from collections.abc import Generator
 from contextlib import asynccontextmanager
 from contextlib import contextmanager
 
@@ -79,7 +79,7 @@ def _ensure_session_factory() -> sessionmaker[Session]:
 
 
 @contextmanager
-def session_scope() -> Iterator[Session]:
+def session_scope() -> Generator[Session]:
     """Yield a Session bound to a transaction; commit on success, rollback on error."""
     factory = _ensure_session_factory()
     session = factory()
@@ -94,7 +94,7 @@ def session_scope() -> Iterator[Session]:
 
 
 @asynccontextmanager
-async def async_session_scope() -> AsyncIterator[AsyncSession]:
+async def async_session_scope() -> AsyncGenerator[AsyncSession]:
     """Yield an AsyncSession for a task that must reuse the async service layer.
 
     Most tasks use the sync `session_scope`. This exists for the few that have to

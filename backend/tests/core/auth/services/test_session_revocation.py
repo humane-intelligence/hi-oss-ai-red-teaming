@@ -1,7 +1,7 @@
 """Redis-backed per-user session revocation."""
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import cast
 from uuid import UUID
@@ -54,7 +54,7 @@ async def test_is_revoked_fails_open_on_redis_error(monkeypatch: pytest.MonkeyPa
             raise RedisError("redis down")
 
     @asynccontextmanager
-    async def _boom() -> AsyncIterator[_BoomClient]:
+    async def _boom() -> AsyncGenerator[_BoomClient]:
         yield _BoomClient()
 
     monkeypatch.setattr(session_revocation, "_redis", _boom)
@@ -68,7 +68,7 @@ async def test_is_revoked_reraises_on_redis_error_when_fail_closed(monkeypatch: 
             raise RedisError("redis down")
 
     @asynccontextmanager
-    async def _boom() -> AsyncIterator[_BoomClient]:
+    async def _boom() -> AsyncGenerator[_BoomClient]:
         yield _BoomClient()
 
     monkeypatch.setattr(session_revocation, "_redis", _boom)

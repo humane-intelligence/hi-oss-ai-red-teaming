@@ -84,7 +84,7 @@ class MessageFlag(BaseModel, table=True):
     comment: str | None = Field(default=None, sa_type=Text)
     status: FlagStatus = Field(
         default=FlagStatus.PENDING,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             FlagStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="flagstatus",

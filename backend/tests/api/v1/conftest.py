@@ -12,6 +12,7 @@ tests (auth, role/permission catalogs) — one definition instead of a per-file 
 """
 
 from collections.abc import AsyncIterator
+from collections.abc import Generator
 from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import uuid4
@@ -41,7 +42,7 @@ PROBLEM_CT = "application/problem+json"
 
 
 @contextmanager
-def as_user(user: User) -> Iterator[None]:
+def as_user(user: User) -> Generator[None]:
     """Override the `current_user` + `optional_current_user` dependencies to authenticate as `user`."""
     app.dependency_overrides[current_user] = lambda: session_user_from(user)
     app.dependency_overrides[optional_current_user] = lambda: session_user_from(user)

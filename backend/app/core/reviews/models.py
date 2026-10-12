@@ -47,7 +47,7 @@ class Review(BaseModel, table=True):
     evaluation_id: uuid.UUID = Field(foreign_key="evaluations.id", nullable=False, ondelete="CASCADE")
     status: ReviewStatus = Field(
         default=ReviewStatus.PENDING,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             ReviewStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="reviewstatus",

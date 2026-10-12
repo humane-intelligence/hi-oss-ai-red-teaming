@@ -102,7 +102,7 @@ class User(BaseModel, table=True):
     email: str = Field(max_length=320, nullable=False)
     email_verified_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     first_name: str | None = Field(default=None, max_length=255)
@@ -114,7 +114,7 @@ class User(BaseModel, table=True):
     # password-reset distinguish "recovering a credential" from "never had one".
     password_cleared_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Tenancy: the organization the user belongs to. Nullable so self-signup /
@@ -129,7 +129,7 @@ class User(BaseModel, table=True):
     )
     status: UserStatus = Field(
         default=UserStatus.INVITED,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             UserStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="userstatus",
@@ -149,7 +149,7 @@ class User(BaseModel, table=True):
     )
     terms_accepted_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Answer to "send me email", recorded but not yet enforced anywhere: every template the
@@ -328,12 +328,12 @@ class Invitation(BaseModel, table=True):
     )
     token_hash: str = Field(max_length=64, nullable=False)
     expires_at: datetime = Field(
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": False},
     )
     revoked_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     invited_by_user_id: uuid.UUID | None = Field(
@@ -343,12 +343,12 @@ class Invitation(BaseModel, table=True):
     )
     accepted_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     status: InvitationStatus = Field(
         default=InvitationStatus.PENDING,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             InvitationStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="invitationstatus",
@@ -360,7 +360,7 @@ class Invitation(BaseModel, table=True):
     # domain. NULL = plain platform invitation. `object_id` carries no FK (polymorphic).
     object_type: ObjectType | None = Field(
         default=None,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             ObjectType,
             values_callable=lambda enum: [m.value for m in enum],
             name="objecttype",
@@ -396,22 +396,22 @@ class EmailVerification(BaseModel, table=True):
     )
     token_hash: str = Field(max_length=64, nullable=False)
     expires_at: datetime = Field(
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": False},
     )
     revoked_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     verified_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     status: EmailVerificationStatus = Field(
         default=EmailVerificationStatus.PENDING,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             EmailVerificationStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="emailverificationstatus",
@@ -441,22 +441,22 @@ class PasswordResetToken(BaseModel, table=True):
     )
     token_hash: str = Field(max_length=64, nullable=False)
     expires_at: datetime = Field(
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": False},
     )
     used_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     revoked_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     status: PasswordResetTokenStatus = Field(
         default=PasswordResetTokenStatus.PENDING,
-        sa_type=Enum(  # ty: ignore[invalid-argument-type]
+        sa_type=Enum(
             PasswordResetTokenStatus,
             values_callable=lambda enum: [m.value for m in enum],
             name="passwordresettokenstatus",

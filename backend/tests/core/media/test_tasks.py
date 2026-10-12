@@ -7,6 +7,7 @@ patched to it, and the graph built synchronously via plain model constructors.
 """
 
 import asyncio
+from collections.abc import Generator
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC
@@ -85,7 +86,7 @@ def sync_session(monkeypatch: pytest.MonkeyPatch, _test_db: str, db_engine: Asyn
     session_factory = sessionmaker(engine, expire_on_commit=False)
 
     @contextmanager
-    def fake_scope() -> Iterator[Session]:
+    def fake_scope() -> Generator[Session]:
         session = session_factory()
         try:
             yield session

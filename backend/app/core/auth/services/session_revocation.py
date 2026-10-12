@@ -20,7 +20,7 @@ Operational constraints (single-instance today):
 """
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -85,7 +85,7 @@ def _key(user_id: UUID) -> str:
 
 
 @asynccontextmanager
-async def _redis() -> AsyncIterator[Redis]:
+async def _redis() -> AsyncGenerator[Redis]:
     """The pooled client when the lifespan set one up; else a short-lived one."""
     shared = _shared.get("client")
     if shared is not None:
