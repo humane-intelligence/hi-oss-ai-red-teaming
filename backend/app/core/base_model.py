@@ -55,12 +55,17 @@ class BaseModel(SQLModel):
     # constructs a fresh Column per concrete subclass — a single Column instance
     # cannot be attached to more than one Table.
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # `default=None` on the server-filled timestamps keeps them optional in `__init__` — sqlmodel
+    # >= 0.0.44 types a `Field()` without a default as required. SQLAlchemy omits a `None` from
+    # the INSERT, so `server_default` still stamps them; the value is `None` only until the flush.
     created_at: datetime = Field(
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        default=None,
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": False, "server_default": func.now()},
     )
     updated_at: datetime = Field(
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        default=None,
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={
             "nullable": False,
             "server_default": func.now(),
@@ -69,7 +74,7 @@ class BaseModel(SQLModel):
     )
     deleted_at: datetime | None = Field(
         default=None,
-        sa_type=DateTime(timezone=True),  # ty: ignore[invalid-argument-type]
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={"nullable": True},
     )
     # Who tombstoned the row — scopes restore ("users restore only their own deletes").
