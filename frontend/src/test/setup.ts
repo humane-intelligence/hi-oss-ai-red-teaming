@@ -26,6 +26,14 @@ globalThis.ResizeObserver ??= ResizeObserverStub
 // trap, Escape and focus return are the browser's, exercised in the browser pass and not here.
 HTMLDialogElement.prototype.showModal ??= function showModal(this: HTMLDialogElement) {
   this.open = true
+  // Browsers run the dialog focusing steps on open. React's `autoFocus` fires while the dialog is
+  // still closed (display: none), which jsdom >= 30.1.2 refuses like a browser, so focus moves here.
+  const control =
+    this.querySelector<HTMLElement>('[autofocus]') ??
+    this.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+  control?.focus()
 }
 HTMLDialogElement.prototype.close ??= function close(this: HTMLDialogElement) {
   this.open = false
