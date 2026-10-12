@@ -69,6 +69,7 @@ os.environ.update(
 import asyncio
 import logging
 import re
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Callable
 from collections.abc import Iterator
@@ -525,7 +526,7 @@ def finalize_session_provider(session: AsyncSession) -> Callable[[], AbstractAsy
     """
 
     @asynccontextmanager
-    async def provider() -> AsyncIterator[AsyncSession]:
+    async def provider() -> AsyncGenerator[AsyncSession]:
         yield session
 
     return provider

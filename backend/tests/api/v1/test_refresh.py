@@ -1,6 +1,7 @@
 """Integration tests for `POST /api/v1/auth/refresh`."""
 
 import time
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -244,7 +245,7 @@ async def test_refresh_fails_closed_when_revocation_check_errors(
             raise RedisError("redis down")
 
     @asynccontextmanager
-    async def _boom() -> AsyncIterator[_BoomClient]:
+    async def _boom() -> AsyncGenerator[_BoomClient]:
         yield _BoomClient()
 
     monkeypatch.setattr(session_revocation, "_redis", _boom)

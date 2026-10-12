@@ -23,7 +23,7 @@ non-loopback SLM_E2E_BASE_URL must also be allowed through pytest-socket, e.g.
 """
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from contextlib import asynccontextmanager
@@ -53,7 +53,7 @@ def _session_provider(session: AsyncSession) -> Callable[[], AbstractAsyncContex
     """A stamp-session provider yielding the test session — the app engine has no lifespan here."""
 
     @asynccontextmanager
-    async def provider() -> AsyncIterator[AsyncSession]:
+    async def provider() -> AsyncGenerator[AsyncSession]:
         yield session
 
     return provider

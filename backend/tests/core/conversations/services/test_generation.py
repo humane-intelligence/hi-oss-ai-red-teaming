@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -279,7 +280,7 @@ async def test_persist_stream_swallows_finalize_failure(db_session: AsyncSession
     placeholder = await _placeholder(db_session)
 
     @asynccontextmanager
-    async def failing_provider() -> AsyncIterator[AsyncSession]:
+    async def failing_provider() -> AsyncGenerator[AsyncSession]:
         raise error
         yield db_session  # unreachable — only makes this an async generator
 
@@ -310,7 +311,7 @@ async def test_persist_stream_swallows_finalize_db_error(db_session: AsyncSessio
             raise SQLAlchemyError("update boom")
 
     @asynccontextmanager
-    async def exploding_provider() -> AsyncIterator[AsyncSession]:
+    async def exploding_provider() -> AsyncGenerator[AsyncSession]:
         yield cast(AsyncSession, _ExplodingSession())
 
     events = [

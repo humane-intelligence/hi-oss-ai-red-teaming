@@ -4,6 +4,7 @@ A fake provider stands in for litellm: a recording one for the success path and 
 raising one to drive each `ProviderError` subtype through the classifier.
 """
 
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -41,7 +42,7 @@ def _session_provider(session: AsyncSession) -> Callable[[], AbstractAsyncContex
     uninitialised engine, whose swallowed RuntimeError spams ERROR logs per call."""
 
     @asynccontextmanager
-    async def provider() -> AsyncIterator[AsyncSession]:
+    async def provider() -> AsyncGenerator[AsyncSession]:
         yield session
 
     return provider

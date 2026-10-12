@@ -5,6 +5,7 @@ alert; a warmup probe stamps only `last_warmup_at` — keeping an endpoint warm 
 messaging it is the cost pattern the alert exists to catch, so it must not reset the clock.
 """
 
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -61,7 +62,7 @@ def _session_provider(session: AsyncSession) -> Callable[[], AbstractAsyncContex
     """A stamp-session provider yielding the test session (no commit/close — the fixture owns it)."""
 
     @asynccontextmanager
-    async def provider() -> AsyncIterator[AsyncSession]:
+    async def provider() -> AsyncGenerator[AsyncSession]:
         yield session
 
     return provider
@@ -207,7 +208,7 @@ async def test_stamp_failure_does_not_fail_the_call(db_session: AsyncSession, ap
     await _create_model(db_session, app_settings)
 
     @asynccontextmanager
-    async def broken() -> AsyncIterator[AsyncSession]:
+    async def broken() -> AsyncGenerator[AsyncSession]:
         raise RuntimeError("no engine")
         yield  # pragma: no cover — makes this an async context manager
 

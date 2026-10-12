@@ -4,7 +4,7 @@ Auth is faked by overriding `current_user` (what `require_permission` resolves
 transitively) with `session_user_from` — no JWT minting needed.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC
 from datetime import date
@@ -37,7 +37,7 @@ pytestmark = pytest.mark.integration
 
 
 @contextmanager
-def as_user(user: User) -> Iterator[None]:
+def as_user(user: User) -> Generator[None]:
     app.dependency_overrides[current_user] = lambda: session_user_from(user)
     try:
         yield

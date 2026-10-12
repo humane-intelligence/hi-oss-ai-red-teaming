@@ -20,6 +20,7 @@ Usage in route handlers
 """
 
 import functools
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Callable
@@ -127,7 +128,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 
 
 @asynccontextmanager
-async def standalone_session() -> AsyncIterator[AsyncSession]:
+async def standalone_session() -> AsyncGenerator[AsyncSession]:
     """A fresh session outside the request lifecycle, committed on clean exit.
 
     For work that runs *after* the request session has been released — e.g.

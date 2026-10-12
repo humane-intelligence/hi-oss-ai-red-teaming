@@ -1,7 +1,7 @@
 """Integration tests for the audit-log subsystem: service, endpoint, and instrumentation."""
 
 from collections import Counter
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC
 from datetime import date
@@ -109,7 +109,7 @@ def audit_via_test_session(monkeypatch: pytest.MonkeyPatch, db_session: AsyncSes
     """
 
     @asynccontextmanager
-    async def _fake_standalone() -> AsyncIterator[AsyncSession]:
+    async def _fake_standalone() -> AsyncGenerator[AsyncSession]:
         yield db_session
 
     monkeypatch.setattr("app.core.middleware.audit.standalone_session", _fake_standalone)

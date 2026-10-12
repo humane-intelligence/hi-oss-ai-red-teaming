@@ -1,6 +1,6 @@
 """FastAPI application entrypoint — builds the ``app`` object imported by uvicorn."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -33,7 +33,7 @@ from app.workers.celery_app import app as _celery_app  # noqa: F401
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """Build process-wide singletons on startup, tear them down on shutdown.
 
     Configures logging first so any engine-build failure is captured, then
