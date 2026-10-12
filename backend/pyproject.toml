@@ -237,6 +237,8 @@ filterwarnings = [
     # RuntimeWarning surfaces at GC time in an arbitrary later test, so it can't
     # be scoped to one test. Third-party artifact, not our coroutine.
     "ignore:coroutine 'Logging.async_success_handler' was never awaited:RuntimeWarning",
+    # litellm >=1.101 declares ReadOnly TypedDict items; pydantic warns it can't enforce them.
+    "ignore:Item 'summary' on TypedDict class 'ChatCompletionReasoningItem':UserWarning",
     # starlette 1.2 migrated TestClient to httpx2 and warns when the (still
     # widely-pinned) httpx is used instead. fastapi[standard] pins httpx and our
     # tests use httpx.AsyncClient directly, so we keep httpx until the ecosystem
