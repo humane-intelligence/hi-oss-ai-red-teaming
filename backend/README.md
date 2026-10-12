@@ -146,6 +146,7 @@ make logs             # tail docker compose logs (follow)
 make shell            # exec bash in the running app container
 make dbshell          # pgcli on host against the compose db (localhost:5432)
 make update           # upgrade all uv deps (relock) + prek hook versions
+make upgradepkg PKG=x # upgrade one locked package only (e.g. a transitive CVE fix)
 make updatehooks      # bump prek hook versions only (no relock)
 make help             # list every target
 ```
