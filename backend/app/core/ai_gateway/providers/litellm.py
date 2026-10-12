@@ -8,6 +8,7 @@ LiteLLM for another backend means a new adapter here — nothing else moves.
 
 from collections.abc import AsyncIterator
 from typing import Any
+from typing import cast
 
 import litellm
 
@@ -126,7 +127,9 @@ class LiteLLMProvider:
             # stream_options keeps its value (it isn't a reserved kwarg).
             call_kwargs.setdefault("stream_options", {"include_usage": True})
         try:
-            stream = await litellm.acompletion(stream=True, **call_kwargs)
+            # litellm types the return as `ModelResponse | CustomStreamWrapper` whatever `stream`
+            # is; with `stream=True` only the (async-iterable) wrapper ever comes back.
+            stream = cast(AsyncIterator[Any], await litellm.acompletion(stream=True, **call_kwargs))
             async for chunk in stream:
                 yield _to_chunk(chunk)
             logger.info("ai.chat.ok", model=model, stream=True)
