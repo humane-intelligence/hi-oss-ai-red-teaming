@@ -31,6 +31,11 @@ update: ## Upgrade all uv deps (relock) and prek hook versions
 	uv sync --locked --all-groups
 	uv run prek auto-update
 
+.PHONY: upgradepkg
+upgradepkg: ## Upgrade one locked package to the newest allowed version: make upgradepkg PKG=multidict
+	uv lock --upgrade-package $(PKG)
+	uv sync --locked --all-groups
+
 .PHONY: lock
 lock: ## Relock uv.lock from pyproject (no upgrade; e.g. after editing requires-python)
 	uv lock

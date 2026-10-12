@@ -50,6 +50,7 @@ See [README.md](README.md) for stack overview and project layout.
 | Install prek git hooks (run once after clone) | `make install-hooks` |
 | First run after clone (deps + hooks + migrate + seed admin) | `make setup` |
 | Upgrade all uv deps (relock) + prek hook versions | `make update` |
+| Upgrade one locked package only (e.g. a transitive CVE fix) | `make upgradepkg PKG=<name>` |
 | Relock `uv.lock` from `pyproject.toml` without upgrading | `make lock` |
 | Bump only prek hook versions (no dep relock) | `make updatehooks` |
 | Run all tests (host pytest, compose for db + redis) | `make test` |
