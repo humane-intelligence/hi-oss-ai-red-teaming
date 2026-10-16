@@ -327,7 +327,8 @@ jobs:
       # deploy/.env is rendered from SSM on the box (gitignored here), but env_file is
       # required, so stub it — unset vars only warn, the structure still validates.
       - run: touch deploy/.env && docker compose -f deploy/docker-compose.dev.yml config -q
-      - run: docker run --rm -e APP_DOMAIN=example.com -v "$PWD/deploy/Caddyfile:/c:ro" caddy:2-alpine caddy validate --config /c --adapter caddyfile
+      # APP_HOSTS is what compose hands Caddy (APP_DOMAIN + APP_EXTRA_HOSTS); an IP next to the name exercises the multi-host path
+      - run: docker run --rm -e APP_DOMAIN=example.com -e APP_HOSTS="example.com 203.0.113.10" -v "$PWD/deploy/Caddyfile:/c:ro" caddy:2-alpine caddy validate --config /c --adapter caddyfile
       - run: docker run --rm -v "$PWD/frontend/Caddyfile:/c:ro" caddy:2-alpine caddy validate --config /c --adapter caddyfile
       # monitoring/.env is rendered manually (opt-in, not part of CD) — no env_file
       # directives here, so unset vars only warn; no stub needed.

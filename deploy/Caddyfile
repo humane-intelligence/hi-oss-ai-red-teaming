@@ -1,7 +1,6 @@
-# APP_DOMAIN (from .env) drives Caddy's automatic TLS: Let's Encrypt cert + the
-# HTTP->HTTPS redirect. (No HSTS — not wanted on a throwaway dev host.) Today
-# APP_DOMAIN=api.example.org (an <anything>-<ip>.sslip.io name works for a quick start).
-{$APP_DOMAIN} {
+# APP_HOSTS = APP_DOMAIN + APP_EXTRA_HOSTS (joined in compose). No HSTS — throwaway dev host.
+# APP_DOMAIN stays single-valued: the monitoring blocks derive their subdomains from it.
+{$APP_HOSTS} {
 	encode gzip
 	# Same-origin: backend owns these prefixes, everything else → the SPA.
 	# Order matters — @backend must match before the catch-all to frontend.
