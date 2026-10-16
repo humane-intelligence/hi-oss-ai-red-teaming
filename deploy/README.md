@@ -109,7 +109,8 @@ for what does. The exact trust conditions and both policy statements are in
 Run on the box, in order:
 
 1. Reads the AWS region from IMDSv2 (so the script isn't pinned to one region).
-2. `docker login ghcr.io` using `GHCR_USER` + `GHCR_PAT` from SSM (private image).
+2. `docker login ghcr.io` with `GHCR_USER` + `GHCR_PAT` from SSM — only when `GHCR_PAT`
+   exists; the published images are public and need no login.
 3. Renders `.env` (0600): fixed infra values inline, secrets and env-specific
    config pulled from SSM Parameter Store under `/aibackend/dev/`. One value is not a
    plain read: `CONVERSATION_SECRETS_KEY` takes the SSM parameter when it exists, and
@@ -204,8 +205,8 @@ instead:
 
   | Name | Type | Value |
   |---|---|---|
-  | `GHCR_PAT` | SecureString | GitHub PAT with `read:packages` |
-  | `GHCR_USER` | String | owner of that PAT |
+  | `GHCR_PAT` | SecureString | optional — GitHub PAT with `read:packages`, for a fork whose packages are private; absent → no `docker login`, the public images pull anonymously |
+  | `GHCR_USER` | String | owner of that PAT; read only when `GHCR_PAT` exists |
   | `DATABASE_PASSWORD` | SecureString | Postgres password |
   | `SESSION_JWT_SECRET` | SecureString | ≥32 chars |
   | `OAUTH_STATE_SECRET` | SecureString | ≥32 chars |
@@ -234,13 +235,14 @@ The repo publishes **two** packages: `…/hi-oss-ai-red-teaming-backend` and
 settings** and:
 
 - **Connect repository** — link the package to the repo so its access follows the
-  repo's roles (collaborators with repo access can pull) and it shows in the repo's
-  Packages tab. The images carry an `org.opencontainers.image.source` label pointing
-  at the repo, so GHCR **auto-links** both — just verify.
-- **Visibility = Private** (Danger Zone → Change visibility) — the images contain our
-  source, so keep them Private. Pulling then requires a token with `read:packages`
-  whose owner has access to the package (granted via the repo link above) — that's
-  the `GHCR_USER` / `GHCR_PAT` pair the deploy uses (the same pair covers both packages).
+  repo's roles and it shows in the repo's Packages tab. The images carry an
+  `org.opencontainers.image.source` label pointing at the repo, so GHCR **auto-links**
+  both — just verify.
+- **Visibility** — this repository's packages are **Public** (the images hold nothing
+  beyond the open-source code), so the box pulls them anonymously and `deploy.sh` skips
+  the registry login. A fork that keeps its packages Private sets the `GHCR_USER` /
+  `GHCR_PAT` pair in SSM (a token with `read:packages` whose owner can see the package;
+  one pair covers both) and the login happens.
 
 ## Manual deploy (unmerged branch, or debugging)
 

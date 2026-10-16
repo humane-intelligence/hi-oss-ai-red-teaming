@@ -42,7 +42,13 @@ ssm_optional() {
 [ -n "${1:-}" ] && export BACKEND_IMAGE="$1"
 [ -n "${2:-}" ] && export FRONTEND_IMAGE="$2"
 
-ssm GHCR_PAT | docker login ghcr.io -u "$(ssm GHCR_USER)" --password-stdin
+# the published images are public; a PAT in SSM means a fork kept its packages private
+if ssm_optional GHCR_PAT; then
+	printf '%s' "$ssm_value" | docker login ghcr.io -u "$(ssm GHCR_USER)" --password-stdin
+else
+	# a credential from an earlier login would still be sent, and fail every pull once its PAT is revoked
+	docker logout ghcr.io >/dev/null 2>&1 || true
+fi
 
 # .env written 0600 via umask; infra values inline, secrets + env config from SSM.
 app_domain="$(ssm APP_DOMAIN)"   # read once; used for both the redirect base and APP_DOMAIN

@@ -130,7 +130,7 @@ sudo -i
 ### 4. Wire CD
 
 - **Repository variables** (Settings > Secrets and variables > Actions > Variables) — `DEPLOY_ROLE_ARN` (this env's `deploy_role_arn` output), `INSTANCE_ID` (its `instance_id` output), and optionally `AWS_REGION` and `DEPLOY_DIR`. The workflow's `env:` block reads them; the deploy jobs skip themselves when `DEPLOY_ROLE_ARN` is unset, so a fork with no infrastructure still publishes images instead of failing. Image names follow the repository and need no configuration.
-- GHCR — after the first publish, link each package to the repo and set it Private, then create a `read:packages` PAT and store it as `GHCR_USER` / `GHCR_PAT` in Parameter Store.
+- GHCR — after the first publish, verify each package is linked to the repo. The packages are public, so the box needs no token; a fork that keeps them Private stores a `read:packages` PAT as `GHCR_USER` / `GHCR_PAT` in Parameter Store ([`../README.md`](../README.md#ghcr-packages-one-time-in-the-github-ui)).
 - The full permission picture (what CD, the box, and you each need) is in [`../PERMISSIONS.md`](../PERMISSIONS.md).
 
 ### 5. First deploy and first admin
