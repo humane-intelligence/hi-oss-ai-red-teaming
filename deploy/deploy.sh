@@ -145,6 +145,11 @@ if ssm_optional APP_EXTRA_HOSTS; then
 	echo "APP_EXTRA_HOSTS=$ssm_value" >> .env
 fi
 
+# Certificate Caddy presents to clients that send no SNI (a browser given a bare IP); absent → APP_DOMAIN.
+if ssm_optional APP_DEFAULT_SNI; then
+	echo "APP_DEFAULT_SNI=$ssm_value" >> .env
+fi
+
 # Opt-in monitoring stack (../monitoring/) postgres-exporter — off by default.
 # COMPOSE_PROFILES in the project .env also gates `docker compose`'s own
 # profile activation, not just the container env, so this one flag both starts

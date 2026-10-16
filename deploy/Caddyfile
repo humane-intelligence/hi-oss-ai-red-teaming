@@ -1,3 +1,8 @@
+{
+	# a browser given a bare IP sends no SNI, and Caddy then needs to be told whose certificate to present
+	default_sni {$APP_DEFAULT_SNI}
+}
+
 # APP_HOSTS = APP_DOMAIN + APP_EXTRA_HOSTS (joined in compose). No HSTS — throwaway dev host.
 # APP_DOMAIN stays single-valued: the monitoring blocks derive their subdomains from it.
 {$APP_HOSTS} {

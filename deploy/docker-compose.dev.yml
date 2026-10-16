@@ -16,6 +16,7 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       APP_HOSTS: "${APP_DOMAIN} ${APP_EXTRA_HOSTS:-}"
+      APP_DEFAULT_SNI: ${APP_DEFAULT_SNI:-${APP_DOMAIN}}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
