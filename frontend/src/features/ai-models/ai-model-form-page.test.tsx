@@ -31,6 +31,8 @@ function modelResponse(
     labels: [],
     is_disabled: false,
     warmup_enabled: false,
+    web_access: false,
+    web_access_supported: true,
     has_api_key: false,
     parameters,
     created_at: '2026-01-01T00:00:00Z',
@@ -980,4 +982,144 @@ describe('AiModelFormPage', () => {
       ).toBeVisible()
     },
   )
+})
+
+describe('AiModelFormPage — internet access', () => {
+  const refusal = 'This model has no internet access option at its provider.'
+
+  it('sends web_access when the switch is checked on create', async () => {
+    let captured: Record<string, unknown> | null = null
+    server.use(
+      http.post('http://localhost/api/v1/ai-models', async ({ request }) => {
+        captured = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(modelResponse({}), { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderForm('/ai-models/new?kind=provider')
+
+    await user.type(screen.getByLabelText('Name'), 'Claude')
+    await user.type(screen.getByLabelText('Alias'), 'claude')
+    await user.type(screen.getByLabelText('Provider model id'), 'claude-x')
+    await user.click(screen.getByLabelText('Internet access'))
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect(captured!.web_access).toBe(true)
+  })
+
+  it('locks the switch and says why when the stored model has no web option', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/ai-models/${MODEL_ID}`, () =>
+        HttpResponse.json(modelResponse({}, { web_access_supported: false })),
+      ),
+    )
+
+    renderForm(`/ai-models/${MODEL_ID}/edit`)
+
+    const box = await screen.findByLabelText('Internet access')
+    await waitFor(() => expect(box).toBeDisabled())
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+  })
+
+  it('offers the switch again once the provider model id moves', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/ai-models/${MODEL_ID}`, () =>
+        HttpResponse.json(modelResponse({}, { web_access_supported: false })),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderForm(`/ai-models/${MODEL_ID}/edit`)
+
+    const box = await screen.findByLabelText('Internet access')
+    await waitFor(() => expect(box).toBeDisabled())
+    const id = screen.getByLabelText('Provider model id')
+    await user.clear(id)
+    await user.type(id, 'claude-y')
+
+    expect(box).toBeEnabled()
+    expect(screen.queryByText(refusal)).toBeNull()
+  })
+
+  it('pins the backend refusal to the switch', async () => {
+    server.use(
+      http.post('http://localhost/api/v1/ai-models', () =>
+        HttpResponse.json(
+          {
+            type: 'about:blank',
+            title: 'Bad Request',
+            status: 400,
+            detail: refusal,
+            errors: [{ loc: ['body', 'web_access'], msg: refusal, type: 'web_access_unsupported' }],
+          },
+          { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderForm('/ai-models/new?kind=provider')
+
+    await user.type(screen.getByLabelText('Name'), 'Claude')
+    await user.type(screen.getByLabelText('Alias'), 'claude')
+    await user.type(screen.getByLabelText('Provider model id'), 'claude-x')
+    await user.click(screen.getByLabelText('Internet access'))
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(refusal)).toBeInTheDocument()
+  })
+
+  it('keeps a withdrawn switch editable: the stored true is untickable and goes out as false', async () => {
+    let captured: Record<string, unknown> | null = null
+    server.use(
+      http.get(`http://localhost/api/v1/ai-models/${MODEL_ID}`, () =>
+        HttpResponse.json(modelResponse({}, { web_access: true, web_access_supported: false })),
+      ),
+      http.patch(`http://localhost/api/v1/ai-models/${MODEL_ID}`, async ({ request }) => {
+        captured = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(modelResponse({}))
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderForm(`/ai-models/${MODEL_ID}/edit`)
+
+    const box = await screen.findByLabelText('Internet access')
+    await waitFor(() => expect(box).toBeChecked())
+    expect(box).toBeEnabled()
+    expect(screen.queryByText(refusal)).toBeNull()
+    await user.click(box)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect(captured!.web_access).toBe(false)
+  })
+
+  it('leaves web_access out of an unrelated edit, so a withdrawn row can still be renamed', async () => {
+    let captured: Record<string, unknown> | null = null
+    server.use(
+      http.get(`http://localhost/api/v1/ai-models/${MODEL_ID}`, () =>
+        HttpResponse.json(modelResponse({}, { web_access: true, web_access_supported: false })),
+      ),
+      http.patch(`http://localhost/api/v1/ai-models/${MODEL_ID}`, async ({ request }) => {
+        captured = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(modelResponse({}))
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderForm(`/ai-models/${MODEL_ID}/edit`)
+
+    const name = await screen.findByLabelText('Name')
+    await waitFor(() => expect(name).toHaveValue('Claude'))
+    await user.clear(name)
+    await user.type(name, 'Claude renamed')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect(captured!.name).toBe('Claude renamed')
+    expect(captured).not.toHaveProperty('web_access')
+  })
 })

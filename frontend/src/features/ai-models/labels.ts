@@ -115,3 +115,11 @@ export const modelStatus = (m: { is_disabled: boolean; output_modalities: readon
     return { label: NO_TEXT_OUTPUT_LABEL, variant: 'warn' as const }
   return { label: 'enabled', variant: 'ok' as const }
 }
+
+// Read beside the switch: a stored `true` the provider no longer honours is the one state the
+// gateway refuses every chat in, so it must not read as a plain Yes.
+export const webAccessLabel = (m: { web_access: boolean; web_access_supported: boolean }) => {
+  if (m.web_access)
+    return m.web_access_supported ? 'Yes' : 'Yes — no longer available at this provider'
+  return m.web_access_supported ? 'No' : 'Not available at this provider'
+}

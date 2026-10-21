@@ -58,6 +58,7 @@ const evaluation: EvaluationResponse = {
       name: 'gpt-4o',
       warmup_enabled: true,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text', 'image'],
     },
   ],

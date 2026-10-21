@@ -23,6 +23,8 @@ const MODEL: AiModelResponse = {
   is_disabled: false,
   warmup_enabled: false,
   advanced_params_disabled: false,
+  web_access: false,
+  web_access_supported: true,
   parameters: {},
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
