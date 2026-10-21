@@ -33,6 +33,8 @@ from app.core.ai_gateway.filters import AiModelFilters
 from app.core.ai_gateway.models import PROBED_CALL_FIELDS
 from app.core.ai_gateway.models import AiModel
 from app.core.ai_gateway.schemas import AiModelUpdateChanges
+from app.core.ai_gateway.web_access import WEB_ACCESS_UNSUPPORTED_DETAIL
+from app.core.ai_gateway.web_access import supports_web_access
 from app.core.config import Settings
 from app.core.exceptions import BadRequestError
 from app.core.exceptions import ConflictError
@@ -152,6 +154,29 @@ def _require_inference_endpoint(provider: ProviderVendor, inference_endpoint: st
         raise MissingInferenceEndpointError
 
 
+class WebAccessUnsupportedError(BadRequestError):
+    """`web_access` is on for a provider/model pair with no web option — 400.
+
+    Decided by `supports_web_access` on the merged row, so a PATCH that only moves
+    `provider_model_id` under an enabled switch is caught too. Advisory like the
+    endpoint rule: dispatch re-checks, since the capability map can change under a
+    stored row. Field-addressable `errors[]` so the console pins it to the switch.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(WEB_ACCESS_UNSUPPORTED_DETAIL)
+        self.errors = [
+            ProblemErrorItem(
+                loc=["body", "web_access"], msg=WEB_ACCESS_UNSUPPORTED_DETAIL, type="web_access_unsupported"
+            )
+        ]
+
+
+def _require_web_access_supported(provider: ProviderVendor, provider_model_id: str, web_access: bool) -> None:
+    if web_access and not supports_web_access(provider, provider_model_id):
+        raise WebAccessUnsupportedError
+
+
 async def create_model(  # noqa: PLR0913 — keyword-only args mirror the row's column set; bundling them into a Pydantic carrier would just shift the surface area
     session: AsyncSession,
     settings: Settings,
@@ -212,8 +237,11 @@ async def create_model(  # noqa: PLR0913 — keyword-only args mirror the row's 
         ConflictError: If ``name`` or ``model_alias`` is already taken.
         MissingInferenceEndpointError: If ``provider`` is ``generic`` and no
             ``inference_endpoint`` is given.
+        WebAccessUnsupportedError: If ``web_access`` is set on a provider/model
+            pair that has no web option.
     """
     _require_inference_endpoint(provider, inference_endpoint)
+    _require_web_access_supported(provider, provider_model_id, web_access)
     model = AiModel(
         name=name,
         description=description,
@@ -446,6 +474,9 @@ async def update_model(session: AsyncSession, model: AiModel, changes: AiModelUp
         MissingInferenceEndpointError: If the row ends up ``generic`` without an
             ``inference_endpoint`` — whether the patch set the provider, cleared
             the URL, or both.
+        WebAccessUnsupportedError: If the row ends up with ``web_access`` on for a
+            provider/model pair that has no web option — whether the patch flipped
+            the switch, moved the model id, or changed the provider.
 
     A patch that *changes* any of ``PROBED_CALL_FIELDS`` clears ``capability_mismatch``: the
     finding is evidence about the exact call the probe made, and only a fresh health check can
@@ -477,6 +508,8 @@ async def update_model(session: AsyncSession, model: AiModel, changes: AiModelUp
     # legacy row that predates the rule.
     if {"provider", "inference_endpoint"} & changes.model_fields_set:
         _require_inference_endpoint(model.provider, model.inference_endpoint)
+    if {"provider", "provider_model_id", "web_access"} & changes.model_fields_set:
+        _require_web_access_supported(model.provider, model.provider_model_id, model.web_access)
     # A recorded mismatch is an accusation against one specific call; once any part of it moves
     # the accusation is stale, and stale here reads as current. Not left to the follow-up check:
     # the usual reason to move an endpoint is that the old one was broken, and a probe against a

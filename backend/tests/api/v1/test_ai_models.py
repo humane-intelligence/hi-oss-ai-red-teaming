@@ -2856,3 +2856,19 @@ async def test_read_reports_no_web_option_for_a_generic_endpoint(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["web_access_supported"] is False
+
+
+@pytest.mark.integration
+async def test_create_model_rejects_web_access_without_a_web_option_on_the_field(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="web-off@example.com", roles=[admin_role])
+
+    response = await auth_db_client.post(
+        "/api/v1/ai-models",
+        json=_create_payload(provider="cohere", provider_model_id="command-r-plus", web_access=True),
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"][0]["loc"] == ["body", "web_access"]

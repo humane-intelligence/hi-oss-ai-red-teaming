@@ -3499,7 +3499,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A generic provider requires an inference_endpoint.
+          description: A generic provider requires an inference_endpoint, or web_access is on for a model with no web option.
           content:
             application/problem+json:
               schema:
@@ -3835,7 +3835,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A generic provider requires an inference_endpoint.
+          description: A generic provider requires an inference_endpoint, or web_access is on for a model with no web option.
           content:
             application/problem+json:
               schema:

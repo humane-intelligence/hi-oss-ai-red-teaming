@@ -16,6 +16,7 @@ from app.core.ai_gateway.filters import AiModelFilters
 from app.core.ai_gateway.models import AiModel
 from app.core.ai_gateway.schemas import AiModelUpdateChanges
 from app.core.ai_gateway.services.ai_models import MissingInferenceEndpointError
+from app.core.ai_gateway.services.ai_models import WebAccessUnsupportedError
 from app.core.ai_gateway.services.ai_models import _duplicate_conflict
 from app.core.ai_gateway.services.ai_models import clear_api_key
 from app.core.ai_gateway.services.ai_models import create_model
@@ -913,3 +914,98 @@ async def test_update_model_clears_the_mismatch_when_the_endpoint_moves(
     await update_model(db_session, model, AiModelUpdateChanges(inference_endpoint="http://new:8080/v1"))
 
     assert model.capability_mismatch is None
+
+
+@pytest.mark.integration
+async def test_create_model_rejects_web_access_on_a_provider_without_a_web_option(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    with pytest.raises(WebAccessUnsupportedError) as exc_info:
+        await create_model(
+            db_session,
+            app_settings,
+            name="offline",
+            model_alias="offline",
+            provider=ProviderVendor.COHERE,
+            provider_model_id="command-r-plus",
+            web_access=True,
+        )
+
+    assert exc_info.value.errors is not None
+    assert exc_info.value.errors[0].loc == ["body", "web_access"]
+
+
+@pytest.mark.integration
+async def test_create_model_stores_web_access_where_the_provider_supports_it(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="online",
+        model_alias="online",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        web_access=True,
+    )
+
+    assert model.web_access is True
+
+
+@pytest.mark.integration
+async def test_update_model_rejects_turning_web_access_on_without_a_web_option(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="offline-patch",
+        model_alias="offline-patch",
+        provider=ProviderVendor.COHERE,
+        provider_model_id="command-r-plus",
+    )
+
+    with pytest.raises(WebAccessUnsupportedError):
+        await update_model(db_session, model, AiModelUpdateChanges.model_validate({"web_access": True}))
+
+
+@pytest.mark.integration
+async def test_update_model_rechecks_web_access_when_the_provider_moves(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    # The switch stays on while the patch moves the row to a vendor with no web option.
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="moving",
+        model_alias="moving",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        web_access=True,
+    )
+
+    with pytest.raises(WebAccessUnsupportedError):
+        await update_model(
+            db_session,
+            model,
+            AiModelUpdateChanges.model_validate({"provider": "generic", "inference_endpoint": "http://slm:8080/v1"}),
+        )
+
+
+@pytest.mark.integration
+async def test_update_model_leaves_a_legacy_web_access_row_editable(db_session: AsyncSession) -> None:
+    # A row the rule never saw (written past the service) keeps accepting unrelated edits.
+    model = AiModel(
+        name="legacy-web",
+        model_alias="legacy-web",
+        provider=ProviderVendor.COHERE,
+        provider_model_id="command-r-plus",
+        web_access=True,
+    )
+    db_session.add(model)
+    await db_session.flush()
+
+    updated = await update_model(db_session, model, AiModelUpdateChanges.model_validate({"name": "legacy-web-2"}))
+
+    assert updated.name == "legacy-web-2"
+    assert updated.web_access is True

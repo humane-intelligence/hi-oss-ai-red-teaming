@@ -74,7 +74,9 @@ _UNAUTHORIZED = problem_response("Missing or invalid bearer token.")
 _FORBIDDEN = problem_response("Caller lacks the required permission.")
 _NOT_FOUND = problem_response("Model does not exist.")
 _CONFLICT = problem_response("A model with this name, or this model_alias, already exists.")
-_MISSING_ENDPOINT = problem_response("A generic provider requires an inference_endpoint.")
+_INVALID_ROW = problem_response(
+    "A generic provider requires an inference_endpoint, or web_access is on for a model with no web option."
+)
 _NOT_RESTORABLE = problem_response(
     "No restorable model with this id: never deleted, or deleted longer than the restore window ago."
 )
@@ -268,7 +270,7 @@ async def list_models_endpoint(
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
-        status.HTTP_400_BAD_REQUEST: _MISSING_ENDPOINT,
+        status.HTTP_400_BAD_REQUEST: _INVALID_ROW,
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_409_CONFLICT: _CONFLICT,
@@ -286,7 +288,8 @@ async def create_model_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — `provider` is `generic` and `inference_endpoint` is missing.
+    * **400 Bad Request** — `provider` is `generic` and `inference_endpoint` is missing, or `web_access`
+      is on for a model whose provider has no web option.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `models:create` permission.
     * **409 Conflict** — a live model with the same `name`, or the same `model_alias`, exists.
@@ -627,7 +630,7 @@ async def health_check_model_endpoint(
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
-        status.HTTP_400_BAD_REQUEST: _MISSING_ENDPOINT,
+        status.HTTP_400_BAD_REQUEST: _INVALID_ROW,
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _NOT_FOUND,
@@ -646,7 +649,8 @@ async def update_model_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — the patch leaves a `generic` row without an `inference_endpoint`.
+    * **400 Bad Request** — the patch leaves a `generic` row without an `inference_endpoint`, or
+      `web_access` on for a model whose provider has no web option.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `models:update` permission.
     * **404 Not Found** — no model exists with the given id.
