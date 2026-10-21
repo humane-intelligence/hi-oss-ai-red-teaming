@@ -111,6 +111,8 @@ async def test_create_model_returns_201_and_location(
     assert body["is_disabled"] is False
     assert body["warmup_enabled"] is False
     assert body["advanced_params_disabled"] is False
+    assert body["web_access"] is False
+    assert body["web_access_supported"] is True
     assert body["has_api_key"] is False
     # When the caller omits `parameters`, the row stores an empty dict — not
     # `{"system_prompt": null, "temperature": null, …}`.
@@ -1293,6 +1295,7 @@ async def test_delete_model_removes_it_from_group_subsets(
         "is_disabled",
         "warmup_enabled",
         "advanced_params_disabled",
+        "web_access",
     ],
 )
 async def test_patch_model_rejects_explicit_null_on_required_columns(
@@ -2804,3 +2807,52 @@ async def test_create_disabled_starts_no_check(
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["health_check_status"] is None
     assert enqueued == []
+
+
+@pytest.mark.integration
+async def test_patch_model_turns_web_access_on(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="web-on@example.com", roles=[admin_role])
+    target = await create_model_service(
+        db_session,
+        get_settings(),
+        name="web-on",
+        model_alias="web-on",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+    )
+
+    response = await auth_db_client.patch(
+        f"/api/v1/ai-models/{target.id}",
+        json={"web_access": True},
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["web_access"] is True
+    assert body["web_access_supported"] is True
+
+
+@pytest.mark.integration
+async def test_read_reports_no_web_option_for_a_generic_endpoint(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="web-generic@example.com", roles=[admin_role])
+    target = await create_model_service(
+        db_session,
+        get_settings(),
+        name="local-slm",
+        model_alias="local-slm",
+        provider=ProviderVendor.GENERIC,
+        provider_model_id="qwen",
+        inference_endpoint="http://slm:8080/v1",
+    )
+
+    response = await auth_db_client.get(
+        f"/api/v1/ai-models/{target.id}", headers={"Authorization": f"Bearer {_token(caller)}"}
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["web_access_supported"] is False

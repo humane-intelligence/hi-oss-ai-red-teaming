@@ -19,6 +19,7 @@ from app.core.ai_gateway.enums import HealthCheckStatus
 from app.core.ai_gateway.enums import Modality
 from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.inference_params import InferenceParams
+from app.core.ai_gateway.web_access import supports_web_access
 from app.core.bulk import BulkRequest
 from app.core.helpers import sanitise_single_line
 from app.core.logging import get_logger
@@ -147,6 +148,8 @@ _EXAMPLE_RESPONSE: dict[str, Any] = {
     "is_disabled": False,
     "warmup_enabled": True,
     "advanced_params_disabled": False,
+    "web_access": False,
+    "web_access_supported": True,
     "inactivity_alert_hours": 48,
     "last_used_at": "2026-01-03T08:00:00Z",
     "last_warmup_at": "2026-01-05T09:30:00Z",
@@ -171,6 +174,7 @@ _EXAMPLE_CREATE: dict[str, Any] = {
     "is_disabled": False,
     "warmup_enabled": True,
     "advanced_params_disabled": False,
+    "web_access": False,
     "inactivity_alert_hours": 48,
     "api_key": "sk-ant-…",
 }
@@ -214,6 +218,18 @@ class AiModelResponse(BaseModel):
         description=(
             "True iff this model ignores the inference-params cascade: stored overrides are retained but "
             "never sent to the provider, and no layer below offers them."
+        )
+    )
+    web_access: bool = Field(
+        description=(
+            "True iff the gateway attaches the provider's native web tools (search; on Anthropic also URL "
+            "fetch) to this model's chat calls."
+        )
+    )
+    web_access_supported: bool = Field(
+        description=(
+            "Read-only: whether this provider/model pair has a web option at all. `web_access` can only be "
+            "turned on while this is true."
         )
     )
     inactivity_alert_hours: int | None = Field(
@@ -309,6 +325,8 @@ class AiModelResponse(BaseModel):
             is_disabled=model.is_disabled,
             warmup_enabled=model.warmup_enabled,
             advanced_params_disabled=model.advanced_params_disabled,
+            web_access=model.web_access,
+            web_access_supported=supports_web_access(model.provider, model.provider_model_id),
             inactivity_alert_hours=model.inactivity_alert_hours,
             last_used_at=model.last_used_at,
             last_warmup_at=model.last_warmup_at,
@@ -419,6 +437,14 @@ class AiModelCreate(BaseModel):
             "layer below are retained but never sent to the provider, and the console stops offering them."
         ),
     )
+    web_access: bool = Field(
+        default=False,
+        description=(
+            "Set true to let the model use the web: the gateway adds the provider's native search (and, on "
+            "Anthropic, URL fetch) to every chat call. Refused with 400 when the provider has no such option "
+            "for this model."
+        ),
+    )
     inactivity_alert_hours: int | None = Field(
         default=None,
         ge=1,
@@ -521,6 +547,7 @@ class AiModelUpdate(BaseModel):
     is_disabled: bool | None = Field(default=None)
     warmup_enabled: bool | None = Field(default=None)
     advanced_params_disabled: bool | None = Field(default=None)
+    web_access: bool | None = Field(default=None)
     # No cross-field validator against `warmup_enabled`: the console resends both fields
     # on every save, so it would 422 unrelated patches.
     inactivity_alert_hours: int | None = Field(
@@ -546,6 +573,7 @@ class AiModelUpdate(BaseModel):
         "is_disabled",
         "warmup_enabled",
         "advanced_params_disabled",
+        "web_access",
         mode="before",
     )
     @classmethod
@@ -633,4 +661,5 @@ class AiModelUpdateChanges(BaseModel):
     is_disabled: bool | None = None
     warmup_enabled: bool | None = None
     advanced_params_disabled: bool | None = None
+    web_access: bool | None = None
     inactivity_alert_hours: int | None = None

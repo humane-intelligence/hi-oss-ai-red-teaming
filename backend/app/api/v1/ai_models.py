@@ -100,6 +100,7 @@ def _ai_model_snapshot(model: AiModel) -> dict[str, object]:
         "is_disabled": model.is_disabled,
         "warmup_enabled": model.warmup_enabled,
         "advanced_params_disabled": model.advanced_params_disabled,
+        "web_access": model.web_access,
         "inactivity_alert_hours": model.inactivity_alert_hours,
         "icon_file": model.icon_file,
         "labels": list(model.labels),
@@ -309,6 +310,7 @@ async def create_model_endpoint(
         is_disabled=payload.is_disabled,
         warmup_enabled=payload.warmup_enabled,
         advanced_params_disabled=payload.advanced_params_disabled,
+        web_access=payload.web_access,
         inactivity_alert_hours=payload.inactivity_alert_hours,
         api_key=payload.api_key,
     )
@@ -392,6 +394,7 @@ async def bulk_create_models_endpoint(
             is_disabled=data.is_disabled,
             warmup_enabled=data.warmup_enabled,
             advanced_params_disabled=data.advanced_params_disabled,
+            web_access=data.web_access,
             inactivity_alert_hours=data.inactivity_alert_hours,
             api_key=data.api_key,
         )

@@ -41,7 +41,7 @@ async def _persist_evaluation(db_session: AsyncSession, *, title: str = "eval") 
 
 
 async def _persist_model(
-    db_session: AsyncSession, *, model_alias: str = "assigned", warmup_enabled: bool = False
+    db_session: AsyncSession, *, model_alias: str = "assigned", warmup_enabled: bool = False, web_access: bool = False
 ) -> AiModel:
     model = AiModel(
         name=model_alias,
@@ -49,6 +49,7 @@ async def _persist_model(
         provider=ProviderVendor.ANTHROPIC,
         provider_model_id="claude-3-5-sonnet-20240620",
         warmup_enabled=warmup_enabled,
+        web_access=web_access,
     )
     db_session.add(model)
     await db_session.flush()
@@ -302,7 +303,7 @@ async def test_list_evaluation_models_masked_loads_warmup_flag(db_session: Async
     # lazy-loads on the async session and raises MissingGreenlet (a 500 in prod).
     group = await persist_evaluation_group(db_session)
     evaluation = await _persist_evaluation_in(db_session, group.id, created_by_id=group.created_by_id, mask=True)
-    model = await _persist_model(db_session, model_alias="warm", warmup_enabled=True)
+    model = await _persist_model(db_session, model_alias="warm", warmup_enabled=True, web_access=True)
     await assign_model(db_session, evaluation_id=evaluation.id, model_id=model.id, model_display_mask="Alpha")
     await db_session.flush()
     db_session.expunge_all()
@@ -322,6 +323,7 @@ async def test_list_evaluation_models_masked_loads_warmup_flag(db_session: Async
     assert total == 1
     view = EvaluationAiModelView.from_assignment(items[0], masked=True)
     assert view.warmup_enabled is True
+    assert view.web_access is True
 
 
 @pytest.mark.integration

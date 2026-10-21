@@ -172,6 +172,7 @@ async def create_model(  # noqa: PLR0913 — keyword-only args mirror the row's 
     is_disabled: bool = False,
     warmup_enabled: bool = False,
     advanced_params_disabled: bool = False,
+    web_access: bool = False,
     inactivity_alert_hours: int | None = None,
     api_key: SecretStr | None = None,
 ) -> AiModel:
@@ -201,6 +202,8 @@ async def create_model(  # noqa: PLR0913 — keyword-only args mirror the row's 
             before the first message.
         advanced_params_disabled: Set true to opt the model out of the inference-params
             cascade — stored knobs are kept but never dispatched.
+        web_access: Set true to let the gateway attach the provider's web tools to the
+            model's chat calls.
         inactivity_alert_hours: Quiet hours after which admins are alerted the model
             may be idling warm; ``None`` disables the alert.
         api_key: Optional plaintext credential — encrypted before persisting.
@@ -227,6 +230,7 @@ async def create_model(  # noqa: PLR0913 — keyword-only args mirror the row's 
         extras=dict(extras) if extras is not None else {},
         warmup_enabled=warmup_enabled,
         advanced_params_disabled=advanced_params_disabled,
+        web_access=web_access,
         inactivity_alert_hours=inactivity_alert_hours,
         api_key_encrypted=encrypt_secret(api_key.get_secret_value(), settings) if api_key is not None else None,
     )
