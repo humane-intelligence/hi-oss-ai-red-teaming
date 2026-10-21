@@ -451,3 +451,23 @@ describe('GroupCreatePage — in-group authority', () => {
     expect(screen.queryByRole('button', { name: 'Start conversation' })).toBeNull()
   })
 })
+
+describe('GroupCreatePage — internet access marker', () => {
+  it('names a model with web access in the picker', async () => {
+    const online = { ...evaluation.models![0]!, web_access: true }
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ ...evaluation, models: [online, evaluation.models![1]] }),
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await user.click(screen.getByLabelText('Model 1'))
+
+    expect(await screen.findByRole('option', { name: 'gpt-4o (internet)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'claude-3-opus' })).toBeInTheDocument()
+  })
+})

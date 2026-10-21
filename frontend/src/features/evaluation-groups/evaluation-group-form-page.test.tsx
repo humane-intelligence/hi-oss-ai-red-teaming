@@ -1436,3 +1436,40 @@ describe('EvaluationGroupFormPage — model subset', () => {
     expect(patchBody!).not.toHaveProperty('allowed_model_ids')
   })
 })
+
+describe('EvaluationGroupFormPage — internet access marker', () => {
+  it('names web access beside the labels while picking a model', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/organizations', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      http.get('http://localhost/api/v1/ai-models', () =>
+        HttpResponse.json({
+          items: [
+            { id: 'model-1', name: 'GPT-Test', labels: ['audited'], web_access: true },
+            { id: 'model-2', name: 'Claude-Test', labels: [], web_access: false },
+          ],
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+    )
+    renderWith('/evaluation-groups/new', '/evaluation-groups/new', [
+      'evaluation_groups:create',
+      'models:read',
+    ])
+    const u = userEvent.setup()
+
+    await u.click(await screen.findByLabelText('Allowed models'))
+
+    expect(
+      await screen.findByRole('option', { name: 'GPT-Test internet · audited' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('internet · audited')).toHaveAttribute(
+      'title',
+      'internet access · audited',
+    )
+    expect(screen.getByRole('option', { name: 'Claude-Test' })).toBeInTheDocument()
+  })
+})

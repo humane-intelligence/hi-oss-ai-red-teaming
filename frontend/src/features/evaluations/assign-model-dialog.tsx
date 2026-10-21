@@ -260,6 +260,7 @@ export function AssignModelDialog({
                         >
                           {m.name} ({m.model_alias})
                           {m.labels.length > 0 ? ` — ${modelLabelSummary(m.labels)}` : ''}
+                          {m.web_access ? ' (internet)' : ''}
                         </SelectItem>
                       ))}
                     </SelectGroup>

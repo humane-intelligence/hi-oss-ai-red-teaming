@@ -1714,3 +1714,18 @@ describe('ConversationDetailPage — message annotations', () => {
     expect(screen.queryByText(/most recent labels of/i)).not.toBeInTheDocument()
   })
 })
+
+describe('ConversationDetailPage — internet access marker', () => {
+  it('badges the header when the model has web access', async () => {
+    const online = { ...evaluation.models![0]!, web_access: true }
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ ...evaluation, models: [online] }),
+      ),
+      ...baseHandlers(conversationWithScenario),
+    )
+    renderPage()
+
+    expect(await screen.findByText('Internet access')).toBeInTheDocument()
+  })
+})
