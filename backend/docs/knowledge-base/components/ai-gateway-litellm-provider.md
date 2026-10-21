@@ -207,6 +207,7 @@ sequenceDiagram
 3. `stream_options.include_usage` only for OpenAI/`generic`; Anthropic has usage natively.
 4. `_to_completion` always pins `role="assistant"`; `_delta_role` zeroes out unknown roles.
 5. An unknown vendor and an unrecognized exception are not raw Python errors — `ProviderBadRequestError` / `ProviderError` is raised.
+6. `web_search_options` and `tools` ride `params` untouched (neither is reserved). litellm maps `web_search_options` per vendor — Anthropic `web_search_20250305`, Gemini `googleSearch`, OpenAI's own field — and, when a `web_fetch_20250910` tool is present, adds the Anthropic `web-fetch` beta header itself. Dispatch decides when they are sent; see [AiModel](../data-models/ai-model.md#internet-access-web_access).
 
 ## Related
 

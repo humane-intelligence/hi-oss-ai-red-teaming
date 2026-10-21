@@ -103,6 +103,7 @@ What happens here, in order:
 | `system_prompt` -> system message | pulls it out of params and inserts it as the first `ChatMessage(role="system")` | the provider has no `system_prompt` knob; it has to be a message |
 | `system_suffix` appended | joined onto the system message with a blank line, **after** the flag check | gateway-owned context ([conversation tags](conversation-tags.md)) must still reach a model that opted out of the params cascade |
 | `stop_sequences` -> `stop` | renaming the knob to the litellm name | without this `drop_params=True` would silently eat it |
+| web tools (`web_access`) | `_apply_web_access` on `call["params"]` **after** `_build_call`, in `dispatch_chat` / `dispatch_stream` only: on, adds `web_search_options` for every vendor plus Anthropic's hosted `web_fetch` tool; off, drops those two keys from stored params | gateway-owned, so it survives the opt-out; probes stay offline; refused (`ProviderBadRequestError`) when the stored pair has no web option, since `drop_params` would otherwise make the switch a silent no-op — see [AiModel](../data-models/ai-model.md#internet-access-web_access) |
 | `api_base` | `model.inference_endpoint` | custom URL for an OpenAI-compatible provider |
 | `extras` | NOT forwarded | this is call-shape metadata, not an inference parameter |
 
