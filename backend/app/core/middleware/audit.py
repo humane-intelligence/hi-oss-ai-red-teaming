@@ -106,9 +106,8 @@ AUTH_LIFECYCLE_ROUTES: dict[tuple[str, str], AuditAction] = {
 # `request.state.audit_action`, plus `audit_subject` (the resolved account, when one
 # was) — read unconditionally below, not gated on `_SUCCESS`. Scoped to the one failure
 # (`account_inactive`) that resolves a real account and is the strongest detection
-# signal for a refused/blocked activation attempt; `invalid_claims`/`email_unverified`/
-# `login_conflict` are unaudited, same call as `_audit_login` skipping non-credential-
-# outcome statuses.
+# signal for a refused/blocked activation attempt; every other refusal code is
+# unaudited, same call as `_audit_login` skipping non-credential-outcome statuses.
 _OIDC_CALLBACK_ROUTE = ("GET", "auth_callback")
 
 _SUCCESS = range(200, 300)

@@ -63,6 +63,8 @@ os.environ.update(
         # Without this, a real SENTRY_DSN left in a developer's `.env` would make the
         # suite actually talk to Sentry (network calls under pytest-socket, real events).
         "SENTRY_DSN": "",
+        # Same for a local allowlist: it would refuse the example.com logins the auth tests use.
+        "OIDC_ALLOWED_DOMAINS": "",
     },
 )
 

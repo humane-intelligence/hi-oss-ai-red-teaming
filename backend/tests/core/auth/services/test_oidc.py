@@ -21,6 +21,7 @@ from app.core.auth.models import Role
 from app.core.auth.models import User
 from app.core.auth.models import UserStatus
 from app.core.auth.services.jwt import decode_session_jwt
+from app.core.auth.services.oidc import DomainNotAllowedError
 from app.core.auth.services.oidc import InactiveAccountError
 from app.core.auth.services.oidc import InviteOnlyError
 from app.core.auth.services.oidc import MissingClaimError
@@ -46,7 +47,7 @@ CLAIMS = {
 }
 
 
-def _settings() -> Settings:
+def _settings(*, oidc_allowed_domains: list[str] | None = None) -> Settings:
     return Settings.model_construct(
         database_host="x",
         database_port=5432,
@@ -59,6 +60,7 @@ def _settings() -> Settings:
         session_jwt_algorithm="HS256",
         session_ttl_seconds=3600,
         refresh_token_ttl_seconds=2_592_000,
+        oidc_allowed_domains=oidc_allowed_domains or [],
     )
 
 
@@ -719,3 +721,121 @@ async def test_finalize_login_does_not_provision_when_claims_are_rejected(db_ses
         )
 
     assert await _identities(db_session, "google-sub-123") == []
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("default_role")
+@pytest.mark.parametrize(
+    "claims",
+    [
+        CLAIMS,
+        {**CLAIMS, "email": "Ada@EXAMPLE.org"},
+        {**CLAIMS, "hd": "example.com"},
+        {**CLAIMS, "hd": " Example.COM "},
+    ],
+    ids=["email-domain", "mixed-case-email", "workspace-hd", "padded-mixed-case-hd"],
+)
+async def test_finalize_login_admits_an_allowed_domain(db_session: AsyncSession, claims: dict[str, object]) -> None:
+    settings = _settings(oidc_allowed_domains=["example.org", "example.com"])
+
+    await finalize_login(db_session, provider="google", claims=claims, settings=settings)
+
+    assert len(await _identities(db_session, "google-sub-123")) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("default_role")
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {**CLAIMS, "email": "ada@evil.com"},
+        {**CLAIMS, "email": "ada@sub.example.com"},
+        {**CLAIMS, "hd": "evil.com"},
+        {**CLAIMS, "hd": ["example.com"]},
+        {**CLAIMS, "email": "example.com"},
+        {**CLAIMS, "email": "ada@alias.org", "hd": "example.com"},
+    ],
+    ids=["email-domain", "subdomain", "hd", "non-string-hd", "no-at-sign", "alias-email-with-allowed-hd"],
+)
+async def test_finalize_login_refuses_a_domain_outside_the_allowlist_without_provisioning(
+    db_session: AsyncSession, claims: dict[str, object]
+) -> None:
+    with pytest.raises(DomainNotAllowedError):
+        await finalize_login(
+            db_session, provider="google", claims=claims, settings=_settings(oidc_allowed_domains=["example.com"])
+        )
+
+    assert await get_user_by_email(db_session, str(claims["email"])) is None
+    assert await _identities(db_session, "google-sub-123") == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("status", [UserStatus.PENDING, UserStatus.INVITED])
+async def test_finalize_login_refusing_a_domain_leaves_an_onboarding_account_untouched(
+    db_session: AsyncSession,
+    member_role: Role,
+    status: UserStatus,
+) -> None:
+    """The refusal must land before `_activate`, which would otherwise clear the password."""
+    existing = await create_user(
+        db_session,
+        email="ada@example.com",
+        roles=[member_role],
+        status=status,
+        password=SecretStr("correct-horse-battery-staple"),
+    )
+    if status is UserStatus.INVITED:
+        await _make_invitation(db_session, existing.id)
+
+    with pytest.raises(DomainNotAllowedError):
+        await finalize_login(
+            db_session, provider="google", claims=CLAIMS, settings=_settings(oidc_allowed_domains=["example.org"])
+        )
+
+    user = await _user_by_email(db_session, "ada@example.com")
+    assert user.status is status
+    assert user.password is not None
+    assert user.password_cleared_at is None
+    assert await _identities(db_session, "google-sub-123") == []
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("default_role")
+async def test_finalize_login_refuses_an_unverified_email_under_an_allowlist_even_from_a_trusting_provider(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(oidc_module, "provider_trusts_unverified_email", lambda _: True)
+
+    with pytest.raises(UnverifiedEmailError):
+        await finalize_login(
+            db_session,
+            provider="google",
+            claims={**CLAIMS, "email_verified": False},
+            settings=_settings(oidc_allowed_domains=["example.com"]),
+        )
+
+    assert await _identities(db_session, "google-sub-123") == []
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("default_role")
+async def test_finalize_login_refuses_an_already_linked_account_once_its_domain_is_disallowed(
+    db_session: AsyncSession,
+) -> None:
+    """Existing accounts are not grandfathered — tightening the list cuts off their Google login."""
+    await finalize_login(db_session, provider="google", claims=CLAIMS, settings=_settings())
+
+    with pytest.raises(DomainNotAllowedError):
+        await finalize_login(
+            db_session, provider="google", claims=CLAIMS, settings=_settings(oidc_allowed_domains=["example.org"])
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("default_role")
+async def test_finalize_login_without_an_allowlist_admits_any_domain(db_session: AsyncSession) -> None:
+    claims = {**CLAIMS, "email": "ada@anywhere.test", "hd": "anywhere.test"}
+
+    await finalize_login(db_session, provider="google", claims=claims, settings=_settings())
+
+    assert len(await _identities(db_session, "google-sub-123")) == 1

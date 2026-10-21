@@ -39,7 +39,9 @@ Live rows only — so a soft-deleted identity doesn't block re-linking that IdP 
 
 ```mermaid
 flowchart TD
-    CB["callback with provider and sub"] --> ID{identity row for provider and sub}
+    CB["callback with provider and sub"] --> AD{OIDC_ALLOWED_DOMAINS set and email domain or hd not on it}
+    AD -->|yes| ERR0[DomainNotAllowedError]
+    AD -->|no| ID{identity row for provider and sub}
     ID -->|yes| U1[load its user]
     ID -->|no| EM{user with this email}
     EM -->|no| IO{invite_only}

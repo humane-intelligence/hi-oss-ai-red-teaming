@@ -48,8 +48,9 @@ async def refresh_session(session: AsyncSession, *, refresh_token: str, settings
 
     Raises:
         UnauthorizedError: For any invalid/expired/wrong-`typ` token, a session
-            past its absolute lifetime, an unknown (deleted) user, or a
-            non-ACTIVE account.
+            past its absolute lifetime, an unknown (deleted) user, a
+            non-ACTIVE account, or an OIDC session whose email domain is
+            outside `OIDC_ALLOWED_DOMAINS`.
     """
     secret = settings.session_jwt_secret.get_secret_value()
     algorithm = settings.session_jwt_algorithm
@@ -88,6 +89,16 @@ async def refresh_session(session: AsyncSession, *, refresh_token: str, settings
 
     if user.status != UserStatus.ACTIVE:
         logger.info("auth.refresh.failed", reason="inactive", user_id=str(user.id))
+        raise UnauthorizedError(_INVALID_REFRESH)
+
+    # Tightening OIDC_ALLOWED_DOMAINS must also end OIDC sessions already outside it, not only new logins.
+    allowed_domains = settings.oidc_allowed_domains
+    if (
+        identity.provider != "local"
+        and allowed_domains
+        and user.email.rpartition("@")[2].lower() not in allowed_domains
+    ):
+        logger.info("auth.refresh.failed", reason="domain_not_allowed", user_id=str(user.id))
         raise UnauthorizedError(_INVALID_REFRESH)
 
     logger.info("auth.refresh.succeeded", user_id=str(user.id), provider=identity.provider)

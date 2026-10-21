@@ -66,8 +66,7 @@ Result != `main` → **STOP. Do not touch the vault.** Tell the user which branc
    PY
    # GFM guard — no Obsidian [[wikilinks]] (the vault is GitHub-Flavored Markdown so it renders on GitHub; CLAUDE.md mentions the literal in inline code, hence the exclude)
    grep -rn '\[\[' docs/knowledge-base --include='*.md' | grep -v '/CLAUDE.md:' && echo 'WIKILINK FOUND — convert to relative [](…)' || echo 'no wikilinks (ok)'
-   # Tracker guard — no tracker ids in note prose (the vault ships to readers who cannot resolve
-   # them; the team's keys look like BES-123, hence the pattern)
+   # Tracker guard — no tracker ids in note prose (the vault ships to readers who cannot resolve them)
    grep -rn 'BES-[0-9]' docs/knowledge-base --include='*.md' && echo 'TRACKER REF FOUND — drop it; provenance belongs in the commit/PR' || echo 'no tracker refs (ok)'
    ```
    Plus: prose in English (code/identifiers/paths in English).

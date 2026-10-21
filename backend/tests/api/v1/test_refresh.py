@@ -166,6 +166,50 @@ async def test_refresh_rejects_token_past_absolute_lifetime(refresh_client: Asyn
     assert response.json()["detail"] == "Invalid or expired refresh token."
 
 
+@pytest.fixture
+def allowed_domains() -> list[str]:
+    return ["example.org"]
+
+
+@pytest.fixture
+def _oidc_allowlist(
+    _configured_settings: Settings, monkeypatch: pytest.MonkeyPatch, allowed_domains: list[str]
+) -> None:
+    monkeypatch.setattr(_configured_settings, "oidc_allowed_domains", allowed_domains)
+
+
+def _refresh_token(user: User, *, provider: str) -> str:
+    return encode_refresh_jwt(
+        user, provider=provider, secret=SECRET, algorithm="HS256", ttl_seconds=_settings().refresh_token_ttl_seconds
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_oidc_allowlist")
+async def test_refresh_rejects_an_oidc_session_once_its_domain_is_disallowed(
+    refresh_client: AsyncClient, active_user: User
+) -> None:
+    response = await refresh_client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": _refresh_token(active_user, provider="google")}
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json()["detail"] == "Invalid or expired refresh token."
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_oidc_allowlist")
+@pytest.mark.parametrize(("provider", "allowed_domains"), [("google", ["example.com"]), ("local", ["example.org"])])
+async def test_refresh_keeps_a_covered_oidc_session_and_any_password_session(
+    refresh_client: AsyncClient, active_user: User, provider: str
+) -> None:
+    response = await refresh_client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": _refresh_token(active_user, provider=provider)}
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+
+
 @pytest.mark.integration
 async def test_refresh_rejects_access_token(refresh_client: AsyncClient, active_user: User) -> None:
     tokens = await _login(refresh_client, active_user)

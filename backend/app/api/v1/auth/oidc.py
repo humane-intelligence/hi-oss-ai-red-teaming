@@ -13,6 +13,7 @@ from joserfc.errors import JoseError
 
 from app.core.audit.enums import AuditAction
 from app.core.auth.services.jwt import decode_session_jwt
+from app.core.auth.services.oidc import DomainNotAllowedError
 from app.core.auth.services.oidc import InactiveAccountError
 from app.core.auth.services.oidc import InviteOnlyError
 from app.core.auth.services.oidc import MissingClaimError
@@ -131,7 +132,9 @@ async def callback(
     ### Implementation Notes
 
     Errors are reported as `#error=<code>` on the same redirect, not as RFC 7807
-    bodies: `access_denied` (consent refused), `invalid_claims`, `email_unverified`,
+    bodies: `access_denied` (consent refused), `invalid_claims`, `email_unverified`
+    (also from a trusting IdP while `OIDC_ALLOWED_DOMAINS` is set), `domain_not_allowed`
+    (the email domain, or Google's `hd` when sent, is outside `OIDC_ALLOWED_DOMAINS`),
     `account_inactive`, `invite_only` (no account owns the email and the platform
     refuses self-serve signup), `login_conflict` (a concurrent first login for the
     same email lost a race a retry resolves), `oauth_error` (a network failure
@@ -172,12 +175,13 @@ async def callback(
         claims = token.get("userinfo") or {}
         try:
             tokens = await finalize_login(db, provider=provider, claims=dict(claims), settings=settings)
-        except (MissingClaimError, UnverifiedEmailError, InviteOnlyError) as exc:
+        except (MissingClaimError, UnverifiedEmailError, DomainNotAllowedError, InviteOnlyError) as exc:
             # One arm for the refusals that never resolve an account — no subject to
             # attribute, so (unlike `account_inactive`) they set no audit state.
             codes: dict[type[Exception], str] = {
                 MissingClaimError: "invalid_claims",
                 UnverifiedEmailError: "email_unverified",
+                DomainNotAllowedError: "domain_not_allowed",
                 InviteOnlyError: "invite_only",
             }
             code = codes[type(exc)]

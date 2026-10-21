@@ -92,7 +92,7 @@ def provider_names() -> list[str]:
 
 
 def provider_trusts_unverified_email(name: str) -> bool:
-    """Whether the named provider's `email_verified=false` should still issue a session.
+    """Whether the named provider's `email_verified=false` should still issue a session, absent an allowlist.
 
     Raises 404 for unknown provider names, mirroring `get_provider`.
     """

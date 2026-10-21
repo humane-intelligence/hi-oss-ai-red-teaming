@@ -407,6 +407,56 @@ async def test_callback_reports_invite_only_on_the_fragment(
     assert _callback_fragment(response) == {"error": "invite_only"}
 
 
+@pytest.fixture
+def _oidc_allowlist(_configured_settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_configured_settings, "oidc_allowed_domains", ["example.org"])
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_oidc_allowlist")
+async def test_callback_reports_a_disallowed_domain_on_the_fragment(
+    auth_db_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_authorize_access_token(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"userinfo": {"sub": "google-sub-999", "email": "new@example.com", "email_verified": True}}
+
+    client = providers_mod.get_provider("google")
+    monkeypatch.setattr(client, "authorize_access_token", fake_authorize_access_token)
+
+    response = await auth_db_client.get("/api/v1/auth/oidc/google/callback")
+
+    assert response.status_code == status.HTTP_302_FOUND
+    assert _callback_fragment(response) == {"error": "domain_not_allowed"}
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("audit_via_test_session", "_oidc_allowlist")
+async def test_callback_domain_not_allowed_writes_no_audit_row(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_authorize_access_token(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"userinfo": {"sub": "google-sub-999", "email": "new@example.com", "email_verified": True}}
+
+    client = providers_mod.get_provider("google")
+    monkeypatch.setattr(client, "authorize_access_token", fake_authorize_access_token)
+
+    response = await auth_db_client.get("/api/v1/auth/oidc/google/callback")
+
+    assert _callback_fragment(response) == {"error": "domain_not_allowed"}
+    db_session.expire_all()
+    count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(col(AuditLog.action).in_([AuditAction.AUTH_LOGIN.value, AuditAction.AUTH_LOGIN_FAILED.value]))
+        )
+    ).scalar_one()
+    assert count == 0
+
+
 @pytest.mark.integration
 async def test_callback_reports_a_deactivated_account_without_provisioning_it(
     auth_db_client: AsyncClient,
