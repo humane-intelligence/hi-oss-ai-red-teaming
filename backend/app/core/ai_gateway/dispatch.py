@@ -37,6 +37,7 @@ from app.core.ai_gateway.chat import ImageUrl
 from app.core.ai_gateway.chat import TextContentPart
 from app.core.ai_gateway.crypto import SecretDecryptError
 from app.core.ai_gateway.enums import Modality
+from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.enums import WarmupStatus
 from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
@@ -52,6 +53,7 @@ from app.core.ai_gateway.providers.base import ModelProvider
 from app.core.ai_gateway.providers.litellm import LiteLLMProvider
 from app.core.ai_gateway.services.ai_models import missing_inference_endpoint
 from app.core.ai_gateway.services.ai_models import resolve_api_key
+from app.core.ai_gateway.web_access import supports_web_access
 from app.core.config import Settings
 from app.core.database import SessionProvider
 from app.core.exceptions import NotFoundError
@@ -62,6 +64,11 @@ logger = get_logger(__name__)
 _DEFAULT_PROVIDER: ModelProvider = LiteLLMProvider()
 
 _PROBE_TIMEOUT = 10.0
+# litellm turns `web_search_options` into each vendor's native search tool. Anthropic also hosts a
+# URL-fetch tool, so the model can open a page and not only search for it; litellm adds that tool's
+# beta header itself. "medium" is the middle of litellm's three context sizes (5 searches on Anthropic).
+_WEB_SEARCH_OPTIONS: dict[str, Any] = {"search_context_size": "medium"}
+_ANTHROPIC_WEB_FETCH_TOOL: dict[str, Any] = {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 5}
 # Coarsest resolution the inactivity alert needs from `last_warmup_at`; anything finer is
 # write amplification, since clients poll a waking endpoint every few seconds.
 _WARMUP_STAMP_INTERVAL = timedelta(minutes=5)
@@ -221,6 +228,7 @@ async def dispatch_chat(  # noqa: PLR0913 — one keyword per independent dispat
     model = await _resolve_model(session, model_alias)
     client = provider or _DEFAULT_PROVIDER
     call = _build_call(model, settings, messages, params, system_suffix=system_suffix)
+    call["params"] = _apply_web_access(call["params"], model)
     # Stamped after `_build_call`: a permanently misconfigured model (no endpoint, no text
     # output) must not read as "used" on every failed attempt, or its idle alert never fires.
     await _stamp_usage(model.id, session_provider)
@@ -259,6 +267,7 @@ async def dispatch_stream(  # noqa: PLR0913 — one keyword per independent disp
     """
     model = await _resolve_model(session, model_alias)
     call = _build_call(model, settings, messages, params, system_suffix=system_suffix)
+    call["params"] = _apply_web_access(call["params"], model)
     client = provider or _DEFAULT_PROVIDER
     stream = client.stream(**call, timeout=timeout)
     return _stamped_stream(_observed_stream(stream, model.provider.value), model.id, session_provider)
@@ -453,6 +462,33 @@ def _build_call(
         "api_base": model.inference_endpoint,
         "params": merged,
     }
+
+
+_WEB_TOOL_KEYS = frozenset({"web_search_options", "tools"})
+
+
+def _apply_web_access(params: dict[str, Any], model: AiModel) -> dict[str, Any]:
+    """Make the `web_access` switch the only way a call goes online.
+
+    On, the gateway-owned web tools are added after `_build_call`, like the probes' token cap,
+    so an `advanced_params_disabled` row keeps them: the switch is the gateway's, not an
+    operator knob. Off, the same keys are dropped from whatever the operator stored in
+    `parameters` (the cascade passes unknown keys through), or the switch would read "off" on a
+    model that still searches. Only chat and stream come through here — a health probe with a
+    live search would cost money to learn nothing. Support is re-checked on the stored row (the
+    save-time rule is advisory and the capability map can move under it) and refused outright,
+    because litellm's `drop_params` would otherwise turn the switch into a silent no-op.
+    """
+    if not model.web_access:
+        return {key: value for key, value in params.items() if key not in _WEB_TOOL_KEYS}
+    if not supports_web_access(model.provider, model.provider_model_id):
+        raise ProviderBadRequestError(
+            f"Model {model.model_alias!r} has no internet access option at its provider, yet web_access is on."
+        )
+    web: dict[str, Any] = {"web_search_options": dict(_WEB_SEARCH_OPTIONS)}
+    if model.provider is ProviderVendor.ANTHROPIC:
+        web["tools"] = [dict(_ANTHROPIC_WEB_FETCH_TOOL)]
+    return {**params, **web}
 
 
 def _has_image_content(messages: list[ChatMessage]) -> bool:

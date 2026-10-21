@@ -28,9 +28,11 @@ from app.core.ai_gateway.chat import TextContentPart
 from app.core.ai_gateway.crypto import SecretDecryptError
 from app.core.ai_gateway.dispatch import _outcome
 from app.core.ai_gateway.dispatch import dispatch_chat
+from app.core.ai_gateway.dispatch import dispatch_health
 from app.core.ai_gateway.dispatch import dispatch_stream
 from app.core.ai_gateway.enums import Modality
 from app.core.ai_gateway.enums import ProviderVendor
+from app.core.ai_gateway.enums import WarmupStatus
 from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
@@ -38,6 +40,7 @@ from app.core.ai_gateway.exceptions import ProviderError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
+from app.core.ai_gateway.models import AiModel
 from app.core.ai_gateway.services.ai_models import create_model
 from app.core.config import Settings
 from app.core.exceptions import NotFoundError
@@ -99,7 +102,7 @@ class _RecordingProvider:
         params: dict[str, Any] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109 — mirrors the ModelProvider port signature
     ) -> AsyncIterator[ChatChunk]:
-        self.last = {"vendor": vendor, "provider_model_id": provider_model_id}
+        self.last = {"vendor": vendor, "provider_model_id": provider_model_id, "params": params}
         try:
             yield ChatChunk(
                 id="x",
@@ -818,3 +821,255 @@ async def test_dispatch_stream_swallows_provider_close_error(db_session: AsyncSe
     await stream.aclose()
 
     assert _calls_total("aborted") == before + 1
+
+
+_WEB_SEARCH = {"search_context_size": "medium"}
+
+
+@pytest.mark.integration
+async def test_dispatch_adds_web_search_and_fetch_for_an_anthropic_model_with_web_access(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    await create_model(
+        db_session,
+        app_settings,
+        name="Online Claude",
+        model_alias="online-claude",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        parameters={"temperature": 0.2},
+        web_access=True,
+    )
+    fake = _RecordingProvider()
+
+    await dispatch_chat(
+        db_session,
+        app_settings,
+        model_alias="online-claude",
+        messages=_user_msg(),
+        provider=fake,
+        session_provider=_session_provider(db_session),
+    )
+
+    assert fake.last["params"]["temperature"] == 0.2
+    assert fake.last["params"]["web_search_options"] == _WEB_SEARCH
+    assert [tool["type"] for tool in fake.last["params"]["tools"]] == ["web_fetch_20250910"]
+
+
+@pytest.mark.integration
+async def test_dispatch_adds_only_web_search_outside_anthropic(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    await create_model(
+        db_session,
+        app_settings,
+        name="Online Gemini",
+        model_alias="online-gemini",
+        provider=ProviderVendor.GOOGLE,
+        provider_model_id="gemini-2.5-pro",
+        web_access=True,
+    )
+    fake = _RecordingProvider()
+
+    await dispatch_chat(
+        db_session,
+        app_settings,
+        model_alias="online-gemini",
+        messages=_user_msg(),
+        provider=fake,
+        session_provider=_session_provider(db_session),
+    )
+
+    assert fake.last["params"] == {"web_search_options": _WEB_SEARCH}
+
+
+@pytest.mark.integration
+async def test_dispatch_sends_no_web_tools_while_web_access_is_off(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    await create_model(
+        db_session,
+        app_settings,
+        name="Offline Claude",
+        model_alias="offline-claude",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+    )
+    fake = _RecordingProvider()
+
+    await dispatch_chat(
+        db_session,
+        app_settings,
+        model_alias="offline-claude",
+        messages=_user_msg(),
+        provider=fake,
+        session_provider=_session_provider(db_session),
+    )
+
+    assert "web_search_options" not in fake.last["params"]
+    assert "tools" not in fake.last["params"]
+
+
+@pytest.mark.integration
+async def test_dispatch_strips_stored_web_tools_while_web_access_is_off(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    """The cascade passes unknown keys through, so the switch has to be the one way online."""
+    await create_model(
+        db_session,
+        app_settings,
+        name="Raw params",
+        model_alias="raw-params",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        parameters={"temperature": 0.4, "web_search_options": {}, "tools": [{"type": "web_fetch_20250910"}]},
+    )
+    fake = _RecordingProvider()
+
+    await dispatch_chat(
+        db_session,
+        app_settings,
+        model_alias="raw-params",
+        messages=_user_msg(),
+        provider=fake,
+        session_provider=_session_provider(db_session),
+    )
+
+    assert fake.last["params"] == {"temperature": 0.4}
+
+
+@pytest.mark.integration
+async def test_dispatch_stream_carries_the_web_tools_too(db_session: AsyncSession, app_settings: Settings) -> None:
+    await create_model(
+        db_session,
+        app_settings,
+        name="Streaming Claude",
+        model_alias="streaming-claude",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        web_access=True,
+    )
+    fake = _RecordingProvider()
+
+    stream = await dispatch_stream(
+        db_session,
+        app_settings,
+        model_alias="streaming-claude",
+        messages=_user_msg(),
+        provider=fake,
+        session_provider=_session_provider(db_session),
+    )
+    async for _chunk in stream:
+        pass
+
+    assert fake.last["params"]["web_search_options"] == _WEB_SEARCH
+    assert fake.last["params"]["tools"][0]["type"] == "web_fetch_20250910"
+
+
+@pytest.mark.integration
+async def test_dispatch_keeps_web_tools_when_advanced_params_disabled(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    """The switch is the gateway's, not an operator knob, so the cascade opt-out must not drop it."""
+    await create_model(
+        db_session,
+        app_settings,
+        name="Online but plain",
+        model_alias="online-plain",
+        provider=ProviderVendor.GOOGLE,
+        provider_model_id="gemini-2.5-pro",
+        parameters={"temperature": 0.5},
+        advanced_params_disabled=True,
+        web_access=True,
+    )
+    fake = _RecordingProvider()
+
+    await dispatch_chat(
+        db_session,
+        app_settings,
+        model_alias="online-plain",
+        messages=_user_msg(),
+        params={"top_p": 0.3},
+        provider=fake,
+        session_provider=_session_provider(db_session),
+    )
+
+    assert fake.last["params"] == {"web_search_options": _WEB_SEARCH}
+
+
+@pytest.mark.integration
+async def test_dispatch_refuses_web_access_on_a_pair_that_has_no_web_option(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    # Written past the save-time rule, as a row predating it (or a capability-map change) would be.
+    db_session.add(
+        AiModel(
+            name="Stale Online",
+            model_alias="stale-online",
+            provider=ProviderVendor.COHERE,
+            provider_model_id="command-r-plus",
+            web_access=True,
+        )
+    )
+    await db_session.flush()
+    fake = _RecordingProvider()
+
+    with pytest.raises(ProviderBadRequestError, match="no internet access option"):
+        await dispatch_chat(
+            db_session,
+            app_settings,
+            model_alias="stale-online",
+            messages=_user_msg(),
+            provider=fake,
+            session_provider=_session_provider(db_session),
+        )
+
+    assert fake.last == {}
+
+
+@pytest.mark.integration
+async def test_dispatch_stream_refuses_the_same_row_on_await(db_session: AsyncSession, app_settings: Settings) -> None:
+    """A capability fault surfaces on the ``await``, before any chunk — the boundary the SSE route relies on."""
+    db_session.add(
+        AiModel(
+            name="Stale Online Stream",
+            model_alias="stale-online-stream",
+            provider=ProviderVendor.COHERE,
+            provider_model_id="command-r-plus",
+            web_access=True,
+        )
+    )
+    await db_session.flush()
+    fake = _RecordingProvider()
+
+    with pytest.raises(ProviderBadRequestError, match="no internet access option"):
+        await dispatch_stream(
+            db_session,
+            app_settings,
+            model_alias="stale-online-stream",
+            messages=_user_msg(),
+            provider=fake,
+            session_provider=_session_provider(db_session),
+        )
+
+    assert fake.last == {}
+
+
+@pytest.mark.integration
+async def test_dispatch_health_sends_no_web_tools(db_session: AsyncSession, app_settings: Settings) -> None:
+    """A probe with a live search would cost money to learn nothing about reachability."""
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="Probed Online",
+        model_alias="probed-online",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        web_access=True,
+    )
+    fake = _RecordingProvider()
+
+    status, _reason = await dispatch_health(model, app_settings, provider=fake)
+
+    assert status is WarmupStatus.READY
+    assert fake.last["params"] == {"max_tokens": 1}

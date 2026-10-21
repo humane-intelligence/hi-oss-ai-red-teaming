@@ -386,3 +386,35 @@ async def test_chat_forwards_multimodal_content_parts(monkeypatch: pytest.Monkey
             ],
         }
     ]
+
+
+@pytest.mark.unit
+async def test_chat_forwards_web_tool_params_to_litellm(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Neither key is reserved, so both must reach acompletion verbatim for litellm to translate.
+    captured: dict[str, object] = {}
+
+    async def _capture(**kwargs: object) -> SimpleNamespace:
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="x",
+            model="claude-sonnet-4-5",
+            created=1,
+            choices=[
+                SimpleNamespace(index=0, finish_reason="stop", message=SimpleNamespace(role="assistant", content="ok"))
+            ],
+            usage=None,
+        )
+
+    monkeypatch.setattr(litellm, "acompletion", _capture)
+    web_fetch = {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 5}
+
+    await LiteLLMProvider().chat(
+        vendor=ProviderVendor.ANTHROPIC,
+        provider_model_id="claude-sonnet-4-5",
+        messages=_messages(),
+        params={"web_search_options": {"search_context_size": "medium"}, "tools": [web_fetch]},
+    )
+
+    assert captured["model"] == "anthropic/claude-sonnet-4-5"
+    assert captured["web_search_options"] == {"search_context_size": "medium"}
+    assert captured["tools"] == [web_fetch]
