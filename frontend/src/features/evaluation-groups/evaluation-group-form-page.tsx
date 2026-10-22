@@ -252,8 +252,12 @@ export function EvaluationGroupFormPage() {
         .map((m) => ({
           value: m.id,
           label: m.name,
-          hint: modelLabelSummary(m.labels),
-          hintTitle: m.labels.join(', '),
+          hint: [m.web_access ? 'internet' : '', modelLabelSummary(m.labels)]
+            .filter(Boolean)
+            .join(' · '),
+          hintTitle: [m.web_access ? 'internet access' : '', m.labels.join(', ')]
+            .filter(Boolean)
+            .join(' · '),
         }))
     )
   }, [models.data, modelSearch])

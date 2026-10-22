@@ -534,3 +534,16 @@ describe('AssignModelDialog — edit', () => {
     expect(body.parameters).toEqual({})
   })
 })
+
+describe('AssignModelDialog — internet access marker', () => {
+  it('names a model with web access in the option', async () => {
+    server.use(aiModelsHandler({ web_access: true }))
+
+    renderDialog(<AssignModelDialog evaluationId={EVAL_ID} open onOpenChange={() => {}} />)
+
+    await openSelect('Model')
+    expect(
+      await screen.findByRole('option', { name: 'gpt-4o (gpt-4o) (internet)' }),
+    ).toBeInTheDocument()
+  })
+})

@@ -24,6 +24,7 @@ erDiagram
         inference_endpoint VARCHAR(1024)
         warmup_enabled BOOLEAN
         advanced_params_disabled BOOLEAN
+        web_access BOOLEAN
         icon_file VARCHAR(255)
         labels VARCHAR[]
         extras JSONB

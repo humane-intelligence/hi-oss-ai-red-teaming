@@ -315,6 +315,7 @@ const evaluationWithModel: EvaluationResponse = {
       provider_model_id: 'gpt-4o',
       warmup_enabled: false,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
   ],

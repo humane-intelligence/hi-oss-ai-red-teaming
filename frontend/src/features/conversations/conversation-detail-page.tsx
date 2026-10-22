@@ -26,6 +26,7 @@ import { ChatComposer } from './chat-composer'
 import { AssistantActions } from './assistant-actions'
 import { useWarmupGate } from './use-model-warmup'
 import { WarmupBadge } from './warmup-badge'
+import { WebAccessBadge } from './web-access-badge'
 import { FlagMessageDialog } from '@/features/message-flags/flag-message-dialog'
 import { useMessageFlags } from '@/features/message-flags/queries'
 import { useEvaluation, useEvaluationTagKeys } from '@/features/evaluations/queries'
@@ -409,6 +410,7 @@ export function ConversationDetailPage() {
               {assignment?.warmup_enabled && canWrite && (
                 <WarmupBadge state={warmup.state} onRetry={warmup.warmUp} />
               )}
+              {assignment?.web_access && <WebAccessBadge />}
             </div>
             <PageActions
               secondary={[

@@ -46,6 +46,7 @@ const evaluation: EvaluationResponse = {
       name: 'gpt-4o',
       warmup_enabled: true,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
     {
@@ -53,6 +54,7 @@ const evaluation: EvaluationResponse = {
       name: 'claude-3-opus',
       warmup_enabled: true,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
   ],
@@ -1222,5 +1224,20 @@ describe('ConversationGroupPage — labels and flags in a pane', () => {
     // filter on the conversation's own `user_id` with no such arm — so the control would 404.
     expect(screen.getByLabelText('Message gpt-4o')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /flag this reply for review/i })).toBeNull()
+  })
+})
+
+describe('ConversationGroupPage — internet access marker', () => {
+  it('badges the pane of a model with web access', async () => {
+    const online = { ...evaluation.models![0]!, web_access: true }
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ ...evaluation, models: [online, evaluation.models![1]] }),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(await screen.findByText('Internet access')).toBeInTheDocument()
   })
 })

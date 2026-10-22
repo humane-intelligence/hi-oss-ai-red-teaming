@@ -510,7 +510,9 @@ class EvaluationAiModelView(BaseModel):
     `advanced_params_disabled` is surfaced too, on the `warmup_enabled` footing: the
     client has to know whether to offer the override controls at all, and an empty
     `effective_parameters` alone cannot say whether the model opted out or simply
-    sets nothing.
+    sets nothing. `web_access` rides the same footing: whether replies may draw on
+    the live web changes how a red-teamer reads them and says nothing about which
+    model it is.
     """
 
     assignment_id: UUID = Field(description="Identifier of the model assignment within the evaluation.")
@@ -540,6 +542,10 @@ class EvaluationAiModelView(BaseModel):
             "Whether the underlying model opts out of the inference-params cascade. When true, "
             "`effective_parameters` is empty and no layer below should offer the knobs. Not masked."
         ),
+    )
+    web_access: bool = Field(
+        default=False,
+        description="Whether the gateway attaches the provider's web tools to this model's calls. Not masked.",
     )
     effective_parameters: dict[str, Any] = Field(
         default_factory=dict,
@@ -587,6 +593,7 @@ class EvaluationAiModelView(BaseModel):
                 warmup_enabled=assignment.ai_model.warmup_enabled,
                 input_modalities=assignment.ai_model.input_modalities,
                 advanced_params_disabled=disabled,
+                web_access=assignment.ai_model.web_access,
                 effective_parameters=mask_inference_params(effective_parameters),
                 deleted_at=assignment.deleted_at,
                 deleted_by_id=assignment.deleted_by_id,
@@ -599,6 +606,7 @@ class EvaluationAiModelView(BaseModel):
             warmup_enabled=assignment.ai_model.warmup_enabled,
             input_modalities=assignment.ai_model.input_modalities,
             advanced_params_disabled=disabled,
+            web_access=assignment.ai_model.web_access,
             effective_parameters=effective_parameters,
             deleted_at=assignment.deleted_at,
             deleted_by_id=assignment.deleted_by_id,

@@ -14,6 +14,7 @@ import {
   NO_TEXT_OUTPUT_LABEL,
   providerLabel,
   requiresInferenceEndpoint,
+  webAccessLabel,
 } from './labels'
 import { ApiKeyDialog } from './api-key-dialog'
 import { ModelActions } from './model-actions'
@@ -182,6 +183,7 @@ export function AiModelDetailPage() {
                   <Field label="Warm up before chatting">
                     {model.warmup_enabled ? 'Yes' : 'No'}
                   </Field>
+                  <Field label="Internet access">{webAccessLabel(model)}</Field>
                   {(model.warmup_enabled || model.inactivity_alert_hours != null) && (
                     <Field label="Idle alert after">
                       {/* The sweep only checks warmed models, so a threshold without

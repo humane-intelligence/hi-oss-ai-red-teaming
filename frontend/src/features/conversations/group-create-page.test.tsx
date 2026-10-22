@@ -33,6 +33,7 @@ const evaluation: EvaluationResponse = {
       name: 'gpt-4o',
       warmup_enabled: false,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
     {
@@ -40,6 +41,7 @@ const evaluation: EvaluationResponse = {
       name: 'claude-3-opus',
       warmup_enabled: false,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
   ],
@@ -447,5 +449,25 @@ describe('GroupCreatePage — in-group authority', () => {
 
     expect(await screen.findByText(/access to this section/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Start conversation' })).toBeNull()
+  })
+})
+
+describe('GroupCreatePage — internet access marker', () => {
+  it('names a model with web access in the picker', async () => {
+    const online = { ...evaluation.models![0]!, web_access: true }
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ ...evaluation, models: [online, evaluation.models![1]] }),
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await user.click(screen.getByLabelText('Model 1'))
+
+    expect(await screen.findByRole('option', { name: 'gpt-4o (internet)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'claude-3-opus' })).toBeInTheDocument()
   })
 })

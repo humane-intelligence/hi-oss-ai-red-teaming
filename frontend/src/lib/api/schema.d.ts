@@ -3237,7 +3237,8 @@ export interface components {
          *       },
          *       "provider": "anthropic",
          *       "provider_model_id": "claude-3-5-sonnet-20240620",
-         *       "warmup_enabled": true
+         *       "warmup_enabled": true,
+         *       "web_access": false
          *     }
          */
         AiModelCreate: {
@@ -3321,6 +3322,12 @@ export interface components {
              */
             advanced_params_disabled: boolean;
             /**
+             * Web Access
+             * @description Set true to let the model use the web: the gateway adds the provider's native search (and, on Anthropic, URL fetch) to every chat call. Refused with 400 when the provider has no such option for this model.
+             * @default false
+             */
+            web_access: boolean;
+            /**
              * Inactivity Alert Hours
              * @description Alert admins once no message has been dispatched to this model for this many hours (1-8760) — warmups do not count, so an endpoint kept warm by conversation opens still alerts. Applies only when `warmup_enabled` is set: an always-on endpoint costs nothing while idle, so it is never swept. Omit or `null` for no alert.
              */
@@ -3369,7 +3376,9 @@ export interface components {
          *       "provider": "anthropic",
          *       "provider_model_id": "claude-3-5-sonnet-20240620",
          *       "updated_at": "2026-01-02T09:30:00Z",
-         *       "warmup_enabled": true
+         *       "warmup_enabled": true,
+         *       "web_access": false,
+         *       "web_access_supported": true
          *     }
          */
         AiModelResponse: {
@@ -3460,6 +3469,16 @@ export interface components {
              * @description True iff this model ignores the inference-params cascade: stored overrides are retained but never sent to the provider, and no layer below offers them.
              */
             advanced_params_disabled: boolean;
+            /**
+             * Web Access
+             * @description True iff the gateway attaches the provider's native web tools (search; on Anthropic also URL fetch) to this model's chat calls.
+             */
+            web_access: boolean;
+            /**
+             * Web Access Supported
+             * @description Read-only: whether this provider/model pair has a web option at all. `web_access` can only be turned on while this is true.
+             */
+            web_access_supported: boolean;
             /**
              * Inactivity Alert Hours
              * @description Quiet hours after which admins are alerted this model may be idling warm; `null` = no alert. Only ever acts on a `warmup_enabled` model — an always-on endpoint costs nothing idle.
@@ -3596,6 +3615,8 @@ export interface components {
             warmup_enabled?: boolean | null;
             /** Advanced Params Disabled */
             advanced_params_disabled?: boolean | null;
+            /** Web Access */
+            web_access?: boolean | null;
             /**
              * Inactivity Alert Hours
              * @description Quiet hours (1-8760) before admins are alerted; send `null` to stop alerting. Acts only on a `warmup_enabled` model.
@@ -5302,7 +5323,9 @@ export interface components {
          *     `advanced_params_disabled` is surfaced too, on the `warmup_enabled` footing: the
          *     client has to know whether to offer the override controls at all, and an empty
          *     `effective_parameters` alone cannot say whether the model opted out or simply
-         *     sets nothing.
+         *     sets nothing. `web_access` rides the same footing: whether replies may draw on
+         *     the live web changes how a red-teamer reads them and says nothing about which
+         *     model it is.
          */
         EvaluationAiModelView: {
             /**
@@ -5340,6 +5363,12 @@ export interface components {
              * @default false
              */
             advanced_params_disabled: boolean;
+            /**
+             * Web Access
+             * @description Whether the gateway attaches the provider's web tools to this model's calls. Not masked.
+             * @default false
+             */
+            web_access: boolean;
             /**
              * Effective Parameters
              * @description Inference params inherited by conversations under this assignment: the model baseline merged with the per-assignment overrides. Under model masking, restricted to the identity-safe numeric sampling knobs — the system prompt and provider-specific keys are withheld. Empty when `advanced_params_disabled` is set — nothing below inherits params the gateway will not send.
@@ -15387,7 +15416,7 @@ export interface operations {
                     "application/json": components["schemas"]["AiModelResponse"];
                 };
             };
-            /** @description A generic provider requires an inference_endpoint. */
+            /** @description A generic provider requires an inference_endpoint, or web_access is on for a model with no web option. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -15803,7 +15832,7 @@ export interface operations {
                     "application/json": components["schemas"]["AiModelResponse"];
                 };
             };
-            /** @description A generic provider requires an inference_endpoint. */
+            /** @description A generic provider requires an inference_endpoint, or web_access is on for a model with no web option. */
             400: {
                 headers: {
                     [name: string]: unknown;

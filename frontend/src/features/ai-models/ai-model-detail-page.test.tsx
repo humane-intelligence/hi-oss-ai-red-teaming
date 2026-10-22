@@ -24,6 +24,8 @@ const testModel: AiModelResponse = {
   is_disabled: false,
   warmup_enabled: false,
   advanced_params_disabled: false,
+  web_access: false,
+  web_access_supported: true,
   parameters: {},
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -471,5 +473,39 @@ describe('AiModelDetailPage — modality', () => {
       expect(screen.getByRole('heading', { name: 'Test Model' })).toBeInTheDocument(),
     )
     expect(screen.queryByText(/Conversations need a text reply/)).not.toBeInTheDocument()
+  })
+})
+
+describe('AiModelDetailPage — internet access', () => {
+  it('reads No while the switch is off on a model that could use it', async () => {
+    server.use(modelHandler({ ...testModel, web_access: false, web_access_supported: true }))
+    renderPage(['models:read'])
+
+    const term = await screen.findByText('Internet access')
+    expect(term.nextElementSibling).toHaveTextContent('No')
+  })
+
+  it('reads Yes when the switch is on', async () => {
+    server.use(modelHandler({ ...testModel, web_access: true, web_access_supported: true }))
+    renderPage(['models:read'])
+
+    const term = await screen.findByText('Internet access')
+    expect(term.nextElementSibling).toHaveTextContent('Yes')
+  })
+
+  it('names the missing provider option instead of a bare No', async () => {
+    server.use(modelHandler({ ...testModel, web_access_supported: false }))
+    renderPage(['models:read'])
+
+    const term = await screen.findByText('Internet access')
+    expect(term.nextElementSibling).toHaveTextContent('Not available at this provider')
+  })
+
+  it('flags a stored Yes the provider no longer honours', async () => {
+    server.use(modelHandler({ ...testModel, web_access: true, web_access_supported: false }))
+    renderPage(['models:read'])
+
+    const term = await screen.findByText('Internet access')
+    expect(term.nextElementSibling).toHaveTextContent('Yes — no longer available at this provider')
   })
 })

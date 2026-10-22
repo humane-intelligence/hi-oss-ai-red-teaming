@@ -38,6 +38,7 @@ Beyond the common `id` / `created_at` / `updated_at` / `deleted_at` (from `BaseM
 | `warmup_enabled` | BOOLEAN NOT NULL, default `false` | opt-in: this model's endpoint scales to zero, so warm it before the first message |
 | `labels` | VARCHAR[] NOT NULL, default `{}` | free-form operator annotations shown as badges; no catalog — see below |
 | `advanced_params_disabled` | BOOLEAN NOT NULL, default `false` | opts the row out of the whole inference-params cascade |
+| `web_access` | BOOLEAN NOT NULL, default `false` | lets the gateway attach the provider's native web tools (search; on Anthropic also URL fetch) to chat calls — see [Internet access](#internet-access-web_access) |
 | `icon_file` | VARCHAR(255) NULL | hint for the frontend |
 | `parameters` | JSONB NOT NULL, default `{}` | default inference knobs (from `InferenceParamsMixin`) |
 | `extras` | JSONB NOT NULL, default `{}` | provider call-shape metadata; does NOT go to the provider |
@@ -86,7 +87,27 @@ merged = {} if model.advanced_params_disabled else merge_inference_params(model.
 
 Stored overrides are **kept, not deleted**, so flipping the flag back restores them. Reads that advertise inheritable params (`EvaluationAiModelView.effective_parameters`) project empty for such a model.
 
-The corollary matters for anything the *platform* adds to a call: gateway-owned context (the [conversation tag](../components/conversation-tags.md) block, the probe's token cap) must travel on its own channel — `dispatch_*`'s `system_suffix`, or applied after `_build_call` — because `params` is exactly what this flag suppresses.
+The corollary matters for anything the *platform* adds to a call: gateway-owned context (the [conversation tag](../components/conversation-tags.md) block, the probe's token cap, the web tools below) must travel on its own channel — `dispatch_*`'s `system_suffix`, or applied after `_build_call` — because `params` is exactly what this flag suppresses.
+
+## Internet access (`web_access`)
+
+One switch per model that lets it use the web the way its provider natively allows. When on, `dispatch_chat` / `dispatch_stream` add litellm's provider-agnostic `web_search_options` to the call — litellm translates it to each vendor's own search tool — and, for Anthropic, the hosted `web_fetch` tool as well, so the model can open a specific URL and not only search for it. Off by default, so existing models and evaluations stay offline. Health checks and the capability probe never carry the tools: a probe with a live search would cost money to learn nothing about reachability.
+
+**Which models can take it** is decided by `supports_web_access` in `app/core/ai_gateway/web_access.py`, surfaced read-only as `web_access_supported` on every read:
+
+| Vendor | Rule | Why |
+|---|---|---|
+| `anthropic`, `google` | always supported | web search exists on every current model there, and litellm's per-model capability map misses their aliases (`claude-sonnet-4-5` unknown, the dated id supported) — the map alone would lock the switch on most Claude rows. The over-approximation is deliberate: a retired id (`claude-3-5-sonnet-20240620`) reads as supported, saves, and is refused by the provider at chat time — loud, not silent |
+| `openai` | `litellm.supports_web_search("openai/<id>")` | genuinely per model (`*-search-preview` and the newer families: yes; `gpt-4o`: no) |
+| everything else (`azure`, `aws_bedrock`, `cohere`, `huggingface`, `generic`) | unsupported | no option litellm can translate `web_search_options` into |
+
+The switch governs only the tools the gateway attaches. A provider that searches on its own — an OpenRouter `:online` model — is online with the switch off and shows no marker, and an OpenAI-compatible endpoint that silently drops `web_search_options` (OpenRouter's chat completions, verified 2026-10-22) is exactly why `generic` reads as unsupported rather than best-effort.
+
+The module stays litellm-free at import (the one `import litellm` sits inside the OpenAI branch), so the CRUD path keeps its no-litellm import rule.
+
+**Enforcement, twice.** Saving `web_access=true` on an unsupported pair is a **400** pinned to the field (`WebAccessUnsupportedError`, `loc=["body","web_access"]`), checked on the *merged* row in `create_model` and in `update_model` whenever a patch touches `provider`, `provider_model_id` or `web_access` — so moving the model id under an enabled switch is caught too. Like the `inference_endpoint` rule it is advisory, not an invariant (a row written past the service, or a capability-map change, can leave the switch on for a pair that lost support), which is why dispatch re-checks on the stored row and refuses with `ProviderBadRequestError` rather than sending the call: with `drop_params=True` litellm would silently discard the tools and the console would show a switch that does nothing.
+
+**Gateway-owned**, so the tools are merged onto `call["params"]` *after* `_build_call`, like the probes' token cap — an `advanced_params_disabled` row keeps them. Off, the same two keys (`web_search_options`, `tools`) are dropped from whatever the operator stored in `parameters` — the cascade passes unknown keys through, and the switch has to be the one way a call goes online, or the badge the red-teamer sees would lie. Surfaced to red-teamers through `EvaluationAiModelView.web_access`, unmasked: whether a reply may draw on the live web changes how it is read and names no model. The switch is audited (`_ai_model_snapshot`), and `web_access` is not among `PROBED_CALL_FIELDS`: the capability probe does not depend on it.
 
 ## `generic` needs an `inference_endpoint`
 
@@ -226,6 +247,7 @@ erDiagram
         VARCHAR provider_model_id
         JSONB parameters
         BOOLEAN advanced_params_disabled
+        BOOLEAN web_access
         VARCHAR api_key_encrypted
         BOOLEAN warmup_enabled
         TIMESTAMPTZ disabled_at

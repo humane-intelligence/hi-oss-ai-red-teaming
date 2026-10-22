@@ -9,6 +9,7 @@ import { humanizeError } from '@/lib/api/problem'
 import { useConversationStream } from './use-conversation-stream'
 import { useWarmupGate } from './use-model-warmup'
 import { WarmupBadge } from './warmup-badge'
+import { WebAccessBadge } from './web-access-badge'
 import { Badge } from '@/components/ui/badge'
 import { Bubble } from './bubble'
 import { ChatComposer } from './chat-composer'
@@ -29,6 +30,7 @@ export function ConversationPane({
   modelName,
   nameSuffix,
   warmupEnabled,
+  webAccess,
   acceptsImages,
   tagsEnabled,
   allowedTagKeys,
@@ -49,6 +51,7 @@ export function ConversationPane({
   // ` (n)` when this pane's name isn't unique in the group, else empty (see member-names).
   nameSuffix?: string
   warmupEnabled: boolean
+  webAccess: boolean
   acceptsImages: boolean
   // Authoritative here, unlike on the full conversation page: the group page renders a pane only once
   // the evaluation has resolved, so `false` means "off", never "not known yet" — which is what lets the
@@ -149,6 +152,7 @@ export function ConversationPane({
           {warmupEnabled && canWrite && (
             <WarmupBadge state={warmup.state} onRetry={warmup.warmUp} />
           )}
+          {webAccess && <WebAccessBadge />}
           {title && (
             <span className="text-muted-foreground block truncate text-xs">{modelName}</span>
           )}

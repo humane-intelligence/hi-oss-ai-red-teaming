@@ -136,9 +136,9 @@ export function ConversationGroupPage() {
   }, [])
   const anyWarming = warmingConvs.size > 0
 
-  const modelName = (assignmentId: string) =>
-    (evaluation.data?.models ?? []).find((m) => m.assignment_id === assignmentId)?.name ??
-    '— masked —'
+  const assignmentFor = (assignmentId: string) =>
+    (evaluation.data?.models ?? []).find((m) => m.assignment_id === assignmentId)
+  const modelName = (assignmentId: string) => assignmentFor(assignmentId)?.name ?? '— masked —'
 
   // Named once for both consumers below — the panes and the rail's per-member rows must
   // carry the same name for the same conversation, or the disambiguating number is worse
@@ -150,8 +150,8 @@ export function ConversationGroupPage() {
   const nameSuffixes = memberNameSuffixes(memberNames)
 
   const warmupEnabled = (assignmentId: string) =>
-    (evaluation.data?.models ?? []).find((m) => m.assignment_id === assignmentId)?.warmup_enabled ??
-    false
+    assignmentFor(assignmentId)?.warmup_enabled ?? false
+  const webAccess = (assignmentId: string) => assignmentFor(assignmentId)?.web_access ?? false
 
   const tagsEnabled = evaluation.data?.tags_enabled === true
   // Only a restricted evaluation has a key whitelist to advertise in the composers.
@@ -163,9 +163,7 @@ export function ConversationGroupPage() {
   // Unrestricted evaluations have no query to wait for, so they are settled by definition.
   const allowedKeysStatus: AllowedKeysStatus = tagsRestricted ? tagKeys.status : 'success'
   const acceptsImages = (assignmentId: string) =>
-    (evaluation.data?.models ?? [])
-      .find((m) => m.assignment_id === assignmentId)
-      ?.input_modalities?.includes('image') ?? false
+    assignmentFor(assignmentId)?.input_modalities?.includes('image') ?? false
 
   const broadcast = () => {
     const content = input.trim()
@@ -268,6 +266,7 @@ export function ConversationGroupPage() {
                     modelName={modelName(c.evaluation_ai_model_id)}
                     nameSuffix={nameSuffixes[i]}
                     warmupEnabled={warmupEnabled(c.evaluation_ai_model_id)}
+                    webAccess={webAccess(c.evaluation_ai_model_id)}
                     acceptsImages={acceptsImages(c.evaluation_ai_model_id)}
                     tagsEnabled={tagsEnabled}
                     allowedTagKeys={allowedTagKeys}

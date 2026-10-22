@@ -12,6 +12,7 @@ import {
   MODALITIES,
   modalityLabel,
   MODEL_KINDS,
+  neverHasWebAccess,
   PROVIDERS,
   providerLabel,
   providersForKind,
@@ -78,6 +79,7 @@ const editSchema = z.object({
   is_disabled: z.boolean(),
   warmup_enabled: z.boolean(),
   advanced_params_disabled: z.boolean(),
+  web_access: z.boolean(),
   inactivity_alert_hours: z
     .string()
     .refine(
@@ -121,6 +123,7 @@ const EMPTY: FormValues = {
   is_disabled: false,
   warmup_enabled: false,
   advanced_params_disabled: false,
+  web_access: false,
   inactivity_alert_hours: '',
   api_key: '',
   system_prompt: '',
@@ -173,12 +176,33 @@ export function AiModelFormPage() {
   const provider = useWatch({ control, name: 'provider' })
   const warmupEnabled = useWatch({ control, name: 'warmup_enabled' })
   const advancedParamsDisabled = useWatch({ control, name: 'advanced_params_disabled' })
+  const providerModelId = useWatch({ control, name: 'provider_model_id' })
+  const webAccess = useWatch({ control, name: 'web_access' })
+  // The backend decides wherever it has an answer — the stored pair's `web_access_supported` —
+  // so a vendor lifted off its "never" set frees stored rows without a console change; the
+  // vendor list only fills the gap (create, or a moved pair), where a wrong pick would come
+  // back as a 400 pinned to the switch. A stored true is never locked, whatever the support:
+  // it can be withdrawn under a row (a capability-map change, a row written past the service)
+  // and switching it off must stay possible — the gateway refuses every chat meanwhile — and
+  // keying that arm on the stored value, not the live one, keeps an untick reversible.
+  const pairUnchanged =
+    isEdit &&
+    provider === existing.data?.provider &&
+    providerModelId === existing.data?.provider_model_id
+  const webAccessLocked = pairUnchanged
+    ? existing.data?.web_access === false && existing.data?.web_access_supported === false
+    : !webAccess && neverHasWebAccess(provider)
   // On edit the row's own provider decides; the URL kind belongs to the create flow.
   const showEndpointFields = isEdit || kind === 'custom'
 
-  // Whether the URL is required rides on `provider`, so a stale "Required" would
-  // otherwise sit under an optional field until the next submit.
-  const onProviderChange = () => clearErrors('inference_endpoint')
+  // Whether the URL is required rides on `provider`, so a stale "Required" would otherwise sit
+  // under an optional field until the next submit — likewise a 400 pinned to the switch, which
+  // the rule re-runs for on save. A tick carried over to a vendor without a web option would
+  // only come back as that 400, so it goes with the move.
+  const onProviderChange = (e: { target: { value: string } }) => {
+    clearErrors(['inference_endpoint', 'web_access'])
+    if (neverHasWebAccess(e.target.value)) setValue('web_access', false)
+  }
 
   // Re-picking the kind reopens the same chooser over the form rather than sending the
   // user back to the list. Safe to reset the provider — and drop a typed URL, which the
@@ -189,11 +213,11 @@ export function AiModelFormPage() {
     setKindDialogOpen(false)
     if (next === kind) return
     navigate(`/ai-models/new?kind=${next}`, { replace: true })
-    setValue('provider', next === 'custom' ? CUSTOM_PROVIDERS[0] : VENDOR_PROVIDERS[0], {
-      shouldDirty: true,
-    })
+    const nextProvider = next === 'custom' ? CUSTOM_PROVIDERS[0] : VENDOR_PROVIDERS[0]
+    setValue('provider', nextProvider, { shouldDirty: true })
     setValue('inference_endpoint', '')
-    clearErrors('inference_endpoint')
+    clearErrors(['inference_endpoint', 'web_access'])
+    if (neverHasWebAccess(nextProvider)) setValue('web_access', false)
   }
 
   // null = follow the default (auto-expand when the model already has params);
@@ -224,6 +248,7 @@ export function AiModelFormPage() {
       is_disabled: m.is_disabled,
       warmup_enabled: m.warmup_enabled,
       advanced_params_disabled: m.advanced_params_disabled,
+      web_access: m.web_access,
       inactivity_alert_hours: m.inactivity_alert_hours?.toString() ?? '',
       api_key: '',
       ...paramsToForm(m.parameters),
@@ -264,6 +289,7 @@ export function AiModelFormPage() {
       is_disabled: v.is_disabled,
       warmup_enabled: v.warmup_enabled,
       advanced_params_disabled: v.advanced_params_disabled,
+      web_access: v.web_access,
       // Blank clears the threshold; unchecking Warm up must not, or an unrelated edit
       // would wipe a stored value the form no longer shows (the sweep already ignores
       // non-warmup models, so the coupling bought nothing).
@@ -285,13 +311,16 @@ export function AiModelFormPage() {
         // on every edit from here, leaving a row that predates it — `generic`, no URL —
         // impossible to rename or even disable.
         const stored = existing.data
-        const { provider, inference_endpoint, ...untouched } = base
+        // `web_access` likewise: the support rule re-runs whenever a patch names it, so a row whose
+        // provider withdrew support could not even be renamed if the stored `true` were resent.
+        const { provider, inference_endpoint, web_access, ...untouched } = base
         await update.mutateAsync({
           ...untouched,
           ...(provider !== stored?.provider ? { provider } : {}),
           ...(inference_endpoint !== (stored?.inference_endpoint ?? null)
             ? { inference_endpoint }
             : {}),
+          ...(web_access !== stored?.web_access ? { web_access } : {}),
           parameters: { ...preserved, ...overrides },
         })
         navigate(`/ai-models/${id}`)
@@ -396,7 +425,10 @@ export function AiModelFormPage() {
                 htmlFor="provider_model_id"
                 error={formState.errors.provider_model_id?.message}
               >
-                <Input id="provider_model_id" {...register('provider_model_id')} />
+                <Input
+                  id="provider_model_id"
+                  {...register('provider_model_id', { onChange: () => clearErrors('web_access') })}
+                />
               </FormField>
               <FormField
                 label="Alias"
@@ -569,6 +601,30 @@ export function AiModelFormPage() {
               </label>
               <InfoHint text="Turn on for a model that ignores sampling settings, or when you want every conversation to use the provider's own defaults. The parameter panels disappear here and everywhere below (evaluation assignments, conversations), and nothing is sent to the provider. Values already saved are kept, so turning this back off restores them." />
             </div>
+            <div className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border"
+                  disabled={webAccessLocked}
+                  aria-invalid={formState.errors.web_access ? true : undefined}
+                  aria-describedby="web-access-lock web-access-error"
+                  {...register('web_access')}
+                />
+                Internet access
+              </label>
+              <InfoHint text="Lets the model search the web while it answers — and, on Anthropic, open a specific URL. It uses the provider's own web tools, so it only works where the provider has them (Anthropic and Google models, and OpenAI's search-enabled ones), and the provider bills each search. Off, the console adds no web tools — a model whose provider searches on its own, like an OpenRouter ‘:online’ model, can still be online." />
+            </div>
+            {webAccessLocked && (
+              <p id="web-access-lock" className="text-muted-foreground text-xs">
+                This model has no internet access option at its provider.
+              </p>
+            )}
+            {/* Always mounted, like `modality-error`: a live region that enters the tree with its text
+                is skipped by some screen readers, and `setError` moves no focus to re-read anything. */}
+            <p id="web-access-error" role="alert" className="text-destructive text-xs">
+              {formState.errors.web_access?.message ?? ''}
+            </p>
             {/* Disabled rather than unmounted while warmup is off: RHF keeps an unmounted
                 field's value, so a hidden invalid one blocked Save with no error surface. */}
             <FormField

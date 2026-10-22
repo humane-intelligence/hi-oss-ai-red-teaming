@@ -207,6 +207,7 @@ export function GroupCreatePage() {
                             {models.map((m) => (
                               <SelectItem key={m.assignment_id} value={m.assignment_id}>
                                 {m.name ?? '— masked —'}
+                                {m.web_access ? ' (internet)' : ''}
                               </SelectItem>
                             ))}
                           </SelectGroup>

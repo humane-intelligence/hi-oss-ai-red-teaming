@@ -3499,7 +3499,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A generic provider requires an inference_endpoint.
+          description: A generic provider requires an inference_endpoint, or web_access is on for a model with no web option.
           content:
             application/problem+json:
               schema:
@@ -3835,7 +3835,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A generic provider requires an inference_endpoint.
+          description: A generic provider requires an inference_endpoint, or web_access is on for a model with no web option.
           content:
             application/problem+json:
               schema:
@@ -16097,6 +16097,12 @@ components:
           description: 'Set true to opt this model out of the inference-params cascade: knobs set here or at any layer below
             are retained but never sent to the provider, and the console stops offering them.'
           default: false
+        web_access:
+          type: boolean
+          title: Web Access
+          description: 'Set true to let the model use the web: the gateway adds the provider''s native search (and, on Anthropic,
+            URL fetch) to every chat call. Refused with 400 when the provider has no such option for this model.'
+          default: false
         inactivity_alert_hours:
           anyOf:
           - type: integer
@@ -16153,6 +16159,7 @@ components:
         provider: anthropic
         provider_model_id: claude-3-5-sonnet-20240620
         warmup_enabled: true
+        web_access: false
     AiModelResponse:
       properties:
         id:
@@ -16240,6 +16247,16 @@ components:
           title: Advanced Params Disabled
           description: 'True iff this model ignores the inference-params cascade: stored overrides are retained but never
             sent to the provider, and no layer below offers them.'
+        web_access:
+          type: boolean
+          title: Web Access
+          description: True iff the gateway attaches the provider's native web tools (search; on Anthropic also URL fetch)
+            to this model's chat calls.
+        web_access_supported:
+          type: boolean
+          title: Web Access Supported
+          description: 'Read-only: whether this provider/model pair has a web option at all. `web_access` can only be turned
+            on while this is true.'
         inactivity_alert_hours:
           anyOf:
           - type: integer
@@ -16344,6 +16361,8 @@ components:
       - is_disabled
       - warmup_enabled
       - advanced_params_disabled
+      - web_access
+      - web_access_supported
       - has_api_key
       - created_at
       - updated_at
@@ -16383,6 +16402,8 @@ components:
         provider_model_id: claude-3-5-sonnet-20240620
         updated_at: '2026-01-02T09:30:00Z'
         warmup_enabled: true
+        web_access: false
+        web_access_supported: true
     AiModelUpdate:
       properties:
         name:
@@ -16487,6 +16508,11 @@ components:
           - type: boolean
           - type: 'null'
           title: Advanced Params Disabled
+        web_access:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Web Access
         inactivity_alert_hours:
           anyOf:
           - type: integer
@@ -18625,6 +18651,11 @@ components:
           description: Whether the underlying model opts out of the inference-params cascade. When true, `effective_parameters`
             is empty and no layer below should offer the knobs. Not masked.
           default: false
+        web_access:
+          type: boolean
+          title: Web Access
+          description: Whether the gateway attaches the provider's web tools to this model's calls. Not masked.
+          default: false
         effective_parameters:
           additionalProperties: true
           type: object
@@ -18694,7 +18725,11 @@ components:
 
         `effective_parameters` alone cannot say whether the model opted out or simply
 
-        sets nothing.'
+        sets nothing. `web_access` rides the same footing: whether replies may draw on
+
+        the live web changes how a red-teamer reads them and says nothing about which
+
+        model it is.'
     EvaluationCreate:
       properties:
         title:

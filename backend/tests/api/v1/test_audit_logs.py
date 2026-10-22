@@ -1958,6 +1958,7 @@ def test_ai_model_snapshot_excludes_api_key() -> None:
         "is_disabled",
         "warmup_enabled",
         "advanced_params_disabled",
+        "web_access",
         "inactivity_alert_hours",
         "icon_file",
         "labels",

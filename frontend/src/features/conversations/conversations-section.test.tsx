@@ -31,6 +31,7 @@ const evaluation: EvaluationResponse = {
       name: 'gpt-4o',
       warmup_enabled: false,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
   ],
@@ -52,6 +53,7 @@ const evaluation2: EvaluationResponse = {
       name: 'gpt-4o',
       warmup_enabled: false,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
     {
@@ -59,6 +61,7 @@ const evaluation2: EvaluationResponse = {
       name: 'claude-3-opus',
       warmup_enabled: false,
       advanced_params_disabled: false,
+      web_access: false,
       input_modalities: ['text'],
     },
   ],

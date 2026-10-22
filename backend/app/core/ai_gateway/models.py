@@ -107,6 +107,12 @@ class AiModel(BaseModel, InferenceParamsMixin, table=True):
         default=False,
         sa_column_kwargs={"nullable": False, "server_default": text("false")},
     )
+    # Lets the gateway add the provider's native web tools to chat calls; refused on save
+    # (and at dispatch) for models whose provider has no such option, so it never silently no-ops.
+    web_access: bool = Field(
+        default=False,
+        sa_column_kwargs={"nullable": False, "server_default": text("false")},
+    )
     icon_file: str | None = Field(default=None, max_length=255)
     # Free-form operator annotations ("self-hosted", "fine-tuning needed"), shown as badges on the
     # registry view. There is no label catalog: the set a console offers is `DISTINCT unnest(labels)`

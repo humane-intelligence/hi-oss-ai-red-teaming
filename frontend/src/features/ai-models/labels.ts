@@ -9,6 +9,19 @@ export const PROVIDERS = [...VENDOR_PROVIDERS, ...CUSTOM_PROVIDERS] as const
 // router and Azure can take its base from the environment.
 export const requiresInferenceEndpoint = (p: (typeof PROVIDERS)[number]) => p === 'generic'
 
+// Vendors the backend never offers the Internet access switch for, whatever the model id (litellm
+// has nothing to translate `web_search_options` into there), so the form can lock it before a
+// save instead of letting the 400 explain. OpenAI is per model and Anthropic/Google always have
+// one — those stay the backend's call.
+const NO_WEB_ACCESS: ReadonlySet<string> = new Set<(typeof PROVIDERS)[number]>([
+  'generic',
+  'huggingface',
+  'azure',
+  'cohere',
+  'aws_bedrock',
+])
+export const neverHasWebAccess = (p: string) => NO_WEB_ACCESS.has(p)
+
 // Which half of the registry a new model belongs to. Chosen once, up front — it
 // decides the provider set and whether a URL is part of the form at all.
 export type ModelKind = 'provider' | 'custom'
@@ -114,4 +127,12 @@ export const modelStatus = (m: { is_disabled: boolean; output_modalities: readon
   if (!m.output_modalities.includes('text'))
     return { label: NO_TEXT_OUTPUT_LABEL, variant: 'warn' as const }
   return { label: 'enabled', variant: 'ok' as const }
+}
+
+// Read beside the switch: a stored `true` the provider no longer honours is the one state the
+// gateway refuses every chat in, so it must not read as a plain Yes.
+export const webAccessLabel = (m: { web_access: boolean; web_access_supported: boolean }) => {
+  if (m.web_access)
+    return m.web_access_supported ? 'Yes' : 'Yes — no longer available at this provider'
+  return m.web_access_supported ? 'No' : 'Not available at this provider'
 }
