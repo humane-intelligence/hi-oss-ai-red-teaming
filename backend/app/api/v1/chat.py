@@ -10,6 +10,7 @@ from sse_starlette import EventSourceResponse
 from app.core.ai_gateway.dispatch import dispatch_stream
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.auth.dependencies import require_permission
 from app.core.auth.roles import Permission
 from app.core.auth.schemas import SessionUser
@@ -76,7 +77,7 @@ async def stream_chat(
             params=params,
             session_provider=standalone_session,
         )
-    except ProviderBadRequestError as exc:
+    except (ProviderBadRequestError, ProviderNotFoundError) as exc:
         raise BadRequestError(str(exc)) from exc
     except ProviderError as exc:
         raise BadGatewayError(str(exc)) from exc

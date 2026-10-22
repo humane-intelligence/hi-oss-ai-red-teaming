@@ -16,6 +16,7 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -85,6 +86,7 @@ async def test_dispatch_health_ready_no_reason(db_session: AsyncSession, app_set
         (ProviderContextWindowError("ctx"), (WarmupStatus.ERROR, "context-window")),
         (ProviderAuthError("401"), (WarmupStatus.ERROR, "auth")),
         (ProviderBadRequestError("bad"), (WarmupStatus.ERROR, "bad-request")),
+        (ProviderNotFoundError("404"), (WarmupStatus.ERROR, "model-not-found")),
         (ProviderError("boom"), (WarmupStatus.ERROR, "error")),
     ],
 )

@@ -12,6 +12,7 @@ from app.core.ai_gateway.chat import ChunkChoice
 from app.core.ai_gateway.chat import Usage
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.conversations.streaming import provider_error_to_status
 from app.core.conversations.streaming import stream_sse
@@ -133,6 +134,7 @@ async def test_stream_sse_closes_upstream_on_disconnect() -> None:
     [
         (ProviderRateLimitError("x"), status.HTTP_429_TOO_MANY_REQUESTS, True),
         (ProviderBadRequestError("x"), status.HTTP_400_BAD_REQUEST, False),
+        (ProviderNotFoundError("x"), status.HTTP_400_BAD_REQUEST, False),
         (ProviderError("x"), status.HTTP_502_BAD_GATEWAY, False),
     ],
 )

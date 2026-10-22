@@ -43,6 +43,7 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -104,6 +105,7 @@ _ERROR_OUTCOMES: tuple[tuple[type[ProviderError], str], ...] = (
     (ProviderAuthError, "auth"),
     (ProviderContextWindowError, "context_window"),
     (ProviderBadRequestError, "bad_request"),
+    (ProviderNotFoundError, "not_found"),
     (ProviderUnavailableError, "unavailable"),
 )
 
@@ -304,6 +306,7 @@ _HEALTH_FAULTS: dict[type[ProviderError], tuple[WarmupStatus, str | None]] = {
     ProviderContextWindowError: (WarmupStatus.ERROR, "context-window"),
     ProviderAuthError: (WarmupStatus.ERROR, "auth"),
     ProviderBadRequestError: (WarmupStatus.ERROR, "bad-request"),
+    ProviderNotFoundError: (WarmupStatus.ERROR, "model-not-found"),
 }
 
 

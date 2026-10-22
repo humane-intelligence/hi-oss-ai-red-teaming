@@ -25,6 +25,7 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -173,6 +174,7 @@ _ERROR_MAP: tuple[tuple[type[Exception], type[ProviderError]], ...] = (
     (litellm.AuthenticationError, ProviderAuthError),
     (litellm.RateLimitError, ProviderRateLimitError),
     (litellm.Timeout, ProviderTimeoutError),
+    (litellm.NotFoundError, ProviderNotFoundError),
     (litellm.BadRequestError, ProviderBadRequestError),
     (litellm.ServiceUnavailableError, ProviderUnavailableError),
     (litellm.APIConnectionError, ProviderUnavailableError),

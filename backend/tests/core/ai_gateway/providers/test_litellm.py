@@ -15,6 +15,7 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -105,6 +106,7 @@ async def test_stream_yields_chunks_then_finish_reason() -> None:
         (litellm.AuthenticationError(message="x", llm_provider="openai", model="m"), ProviderAuthError),
         (litellm.Timeout(message="x", model="m", llm_provider="openai"), ProviderTimeoutError),
         (litellm.BadRequestError(message="x", model="m", llm_provider="openai"), ProviderBadRequestError),
+        (litellm.NotFoundError(message="x", model="m", llm_provider="openai"), ProviderNotFoundError),
         (litellm.ContextWindowExceededError(message="x", model="m", llm_provider="openai"), ProviderContextWindowError),
         (litellm.ServiceUnavailableError(message="x", llm_provider="openai", model="m"), ProviderUnavailableError),
         (litellm.APIConnectionError(message="x", llm_provider="openai", model="m"), ProviderUnavailableError),
