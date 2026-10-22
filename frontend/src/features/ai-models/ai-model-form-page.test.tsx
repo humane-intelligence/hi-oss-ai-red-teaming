@@ -1009,6 +1009,32 @@ describe('AiModelFormPage — internet access', () => {
     expect(captured!.web_access).toBe(true)
   })
 
+  it('locks the switch up front for a vendor that never has a web option', async () => {
+    renderForm('/ai-models/new?kind=custom')
+
+    const box = await screen.findByLabelText('Internet access')
+    expect(box).toBeDisabled()
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+  })
+
+  it('drops a tick when the provider moves to one with no web option, and frees it back', async () => {
+    const user = userEvent.setup()
+    renderForm('/ai-models/new?kind=provider')
+
+    const box = await screen.findByLabelText('Internet access')
+    await user.click(box)
+    expect(box).toBeChecked()
+
+    await user.selectOptions(screen.getByLabelText('Provider'), 'cohere')
+    expect(box).not.toBeChecked()
+    expect(box).toBeDisabled()
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic')
+    expect(box).toBeEnabled()
+    expect(screen.queryByText(refusal)).toBeNull()
+  })
+
   it('locks the switch and says why when the stored model has no web option', async () => {
     server.use(
       http.get(`http://localhost/api/v1/ai-models/${MODEL_ID}`, () =>

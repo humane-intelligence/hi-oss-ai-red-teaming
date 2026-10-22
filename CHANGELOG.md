@@ -19,8 +19,8 @@ change between minor versions.
   `web_search_options`. Reads expose `web_access_supported` — Anthropic and Google models always,
   OpenAI per litellm's capability map, other vendors never — and turning the switch on for a model
   without a web option is refused with a 400 pinned to the field, re-checked at dispatch. The
-  console offers the switch on the model form and detail page and marks such models where they
-  are picked and in the chat header.
+  console offers the switch on the model form (locked up front for vendors that never have a web
+  option) and detail page and marks such models where they are picked and in the chat header.
 
 ## 0.1.0 — 2026-09-10
 

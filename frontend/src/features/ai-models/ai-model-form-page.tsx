@@ -12,6 +12,7 @@ import {
   MODALITIES,
   modalityLabel,
   MODEL_KINDS,
+  neverHasWebAccess,
   PROVIDERS,
   providerLabel,
   providersForKind,
@@ -176,22 +177,30 @@ export function AiModelFormPage() {
   const warmupEnabled = useWatch({ control, name: 'warmup_enabled' })
   const advancedParamsDisabled = useWatch({ control, name: 'advanced_params_disabled' })
   const providerModelId = useWatch({ control, name: 'provider_model_id' })
-  // Support is known only for the stored pair: the backend decides per provider/model, so once
+  const webAccess = useWatch({ control, name: 'web_access' })
+  // Locked up front for a vendor that never has a web option (create included); for the rest
+  // support is known only for the stored pair — the backend decides per provider/model, so once
   // either moves the switch is offered again and a wrong pick comes back as a 400 pinned to it.
-  // Never locked while stored on: support can be withdrawn under a row (a capability-map
-  // change), and switching it off must stay possible — the gateway refuses every chat meanwhile.
+  // Never locked while on: support can be withdrawn under a row (a capability-map change, a row
+  // written past the service), and switching it off must stay possible — the gateway refuses
+  // every chat meanwhile.
   const webAccessLocked =
-    isEdit &&
-    existing.data?.web_access_supported === false &&
-    existing.data.web_access === false &&
-    provider === existing.data.provider &&
-    providerModelId === existing.data.provider_model_id
+    (neverHasWebAccess(provider) && !webAccess) ||
+    (isEdit &&
+      existing.data?.web_access_supported === false &&
+      existing.data.web_access === false &&
+      provider === existing.data.provider &&
+      providerModelId === existing.data.provider_model_id)
   // On edit the row's own provider decides; the URL kind belongs to the create flow.
   const showEndpointFields = isEdit || kind === 'custom'
 
   // Whether the URL is required rides on `provider`, so a stale "Required" would
-  // otherwise sit under an optional field until the next submit.
-  const onProviderChange = () => clearErrors('inference_endpoint')
+  // otherwise sit under an optional field until the next submit. A tick carried over to a
+  // vendor without a web option would only come back as a 400, so it goes with the move.
+  const onProviderChange = (e: { target: { value: string } }) => {
+    clearErrors('inference_endpoint')
+    if (neverHasWebAccess(e.target.value)) setValue('web_access', false)
+  }
 
   // Re-picking the kind reopens the same chooser over the form rather than sending the
   // user back to the list. Safe to reset the provider — and drop a typed URL, which the
@@ -202,11 +211,11 @@ export function AiModelFormPage() {
     setKindDialogOpen(false)
     if (next === kind) return
     navigate(`/ai-models/new?kind=${next}`, { replace: true })
-    setValue('provider', next === 'custom' ? CUSTOM_PROVIDERS[0] : VENDOR_PROVIDERS[0], {
-      shouldDirty: true,
-    })
+    const nextProvider = next === 'custom' ? CUSTOM_PROVIDERS[0] : VENDOR_PROVIDERS[0]
+    setValue('provider', nextProvider, { shouldDirty: true })
     setValue('inference_endpoint', '')
     clearErrors('inference_endpoint')
+    if (neverHasWebAccess(nextProvider)) setValue('web_access', false)
   }
 
   // null = follow the default (auto-expand when the model already has params);
