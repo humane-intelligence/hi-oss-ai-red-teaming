@@ -6,8 +6,8 @@ import { useClearApiKey, useDeleteModel, useRunHealthCheck, useUpdateModel } fro
 import {
   healthClass,
   healthLabel,
-  imageUnconfirmedHint,
   healthReasonLabel,
+  imageUnconfirmedHint,
   IMAGE_UNCONFIRMED_HINT_LABEL,
   IMAGE_UNCONFIRMED_LABEL,
   modalityLabel,

@@ -1114,7 +1114,7 @@ async def test_update_model_rechecks_the_prefix_when_the_provider_moves_under_th
 
 
 @pytest.mark.integration
-async def test_update_model_rechecks_the_prefix_when_the_endpoint_that_excused_it_is_cleared(
+async def test_update_model_leaves_a_prefixed_proxy_row_renamable(
     db_session: AsyncSession, app_settings: Settings
 ) -> None:
     model = await create_model(
@@ -1128,7 +1128,23 @@ async def test_update_model_rechecks_the_prefix_when_the_endpoint_that_excused_i
     )
 
     renamed = await update_model(db_session, model, AiModelUpdateChanges.model_validate({"name": "Still via proxy"}))
+
     assert renamed.provider_model_id == "anthropic/claude-sonnet-4-5"
+
+
+@pytest.mark.integration
+async def test_update_model_rechecks_the_prefix_when_the_endpoint_that_excused_it_is_cleared(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="via-proxy-cleared",
+        model_alias="via-proxy-cleared",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="anthropic/claude-sonnet-4-5",
+        inference_endpoint="https://openrouter.ai/api",
+    )
 
     with pytest.raises(PrefixedProviderModelIdError):
         await update_model(db_session, model, AiModelUpdateChanges.model_validate({"inference_endpoint": None}))

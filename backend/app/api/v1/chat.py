@@ -52,8 +52,8 @@ identity.
     | {
         status.HTTP_200_OK: SSE_RESPONSE,
         status.HTTP_400_BAD_REQUEST: problem_response(
-            "Model cannot serve this request (it cannot answer in text, or an image went "
-            "to a model that does not accept image input)."
+            "Model cannot serve this request (it cannot answer in text, an image went to a model that "
+            "does not accept image input, or the provider has no model under the row's id)."
         ),
         status.HTTP_401_UNAUTHORIZED: problem_response("Missing or invalid bearer token."),
         status.HTTP_403_FORBIDDEN: problem_response("Caller lacks the conversations:participate permission."),

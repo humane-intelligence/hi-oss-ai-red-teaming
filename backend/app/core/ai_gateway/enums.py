@@ -1,4 +1,4 @@
-"""Closed-set enums for `AiModel` rows — surfaced on the wire, and in DB enum columns where noted."""
+"""Closed-set enums for `AiModel` rows (on the wire, in DB enum columns where noted) and litellm's routing table."""
 
 from enum import StrEnum
 

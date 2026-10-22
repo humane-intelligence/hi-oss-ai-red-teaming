@@ -1007,8 +1007,15 @@ describe('AiModelFormPage — provider model id hint', () => {
     expect(
       await screen.findByRole('button', { name: /OpenRouter ids such as/ }),
     ).toBeInTheDocument()
+    // generic always has its own endpoint and its hint already says so — no second sentence.
+    await user.type(screen.getByLabelText(/inference endpoint/i), 'https://openrouter.ai/api/v1')
+    expect(screen.queryByRole('button', { name: /goes through as typed/ })).toBeNull()
 
     await user.selectOptions(screen.getByLabelText('Provider'), 'azure')
+    await user.clear(screen.getByLabelText(/inference endpoint/i))
+    expect(screen.getByRole('button', { name: /deployment name/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /goes through as typed/ })).toBeNull()
+
     await user.type(screen.getByLabelText(/inference endpoint/i), 'https://proxy.example.com/v1')
     expect(
       screen.getByRole('button', { name: /deployment name.*goes through as typed/ }),

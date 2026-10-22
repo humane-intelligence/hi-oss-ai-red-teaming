@@ -2496,7 +2496,7 @@ async def test_set_api_key_starts_a_check(
     created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(), headers=headers)
     assert created.status_code == status.HTTP_201_CREATED
     assert created.json()["health_check_status"] is None
-    assert enqueued == []
+    assert enqueued == []  # the create had nothing to call
 
     response = await auth_db_client.put(
         f"/api/v1/ai-models/{created.json()['id']}/api-key", json={"api_key": "sk-probe"}, headers=headers
@@ -2967,22 +2967,42 @@ async def test_bulk_create_isolates_a_prefixed_row(
 
 
 @pytest.mark.integration
-async def test_patch_model_rejects_moving_the_model_id_onto_a_prefix(
-    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+async def test_clear_api_key_starts_a_check_when_the_row_can_still_be_called(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    caller = await create_user_service(db_session, email="patch-prefixed@example.com", roles=[admin_role])
+    # A generic row keeps its own endpoint without the key, so the verdict proven with the old key is
+    # re-taken rather than left standing.
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-clear@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
     created = await auth_db_client.post(
         "/api/v1/ai-models",
-        json=_create_payload(provider="anthropic", provider_model_id="claude-sonnet-4-5"),
-        headers={"Authorization": f"Bearer {_token(caller)}"},
+        json=_create_payload(provider="generic", inference_endpoint="http://slm:8080/v1", api_key="sk-probe"),
+        headers=headers,
     )
     assert created.status_code == status.HTTP_201_CREATED
+    enqueued.clear()
 
-    response = await auth_db_client.patch(
-        f"/api/v1/ai-models/{created.json()['id']}",
-        json={"provider_model_id": "anthropic/claude-sonnet-4-5"},
-        headers={"Authorization": f"Bearer {_token(caller)}"},
-    )
+    response = await auth_db_client.delete(f"/api/v1/ai-models/{created.json()['id']}/api-key", headers=headers)
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["errors"][0]["loc"] == ["body", "provider_model_id"]
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert enqueued == [{"args": [created.json()["id"]], "countdown": 1}]
+
+
+@pytest.mark.integration
+async def test_clear_api_key_starts_no_check_when_nothing_is_left_to_call(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-clear-off@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(api_key="sk-probe"), headers=headers)
+    assert created.status_code == status.HTTP_201_CREATED
+    enqueued.clear()
+
+    response = await auth_db_client.delete(f"/api/v1/ai-models/{created.json()['id']}/api-key", headers=headers)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert enqueued == []
