@@ -842,7 +842,7 @@ export interface paths {
         put?: never;
         /**
          * Create model
-         * @description Register a new model in the platform. `name` and `model_alias` must each be unique among live rows. A `generic` provider must carry an `inference_endpoint`, and any `inference_endpoint` must be an absolute http(s) URL. An optional `api_key` is encrypted at rest and never echoed back. An enabled row declaring `image` input additionally starts a health check on creation, so its declaration is verified against the endpoint without being asked; the row is created either way — a sleeping endpoint, a rate-limited one, or a broker outage never blocks the write. Three cases do not start one: disabled rows, the bulk endpoint, and a row with nothing to call yet — no `api_key`, no platform credential for its `provider`, and no `inference_endpoint` — which stays "never checked" rather than being reported dead. Setting a key does not by itself start one; the next edit or the manual check does.
+         * @description Register a new model in the platform. `name` and `model_alias` must each be unique among live rows. A `generic` provider must carry an `inference_endpoint`, and any `inference_endpoint` must be an absolute http(s) URL. An optional `api_key` is encrypted at rest and never echoed back. A vendor-hosted row (no `inference_endpoint`) must not carry the routing prefix `provider` adds in its `provider_model_id`. An enabled row additionally starts a health check on creation, so its id, key and endpoint are verified against the provider without being asked; the row is created either way — a sleeping endpoint, a rate-limited one, or a broker outage never blocks the write. Three cases do not start one: disabled rows, the bulk endpoint, and a row with nothing to call yet — no `api_key`, no platform credential for its `provider`, and no `inference_endpoint` — which stays "never checked" rather than being reported dead; setting its key later starts one.
          */
         post: operations["create_model_endpoint_api_v1_ai_models_post"];
         delete?: never;
@@ -882,7 +882,7 @@ export interface paths {
         put?: never;
         /**
          * Set model API keys in bulk
-         * @description Store or rotate the encrypted API key for up to `BULK_MAX_ROWS` models in one request, each row identifying its target by `name` — its unique business key — so no server-assigned ids need threading back. Plaintext keys are encrypted at rest and never echoed. Always returns 200 OK when the envelope is well-formed — per-row failures (`404` when no live model matches the row's `name`) land inside `results[].error`. A `name` repeated across rows is rejected upfront (`422`), like a duplicate `row_key`. Disabled models are valid targets. `dry_run=true` previews the full path (resolves + encrypts every row) and rolls back instead of committing.
+         * @description Store or rotate the encrypted API key for up to `BULK_MAX_ROWS` models in one request, each row identifying its target by `name` — its unique business key — so no server-assigned ids need threading back. Plaintext keys are encrypted at rest and never echoed. Always returns 200 OK when the envelope is well-formed — per-row failures (`404` when no live model matches the row's `name`) land inside `results[].error`. A `name` repeated across rows is rejected upfront (`422`), like a duplicate `row_key`. Disabled models are valid targets. `dry_run=true` previews the full path (resolves + encrypts every row) and rolls back instead of committing. Starts no health checks, like bulk create.
          */
         post: operations["bulk_set_model_api_keys_endpoint_api_v1_ai_models_api_keys_bulk_post"];
         delete?: never;
@@ -934,7 +934,7 @@ export interface paths {
         head?: never;
         /**
          * Update model
-         * @description Partially update a model. Omitted fields are left unchanged; explicit `null` clears the nullable columns. A patch that touches `provider` or `inference_endpoint` must leave the row with an `inference_endpoint` if it is `generic`, and a supplied `inference_endpoint` must be an absolute http(s) URL. Changing any of `input_modalities`, `inference_endpoint`, `provider` or `provider_model_id` clears `capability_mismatch` — the finding described the previous combination — and on an enabled row declaring `image` input it also starts a health check, superseding one already in flight, so the new combination is verified without being asked. Re-enabling a disabled row does the same. Re-sending an unchanged value does not, and neither does a row with nothing to call yet, as on create. The API key is rotated/cleared via the dedicated `…/api-key` endpoints, not this body.
+         * @description Partially update a model. Omitted fields are left unchanged; explicit `null` clears the nullable columns. A patch that touches `provider` or `inference_endpoint` must leave the row with an `inference_endpoint` if it is `generic`, and a supplied `inference_endpoint` must be an absolute http(s) URL. A patch that touches `provider`, `provider_model_id` or `inference_endpoint` must not leave a vendor-hosted row with an id that carries the prefix `provider` adds. Changing any of `input_modalities`, `inference_endpoint`, `provider` or `provider_model_id` clears `capability_mismatch` — the finding described the previous combination — and on an enabled row it also starts a health check, superseding one already in flight, so the new combination is verified without being asked. Re-enabling a disabled row does the same. Re-sending an unchanged value does not, and neither does a row with nothing to call yet, as on create. The API key is rotated/cleared via the dedicated `…/api-key` endpoints, not this body.
          */
         patch: operations["update_model_endpoint_api_v1_ai_models__model_id__patch"];
         trace?: never;
@@ -969,13 +969,13 @@ export interface paths {
         get?: never;
         /**
          * Set model API key
-         * @description Store or rotate the encrypted API key for this model. The plaintext value is never returned.
+         * @description Store or rotate the encrypted API key for this model. The plaintext value is never returned. Starts a health check with the new key unless the row is disabled.
          */
         put: operations["set_model_api_key_endpoint_api_v1_ai_models__model_id__api_key_put"];
         post?: never;
         /**
          * Clear model API key
-         * @description Remove the stored credential. Idempotent — succeeds whether or not a key was set.
+         * @description Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health check when a platform credential for the `provider` still authenticates the row, so a verdict proven with the cleared key does not linger; a row left with no credential is not probed.
          */
         delete: operations["clear_model_api_key_endpoint_api_v1_ai_models__model_id__api_key_delete"];
         options?: never;
@@ -3271,7 +3271,7 @@ export interface components {
             output_modalities?: components["schemas"]["Modality"][];
             /**
              * Provider Model Id
-             * @description Identifier the provider's API expects.
+             * @description Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
              */
             provider_model_id: string;
             /**
@@ -3417,7 +3417,7 @@ export interface components {
             output_modalities: components["schemas"]["Modality"][];
             /**
              * Provider Model Id
-             * @description Identifier the provider's API expects.
+             * @description Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
              */
             provider_model_id: string;
             /**
@@ -3591,7 +3591,10 @@ export interface components {
              * @description Replaces the declared reply set wholesale. Must be non-empty; deduped and re-sorted.
              */
             output_modalities?: components["schemas"]["Modality"][] | null;
-            /** Provider Model Id */
+            /**
+             * Provider Model Id
+             * @description Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
+             */
             provider_model_id?: string | null;
             /** Endpoint Name */
             endpoint_name?: string | null;
@@ -15416,7 +15419,7 @@ export interface operations {
                     "application/json": components["schemas"]["AiModelResponse"];
                 };
             };
-            /** @description A generic provider requires an inference_endpoint, or web_access is on for a model with no web option. */
+            /** @description A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider field adds, or web_access is on for a model with no web option. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -15832,7 +15835,7 @@ export interface operations {
                     "application/json": components["schemas"]["AiModelResponse"];
                 };
             };
-            /** @description A generic provider requires an inference_endpoint, or web_access is on for a model with no web option. */
+            /** @description A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider field adds, or web_access is on for a model with no web option. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -22383,7 +22386,7 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
-            /** @description Model cannot serve this request (it cannot answer in text, or an image went to a model that does not accept image input). */
+            /** @description Model cannot serve this request (it cannot answer in text, an image went to a model that does not accept image input, or the provider has no model under the row's id). */
             400: {
                 headers: {
                     [name: string]: unknown;

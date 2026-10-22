@@ -24,7 +24,14 @@ class ProviderTimeoutError(ProviderError):
 
 
 class ProviderBadRequestError(ProviderError):
-    """Provider rejected the request as malformed (bad params, unknown model, invalid input)."""
+    """Provider rejected the request as malformed (bad params, invalid input)."""
+
+
+class ProviderNotFoundError(ProviderError):
+    """Provider has no model under the given id (404 upstream).
+
+    Split from `ProviderBadRequestError` so a health check can name the cause.
+    """
 
 
 class ProviderContextWindowError(ProviderError):

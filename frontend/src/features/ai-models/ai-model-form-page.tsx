@@ -13,6 +13,7 @@ import {
   modalityLabel,
   MODEL_KINDS,
   neverHasWebAccess,
+  providerModelIdHint,
   PROVIDERS,
   providerLabel,
   providersForKind,
@@ -177,6 +178,7 @@ export function AiModelFormPage() {
   const warmupEnabled = useWatch({ control, name: 'warmup_enabled' })
   const advancedParamsDisabled = useWatch({ control, name: 'advanced_params_disabled' })
   const providerModelId = useWatch({ control, name: 'provider_model_id' })
+  const inferenceEndpoint = useWatch({ control, name: 'inference_endpoint' })
   const webAccess = useWatch({ control, name: 'web_access' })
   // The backend decides wherever it has an answer — the stored pair's `web_access_supported` —
   // so a vendor lifted off its "never" set frees stored rows without a console change; the
@@ -424,6 +426,7 @@ export function AiModelFormPage() {
                 label="Provider model id"
                 htmlFor="provider_model_id"
                 error={formState.errors.provider_model_id?.message}
+                hint={providerModelIdHint(provider, inferenceEndpoint.trim() !== '')}
               >
                 <Input
                   id="provider_model_id"

@@ -984,6 +984,45 @@ describe('AiModelFormPage', () => {
   )
 })
 
+describe('AiModelFormPage — provider model id hint', () => {
+  it('follows the provider and warns off its prefix', async () => {
+    const user = userEvent.setup()
+    renderForm('/ai-models/new?kind=provider')
+
+    expect(
+      await screen.findByRole('button', { name: /gpt-4\.1 — without the openai\/ prefix/ }),
+    ).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic')
+    expect(
+      screen.getByRole('button', { name: /claude-sonnet-4-5.*without the anthropic\/ prefix/ }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /goes through as typed/ })).toBeNull()
+  })
+
+  it('tells an own-endpoint row that the id goes through as typed', async () => {
+    const user = userEvent.setup()
+    renderForm('/ai-models/new?kind=custom')
+
+    expect(
+      await screen.findByRole('button', { name: /OpenRouter ids such as/ }),
+    ).toBeInTheDocument()
+    // generic always has its own endpoint and its hint already says so — no second sentence.
+    await user.type(screen.getByLabelText(/inference endpoint/i), 'https://openrouter.ai/api/v1')
+    expect(screen.queryByRole('button', { name: /goes through as typed/ })).toBeNull()
+
+    await user.selectOptions(screen.getByLabelText('Provider'), 'azure')
+    await user.clear(screen.getByLabelText(/inference endpoint/i))
+    expect(screen.getByRole('button', { name: /deployment name/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /goes through as typed/ })).toBeNull()
+
+    await user.type(screen.getByLabelText(/inference endpoint/i), 'https://proxy.example.com/v1')
+    expect(
+      screen.getByRole('button', { name: /deployment name.*goes through as typed/ }),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('AiModelFormPage — internet access', () => {
   const refusal = 'This model has no internet access option at its provider.'
 

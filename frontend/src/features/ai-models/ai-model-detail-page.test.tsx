@@ -201,6 +201,25 @@ describe('AiModelDetailPage — health check', () => {
     expect(screen.getByText('connection refused')).toBeInTheDocument()
   })
 
+  it('spells out a known failure reason, prefix advice included', async () => {
+    server.use(
+      modelHandler({
+        ...testModel,
+        health_check_status: 'dead',
+        last_health_reason: 'model-not-found',
+      }),
+    )
+    renderPage(['models:read'])
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Test Model' })).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/Model not found at the provider/)).toHaveTextContent(
+      /drop the vendor prefix/,
+    )
+    expect(screen.queryByText('model-not-found')).toBeNull()
+  })
+
   it('Health check button hidden without models:update', async () => {
     server.use(modelHandler(testModel))
     renderPage(['models:read'])

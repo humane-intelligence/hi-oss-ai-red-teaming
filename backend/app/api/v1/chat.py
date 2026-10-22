@@ -10,6 +10,7 @@ from sse_starlette import EventSourceResponse
 from app.core.ai_gateway.dispatch import dispatch_stream
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.auth.dependencies import require_permission
 from app.core.auth.roles import Permission
 from app.core.auth.schemas import SessionUser
@@ -51,8 +52,8 @@ identity.
     | {
         status.HTTP_200_OK: SSE_RESPONSE,
         status.HTTP_400_BAD_REQUEST: problem_response(
-            "Model cannot serve this request (it cannot answer in text, or an image went "
-            "to a model that does not accept image input)."
+            "Model cannot serve this request (it cannot answer in text, an image went to a model that "
+            "does not accept image input, or the provider has no model under the row's id)."
         ),
         status.HTTP_401_UNAUTHORIZED: problem_response("Missing or invalid bearer token."),
         status.HTTP_403_FORBIDDEN: problem_response("Caller lacks the conversations:participate permission."),
@@ -76,7 +77,7 @@ async def stream_chat(
             params=params,
             session_provider=standalone_session,
         )
-    except ProviderBadRequestError as exc:
+    except (ProviderBadRequestError, ProviderNotFoundError) as exc:
         raise BadRequestError(str(exc)) from exc
     except ProviderError as exc:
         raise BadGatewayError(str(exc)) from exc

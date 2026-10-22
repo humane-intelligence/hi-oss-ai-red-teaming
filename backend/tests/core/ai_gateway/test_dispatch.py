@@ -37,6 +37,7 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -724,6 +725,7 @@ async def test_dispatch_stream_records_metric_on_exhaustion(db_session: AsyncSes
         (ProviderAuthError("x"), "auth"),
         (ProviderContextWindowError("x"), "context_window"),
         (ProviderBadRequestError("x"), "bad_request"),
+        (ProviderNotFoundError("x"), "not_found"),
         (ProviderUnavailableError("x"), "unavailable"),
         (ProviderError("x"), "error"),
         (GeneratorExit(), "aborted"),

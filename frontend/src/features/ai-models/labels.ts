@@ -46,6 +46,29 @@ export const MODEL_KINDS: Record<ModelKind, { title: string; description: string
 
 export const MODALITIES = ['text', 'image'] as const
 
+// What the backend sends is `<routing prefix>/<provider_model_id>`, so an id pasted with the
+// prefix from a provider's list reaches the vendor doubled; the save refuses it, and this says so
+// before the operator finds out. Examples name a family, not a dated id, so they age slowly —
+// except Bedrock, whose ids are dated by construction.
+const MODEL_ID_HINTS: Record<string, string> = {
+  openai: 'E.g. gpt-4.1 — without the openai/ prefix; the Provider field adds it.',
+  anthropic:
+    'E.g. claude-sonnet-4-5, with dashes as in Anthropic’s list — without the anthropic/ prefix; the Provider field adds it.',
+  google: 'E.g. gemini-2.5-flash — not gemini/… or google/…; the Provider field adds the prefix.',
+  cohere: 'E.g. command-r-plus — without the cohere/ prefix; the Provider field adds it.',
+  aws_bedrock:
+    'The Bedrock model id, e.g. anthropic.claude-3-5-sonnet-20240620-v1:0 — without the bedrock/ prefix.',
+  azure: 'Your deployment name — without the azure/ prefix.',
+  huggingface:
+    'The repo id, e.g. meta-llama/Llama-3.1-8B-Instruct — without the huggingface/ prefix.',
+  generic:
+    'Whatever the endpoint expects. OpenRouter ids such as anthropic/claude-sonnet-4.5 work here with an OpenRouter endpoint and key.',
+}
+const OWN_ENDPOINT_HINT = ' With your own endpoint the id goes through as typed.'
+export const providerModelIdHint = (p: string, ownEndpoint: boolean) =>
+  (MODEL_ID_HINTS[p] ?? 'The id the provider’s API expects.') +
+  (ownEndpoint && p !== 'generic' ? OWN_ENDPOINT_HINT : '')
+
 // Human-readable labels for the backend's lowercase enum values.
 const PROVIDER_LABELS: Record<string, string> = {
   huggingface: 'Hugging Face',
@@ -99,6 +122,20 @@ const HEALTH_CLASSES: Record<string, string> = {
 
 export const healthClass = (s: string | null | undefined) =>
   (s && HEALTH_CLASSES[s]) || 'text-muted-foreground'
+
+// The backend stores a machine reason (`last_health_reason`, ≤64 chars); the words are the console's.
+// Only the reasons that persist: a timeout or an unreachable endpoint keeps the check retrying and
+// settles as `cold/deadline`. Unknown reasons fall through verbatim, so a new one is never hidden.
+const HEALTH_REASON_LABELS: Record<string, string> = {
+  'model-not-found':
+    'Model not found at the provider — check the model id. If it was copied from a provider list such as OpenRouter, drop the vendor prefix.',
+  auth: 'The provider rejected the API key.',
+  'bad-request': 'The provider rejected the request — check the model id and parameters.',
+  'context-window': 'The probe exceeded the model’s context window.',
+  'cold/deadline': 'The endpoint timed out or could not be reached before the wake deadline.',
+  error: 'The provider returned an error that could not be classified.',
+}
+export const healthReasonLabel = (reason: string) => HEALTH_REASON_LABELS[reason] ?? reason
 
 // Copy for the two things that can be wrong with a declaration, kept here so the badge text and its
 // explanation stay one edit apart. On the detail page both render as a `warn` badge plus an

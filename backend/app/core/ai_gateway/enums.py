@@ -1,4 +1,4 @@
-"""Closed-set enums for `AiModel` rows — surfaced on the wire, and in DB enum columns where noted."""
+"""Closed-set enums for `AiModel` rows (on the wire, in DB enum columns where noted) and litellm's routing table."""
 
 from enum import StrEnum
 
@@ -19,6 +19,23 @@ class ProviderVendor(StrEnum):
     GENERIC = "generic"
     AWS_BEDROCK = "aws_bedrock"
     COHERE = "cohere"
+
+
+# litellm's routing prefix per vendor: the adapter builds `<prefix>/<provider_model_id>` from it,
+# and the save-time rule in `services.ai_models` refuses an id that already carries one. Kept
+# beside the enum rather than in the adapter so the CRUD path reads it without importing litellm.
+# `generic` = OpenAI-compatible endpoint, so it rides the openai prefix with a caller-supplied
+# api_base.
+LITELLM_PREFIX: dict[ProviderVendor, str] = {
+    ProviderVendor.OPENAI: "openai",
+    ProviderVendor.ANTHROPIC: "anthropic",
+    ProviderVendor.GOOGLE: "gemini",
+    ProviderVendor.AZURE: "azure",
+    ProviderVendor.AWS_BEDROCK: "bedrock",
+    ProviderVendor.COHERE: "cohere",
+    ProviderVendor.HUGGINGFACE: "huggingface",
+    ProviderVendor.GENERIC: "openai",
+}
 
 
 class Modality(StrEnum):

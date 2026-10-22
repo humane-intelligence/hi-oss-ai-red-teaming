@@ -20,6 +20,7 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -29,13 +30,14 @@ from app.core.conversations.schemas import StreamError
 
 # (ProviderError subtype, HTTP status, retryable). retryable follows the taxonomy:
 # transient upstream conditions (rate limit, timeout, unavailable) may succeed on
-# retry; auth / bad-request / context-window will not.
+# retry; auth / bad-request / not-found / context-window will not.
 _PROVIDER_ERROR_STATUS: tuple[tuple[type[ProviderError], int, bool], ...] = (
     (ProviderRateLimitError, status.HTTP_429_TOO_MANY_REQUESTS, True),
     (ProviderTimeoutError, status.HTTP_504_GATEWAY_TIMEOUT, True),
     (ProviderUnavailableError, status.HTTP_502_BAD_GATEWAY, True),
     (ProviderContextWindowError, status.HTTP_400_BAD_REQUEST, False),
     (ProviderBadRequestError, status.HTTP_400_BAD_REQUEST, False),
+    (ProviderNotFoundError, status.HTTP_400_BAD_REQUEST, False),
     (ProviderAuthError, status.HTTP_502_BAD_GATEWAY, False),
 )
 

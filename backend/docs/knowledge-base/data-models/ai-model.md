@@ -46,7 +46,7 @@ Beyond the common `id` / `created_at` / `updated_at` / `deleted_at` (from `BaseM
 | `disabled_at` | TIMESTAMPTZ NULL | disable marker (separate from soft-delete) |
 | `health_check_status` | enum `healthcheckstatus` NULL | `checking` / `alive` / `dead`; **NULL = never checked** |
 | `last_health_check_at` | TIMESTAMPTZ NULL | when the last check **started** — doubles as the CAS token and the staleness clock |
-| `last_health_reason` | VARCHAR(64) NULL | machine reason when dead (`auth`, `bad-request`, `context-window`, `cold/deadline`, `error`); NULL when alive |
+| `last_health_reason` | VARCHAR(64) NULL | machine reason when dead (`model-not-found`, `auth`, `bad-request`, `context-window`, `cold/deadline`, `error`); NULL when alive — the console turns the known ones into sentences |
 | `last_healthy_at` | TIMESTAMPTZ NULL | when the endpoint was last confirmed alive |
 | `capability_mismatch` | VARCHAR(255) NULL | verdict of the last capability probe; NULL = nothing contradicted the row (or nothing to probe) |
 | `inactivity_alert_hours` | INTEGER NULL | per-model opt-in threshold for the inactivity alert; NULL = never alert |
@@ -115,6 +115,12 @@ A `generic` row routes through litellm's `openai` prefix with a caller-supplied 
 
 **The rule is advisory, not an invariant**: there is no `CHECK` constraint and no backfill, so a legacy row may still hold NULL. Hence the same `missing_inference_endpoint` predicate also guards dispatch — without it such a row would ride the `openai` prefix with `api_base=None` and no credential of its own, i.e. red-team OpenAI on the platform key. The URL itself is only **scheme-checked** (`http(s)`, at the edge, surrounding whitespace stripped so a pasted URL doesn't fail opaquely at litellm); the error carries a field-addressable `errors[]` entry so a form can map it onto the field.
 
+## `provider_model_id` must not carry the routing prefix
+
+The adapter sends `<prefix>/<provider_model_id>` (the `LITELLM_PREFIX` map beside the vendor enum), so an id copied from a provider list with its prefix — `anthropic/claude-sonnet-5.5` under `anthropic`, the mistake that started this rule — reaches the vendor doubled and 404s there, which before only ever surfaced as a failed health check. `PrefixedProviderModelIdError` (**400**, `loc=["body","provider_model_id"]`, `Drop the "anthropic/" prefix — the Provider field adds it.`) refuses it on create and on a PATCH that moves `provider_model_id`, `provider` or `inference_endpoint`. Both litellm's prefix and the vendor's own name count (`google` refuses `gemini/` and `google/`), case-folded.
+
+**Only for vendor-hosted calls.** With an `inference_endpoint` the id is whatever that proxy expects — OpenRouter's Anthropic-format endpoint wants the `anthropic/` form, and such a row works through the native Anthropic path — and `generic` always has one, so neither is checked; clearing the endpoint under a prefixed id is caught. Validation, not normalisation: rewriting ids would hide what is actually sent and break ids that legitimately carry dots or slashes (Bedrock's `anthropic.claude-…`, a Hugging Face repo). Advisory like the endpoint rule, with no backfill: a legacy prefixed row stays editable until one of the three fields moves. A typo the rule cannot see is for the health check after the save, below.
+
 ## Disabling vs deleting
 
 ```python
@@ -161,6 +167,8 @@ It is conclusive **only** because it is *differential*: the health probe has jus
 Deliberately **not** folded into `health_check_status`: an endpoint that answers but refuses an image is alive, and "fix the endpoint" vs "fix the declaration" are different remedies. The reason carries the upstream text rather than a verdict, since an endpoint may reject the `data:` URI or the multimodal shape while the model behind it does have vision.
 
 `PROBED_CALL_FIELDS` — `input_modalities`, `inference_endpoint`, `provider`, `provider_model_id` — is the single definition of what the verdict is a function of. A finding survives only while all four still hold; the same tuple drives the clear in `update_model`, the settle guard in `run_health_check` and the re-check trigger on the routes, so the three cannot drift apart. The credential and the merged `params` shape the call too and stay out — neither decides acceptance.
+
+A create, a PATCH that moves any of those four fields (or re-enables the row) and a `PUT …/api-key` each **start a health check unasked** (`_autocheck` in the router — on the routes, not in the service, so bulk create starts none; a disabled row and a row with nothing to call are skipped, and the create-then-set-the-key flow gets its check from the key). The save-time rules catch the mistakes they can see; the check is what reports a typo in the id, a wrong key or a dead endpoint before the first chat does. An in-flight check is superseded, not deferred to.
 
 ## Inactivity alerting
 

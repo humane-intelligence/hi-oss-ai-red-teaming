@@ -2464,22 +2464,66 @@ async def test_patch_survives_an_undecryptable_stored_key(
 
 
 @pytest.mark.integration
-async def test_create_without_image_starts_no_check(
+async def test_create_without_image_starts_a_check_too(
     auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Nothing to contradict, so nothing to spend a provider call on.
+    # A text-only row has no declaration to contradict, but its id, key and endpoint are as
+    # unverified as any other's — the check is what tells the operator before the first chat does.
     enqueued: list[dict[str, object]] = []
     monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
     caller = await create_user_service(db_session, email="autocheck-text@example.com", roles=[admin_role])
 
     response = await auth_db_client.post(
         "/api/v1/ai-models",
-        json=_create_payload(),
+        json=_create_payload(api_key="sk-probe"),
         headers={"Authorization": f"Bearer {_token(caller)}"},
     )
 
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.json()["health_check_status"] is None
+    assert response.json()["health_check_status"] == "checking"
+    assert enqueued == [{"args": [response.json()["id"]], "countdown": 1}]
+
+
+@pytest.mark.integration
+async def test_set_api_key_starts_a_check(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Row first, key after: the create had nothing to call, so the key is the first moment a check can run.
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-key@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(), headers=headers)
+    assert created.status_code == status.HTTP_201_CREATED
+    assert created.json()["health_check_status"] is None
+    assert enqueued == []  # the create had nothing to call
+
+    response = await auth_db_client.put(
+        f"/api/v1/ai-models/{created.json()['id']}/api-key", json={"api_key": "sk-probe"}, headers=headers
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert enqueued == [{"args": [created.json()["id"]], "countdown": 1}]
+    detail = await auth_db_client.get(f"/api/v1/ai-models/{created.json()['id']}", headers=headers)
+    assert detail.json()["health_check_status"] == "checking"
+
+
+@pytest.mark.integration
+async def test_set_api_key_on_a_disabled_row_starts_no_check(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-key-off@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(is_disabled=True), headers=headers)
+    assert created.status_code == status.HTTP_201_CREATED
+
+    response = await auth_db_client.put(
+        f"/api/v1/ai-models/{created.json()['id']}/api-key", json={"api_key": "sk-probe"}, headers=headers
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
     assert enqueued == []
 
 
@@ -2872,3 +2916,110 @@ async def test_create_model_rejects_web_access_without_a_web_option_on_the_field
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["errors"][0]["loc"] == ["body", "web_access"]
+
+
+@pytest.mark.integration
+async def test_create_model_rejects_a_prefixed_model_id_on_the_field(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="prefixed@example.com", roles=[admin_role])
+
+    response = await auth_db_client.post(
+        "/api/v1/ai-models",
+        json=_create_payload(provider="anthropic", provider_model_id="anthropic/claude-sonnet-4-5"),
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    error = response.json()["errors"][0]
+    assert error["loc"] == ["body", "provider_model_id"]
+    assert error["type"] == "provider_model_id_prefixed"
+
+
+@pytest.mark.integration
+async def test_bulk_create_isolates_a_prefixed_row(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="bulk-prefixed@example.com", roles=[admin_role])
+
+    response = await auth_db_client.post(
+        "/api/v1/ai-models/bulk",
+        json={
+            "rows": [
+                _bulk_row(
+                    "bad",
+                    name="Doubled",
+                    model_alias="doubled",
+                    provider="anthropic",
+                    provider_model_id="anthropic/claude-sonnet-4-5",
+                ),
+                _bulk_row("ok", name="Fine", model_alias="fine"),
+            ]
+        },
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    results = {row["row_key"]: row for row in response.json()["results"]}
+    assert results["bad"]["error"]["status"] == status.HTTP_400_BAD_REQUEST
+    assert results["bad"]["error"]["errors"][0]["loc"][-1] == "provider_model_id"
+    assert results["ok"]["error"] is None
+
+
+@pytest.mark.integration
+async def test_clear_api_key_starts_a_check_when_a_platform_credential_remains(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Bedrock authenticates from the worker's environment, so the row is still callable — with a
+    # different credential than the one the last verdict proved, which is why it is re-taken.
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-clear@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post(
+        "/api/v1/ai-models",
+        json=_create_payload(
+            provider="aws_bedrock", provider_model_id="anthropic.claude-3-5-sonnet-20240620-v1:0", api_key="sk-probe"
+        ),
+        headers=headers,
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+    enqueued.clear()
+
+    response = await auth_db_client.delete(f"/api/v1/ai-models/{created.json()['id']}/api-key", headers=headers)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert enqueued == [{"args": [created.json()["id"]], "countdown": 1}]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        # An endpoint alone is not a credential: probing a keyed endpoint without its key would spin to
+        # the wake deadline and report `cold/deadline` for what is really "no key".
+        {"provider": "generic", "inference_endpoint": "http://slm:8080/v1"},
+    ],
+)
+async def test_clear_api_key_starts_no_check_when_no_credential_remains(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_role: Role,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-clear-off@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post(
+        "/api/v1/ai-models", json=_create_payload(api_key="sk-probe", **overrides), headers=headers
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+    enqueued.clear()
+
+    response = await auth_db_client.delete(f"/api/v1/ai-models/{created.json()['id']}/api-key", headers=headers)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert enqueued == []

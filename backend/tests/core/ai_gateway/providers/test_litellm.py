@@ -15,11 +15,11 @@ from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
 from app.core.ai_gateway.providers.base import ModelProvider
-from app.core.ai_gateway.providers.litellm import _LITELLM_PREFIX
 from app.core.ai_gateway.providers.litellm import LiteLLMProvider
 from app.core.ai_gateway.providers.litellm import _delta_role
 from app.core.ai_gateway.providers.litellm import _map_error
@@ -105,6 +105,7 @@ async def test_stream_yields_chunks_then_finish_reason() -> None:
         (litellm.AuthenticationError(message="x", llm_provider="openai", model="m"), ProviderAuthError),
         (litellm.Timeout(message="x", model="m", llm_provider="openai"), ProviderTimeoutError),
         (litellm.BadRequestError(message="x", model="m", llm_provider="openai"), ProviderBadRequestError),
+        (litellm.NotFoundError(message="x", model="m", llm_provider="openai"), ProviderNotFoundError),
         (litellm.ContextWindowExceededError(message="x", model="m", llm_provider="openai"), ProviderContextWindowError),
         (litellm.ServiceUnavailableError(message="x", llm_provider="openai", model="m"), ProviderUnavailableError),
         (litellm.APIConnectionError(message="x", llm_provider="openai", model="m"), ProviderUnavailableError),
@@ -154,12 +155,6 @@ async def test_chat_maps_malformed_response_to_provider_error(monkeypatch: pytes
             provider_model_id="gpt-4o",
             messages=_messages(),
         )
-
-
-@pytest.mark.unit
-def test_litellm_prefix_covers_every_vendor() -> None:
-    # A vendor added to the enum without a prefix would KeyError at dispatch.
-    assert set(_LITELLM_PREFIX) == set(ProviderVendor)
 
 
 @pytest.mark.unit

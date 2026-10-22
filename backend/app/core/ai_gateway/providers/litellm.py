@@ -20,11 +20,13 @@ from app.core.ai_gateway.chat import ChatMessageDelta
 from app.core.ai_gateway.chat import ChunkChoice
 from app.core.ai_gateway.chat import Role
 from app.core.ai_gateway.chat import Usage
+from app.core.ai_gateway.enums import LITELLM_PREFIX
 from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
 from app.core.ai_gateway.exceptions import ProviderContextWindowError
 from app.core.ai_gateway.exceptions import ProviderError
+from app.core.ai_gateway.exceptions import ProviderNotFoundError
 from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
@@ -40,19 +42,6 @@ litellm.telemetry = False
 litellm.num_retries = 0
 
 _DEFAULT_TIMEOUT = 60.0
-
-# vendor -> litellm "<prefix>/<model>" routing prefix. `generic` = OpenAI-compatible
-# endpoint, so it rides the openai prefix with a caller-supplied api_base.
-_LITELLM_PREFIX: dict[ProviderVendor, str] = {
-    ProviderVendor.OPENAI: "openai",
-    ProviderVendor.ANTHROPIC: "anthropic",
-    ProviderVendor.GOOGLE: "gemini",
-    ProviderVendor.AZURE: "azure",
-    ProviderVendor.AWS_BEDROCK: "bedrock",
-    ProviderVendor.COHERE: "cohere",
-    ProviderVendor.HUGGINGFACE: "huggingface",
-    ProviderVendor.GENERIC: "openai",
-}
 
 # Kwargs the adapter sets itself; if a row's params carry them too, acompletion
 # gets duplicate keyword args. Dropped (with a warning) rather than passed.
@@ -159,7 +148,7 @@ class LiteLLMProvider:
 
     @staticmethod
     def _model(vendor: ProviderVendor, provider_model_id: str) -> str:
-        prefix = _LITELLM_PREFIX.get(vendor)
+        prefix = LITELLM_PREFIX.get(vendor)
         if prefix is None:
             # Unmapped vendor: a ProviderError, not a raw KeyError 500.
             raise ProviderBadRequestError(f"No litellm routing for provider vendor {vendor!r}.")
@@ -173,6 +162,7 @@ _ERROR_MAP: tuple[tuple[type[Exception], type[ProviderError]], ...] = (
     (litellm.AuthenticationError, ProviderAuthError),
     (litellm.RateLimitError, ProviderRateLimitError),
     (litellm.Timeout, ProviderTimeoutError),
+    (litellm.NotFoundError, ProviderNotFoundError),
     (litellm.BadRequestError, ProviderBadRequestError),
     (litellm.ServiceUnavailableError, ProviderUnavailableError),
     (litellm.APIConnectionError, ProviderUnavailableError),

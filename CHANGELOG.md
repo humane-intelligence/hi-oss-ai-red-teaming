@@ -9,6 +9,12 @@ change between minor versions.
 
 ### Added
 
+- A `provider_model_id` that starts with the routing prefix the `provider` field adds
+  (`anthropic/claude-…` under `anthropic`) is refused on save with a 400 pinned to the field —
+  only for vendor-hosted rows: with an `inference_endpoint` the id goes through as the proxy
+  expects it. The console hints an example id per provider and spells out health-check failure
+  reasons; a model the provider does not know now reads `model-not-found` instead of `error`.
+
 - `OIDC_ALLOWED_DOMAINS`: optional comma-separated allowlist of e-mail domains for OIDC sign-in,
   checked against the verified email and Google's `hd` claim. A login outside it is refused with
   `#error=domain_not_allowed` before any account is resolved, existing accounts included, and an
@@ -21,6 +27,12 @@ change between minor versions.
   without a web option is refused with a 400 pinned to the field, re-checked at dispatch. The
   console offers the switch on the model form (locked up front for vendors that never have a web
   option) and detail page and marks such models where they are picked and in the chat header.
+
+### Changed
+
+- The health check that followed a save ran only for models declaring image input; it now follows
+  every create, every patch that moves the call, and setting the API key. Bulk create still starts
+  none.
 
 ## 0.1.0 — 2026-09-10
 

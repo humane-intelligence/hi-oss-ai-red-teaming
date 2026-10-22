@@ -11,7 +11,6 @@ from sqlalchemy import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_gateway.dependencies import AiModelFiltersDep
-from app.core.ai_gateway.enums import Modality
 from app.core.ai_gateway.inference_params import dump_inference_params
 from app.core.ai_gateway.models import PROBED_CALL_FIELDS
 from app.core.ai_gateway.models import AiModel
@@ -75,7 +74,8 @@ _FORBIDDEN = problem_response("Caller lacks the required permission.")
 _NOT_FOUND = problem_response("Model does not exist.")
 _CONFLICT = problem_response("A model with this name, or this model_alias, already exists.")
 _INVALID_ROW = problem_response(
-    "A generic provider requires an inference_endpoint, or web_access is on for a model with no web option."
+    "A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider "
+    "field adds, or web_access is on for a model with no web option."
 )
 _NOT_RESTORABLE = problem_response(
     "No restorable model with this id: never deleted, or deleted longer than the restore window ago."
@@ -109,18 +109,21 @@ def _ai_model_snapshot(model: AiModel) -> dict[str, object]:
     }
 
 
-async def _autocheck_image_declaration(db: AsyncSession, settings: Settings, model: AiModel) -> None:
-    """Start a health check for a row that has just declared image input, without being asked.
+async def _autocheck(db: AsyncSession, settings: Settings, model: AiModel) -> None:
+    """Start a health check for a row whose call just changed, without being asked.
 
-    After the write, never gating it: the endpoint may be legitimately asleep or throttled, and
-    neither is a reason to refuse a registry row. Wired into the routes rather than
-    `create_model`/`update_model` so the bulk endpoints cannot turn one paste into
+    The save-time rules catch the mistakes they can see (a doubled prefix, a missing URL); a
+    typo in the id, a wrong key or a dead endpoint only the provider can report, and an
+    operator who never presses the manual button would otherwise learn it from the first
+    failed chat. After the write, never gating it: the endpoint may be legitimately asleep or
+    throttled, and neither is a reason to refuse a registry row. Wired into the routes rather
+    than `create_model`/`update_model` so the bulk endpoints cannot turn one paste into
     `bulk_max_rows` provider calls. An in-flight check is *superseded*, not deferred to —
     `start_health_check` re-stamps the CAS token, so the older run loses on settle rather than
     settling a finding for a pair a later PATCH has already replaced.
     """
-    # A disabled row is never dispatched to, so the gap this closes cannot be reached from it.
-    if model.is_disabled or Modality.IMAGE not in model.input_modalities:
+    # A disabled row is never dispatched to, so there is nothing to learn about it yet.
+    if model.is_disabled:
         return
     if not has_resolvable_credential(model, settings) and model.inference_endpoint is None:
         # Nothing to call: no key on the row, none in the deployment's settings for this vendor, and
@@ -260,13 +263,13 @@ async def list_models_endpoint(
         "Register a new model in the platform. `name` and `model_alias` must each be unique among live rows. "
         "A `generic` provider must carry an `inference_endpoint`, and any `inference_endpoint` "
         "must be an absolute http(s) URL. An optional `api_key` is encrypted at rest and never echoed back. "
-        "An enabled row declaring `image` input additionally starts a health check on creation, so its "
-        "declaration is verified against the endpoint without being asked; the row is created either way — "
-        "a sleeping endpoint, a rate-limited one, or a broker outage never blocks the write. Three cases do "
-        "not start one: disabled rows, the bulk endpoint, and a row with nothing to call yet — no `api_key`, "
-        "no platform credential for its `provider`, and no `inference_endpoint` — which stays "
-        '"never checked" rather than being reported dead. Setting a key does not by itself start one; '
-        "the next edit or the manual check does."
+        "A vendor-hosted row (no `inference_endpoint`) must not carry the routing prefix `provider` adds "
+        "in its `provider_model_id`. An enabled row additionally starts a health check on creation, so its "
+        "id, key and endpoint are verified against the provider without being asked; the row is created "
+        "either way — a sleeping endpoint, a rate-limited one, or a broker outage never blocks the write. "
+        "Three cases do not start one: disabled rows, the bulk endpoint, and a row with nothing to call yet "
+        "— no `api_key`, no platform credential for its `provider`, and no `inference_endpoint` — which "
+        'stays "never checked" rather than being reported dead; setting its key later starts one.'
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
@@ -288,8 +291,9 @@ async def create_model_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — `provider` is `generic` and `inference_endpoint` is missing, or `web_access`
-      is on for a model whose provider has no web option.
+    * **400 Bad Request** — `provider` is `generic` and `inference_endpoint` is missing, a vendor-hosted
+      `provider_model_id` carries the prefix `provider` adds, or `web_access` is on for a model whose
+      provider has no web option.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `models:create` permission.
     * **409 Conflict** — a live model with the same `name`, or the same `model_alias`, exists.
@@ -326,7 +330,7 @@ async def create_model_endpoint(
         object_id=model.id,
         after=_ai_model_snapshot(model),
     )
-    await _autocheck_image_declaration(db, settings, model)
+    await _autocheck(db, settings, model)
     response.headers["Location"] = f"/api/v1/ai-models/{model.id}"
     return AiModelResponse.from_model(model)
 
@@ -430,7 +434,7 @@ async def bulk_create_models_endpoint(
         "well-formed — per-row failures (`404` when no live model matches the row's `name`) land inside "
         "`results[].error`. A `name` repeated across rows is rejected upfront (`422`), like a duplicate `row_key`. "
         "Disabled models are valid targets. `dry_run=true` previews the full path (resolves + encrypts every row) "
-        "and rolls back instead of committing."
+        "and rolls back instead of committing. Starts no health checks, like bulk create."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
@@ -620,12 +624,14 @@ async def health_check_model_endpoint(
     description=(
         "Partially update a model. Omitted fields are left unchanged; explicit `null` clears the nullable columns. "
         "A patch that touches `provider` or `inference_endpoint` must leave the row with an `inference_endpoint` "
-        "if it is `generic`, and a supplied `inference_endpoint` must be an absolute http(s) URL. Changing any of "
-        "`input_modalities`, `inference_endpoint`, `provider` or `provider_model_id` clears `capability_mismatch` "
-        "— the finding described the previous combination — and on an enabled row declaring `image` input it also "
-        "starts a health check, superseding one already in flight, so the new combination is verified without "
-        "being asked. Re-enabling a disabled row does the same. Re-sending an unchanged value does not, and "
-        "neither does a row with nothing to call yet, as on create. "
+        "if it is `generic`, and a supplied `inference_endpoint` must be an absolute http(s) URL. A patch that "
+        "touches `provider`, `provider_model_id` or `inference_endpoint` must not leave a vendor-hosted row with "
+        "an id that carries the prefix `provider` adds. Changing any of `input_modalities`, "
+        "`inference_endpoint`, `provider` or `provider_model_id` clears `capability_mismatch` — the finding "
+        "described the previous combination — and on an enabled row it also starts a health check, superseding "
+        "one already in flight, so the new combination is verified without being asked. Re-enabling a disabled "
+        "row does the same. Re-sending an unchanged value does not, and neither does a row with nothing to call "
+        "yet, as on create. "
         "The API key is rotated/cleared via the dedicated `…/api-key` endpoints, not this body."
     ),
     responses=COMMON_ERROR_RESPONSES
@@ -649,7 +655,8 @@ async def update_model_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — the patch leaves a `generic` row without an `inference_endpoint`, or
+    * **400 Bad Request** — the patch leaves a `generic` row without an `inference_endpoint`, a
+      vendor-hosted row with a `provider_model_id` that carries the prefix `provider` adds, or
       `web_access` on for a model whose provider has no web option.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `models:update` permission.
@@ -715,7 +722,7 @@ async def update_model_endpoint(
     # from the old one. A re-enable counts too: the row was skipped while disabled, so this is the
     # moment its declaration starts mattering to dispatch.
     if set(PROBED_CALL_FIELDS) & diff_after.keys() or diff_after.get("is_disabled") is False:
-        await _autocheck_image_declaration(db, settings, updated)
+        await _autocheck(db, settings, updated)
     return AiModelResponse.from_model(updated)
 
 
@@ -723,7 +730,10 @@ async def update_model_endpoint(
     "/{model_id}/api-key",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Set model API key",
-    description="Store or rotate the encrypted API key for this model. The plaintext value is never returned.",
+    description=(
+        "Store or rotate the encrypted API key for this model. The plaintext value is never returned. Starts a "
+        "health check with the new key unless the row is disabled."
+    ),
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
@@ -758,6 +768,8 @@ async def set_model_api_key_endpoint(
         object_type="ai_model",
         object_id=model.id,
     )
+    # "Row first, key after" is a supported flow, and the row's create found nothing to call.
+    await _autocheck(db, settings, model)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -765,7 +777,11 @@ async def set_model_api_key_endpoint(
     "/{model_id}/api-key",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Clear model API key",
-    description="Remove the stored credential. Idempotent — succeeds whether or not a key was set.",
+    description=(
+        "Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health "
+        "check when a platform credential for the `provider` still authenticates the row, so a verdict proven "
+        "with the cleared key does not linger; a row left with no credential is not probed."
+    ),
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
@@ -777,6 +793,7 @@ async def set_model_api_key_endpoint(
 async def clear_model_api_key_endpoint(
     model_id: UUID,
     caller: Annotated[SessionUser, Depends(require_permission(Permission.MODELS_UPDATE))],
+    settings: SettingsDep,
     db: DbSession,
 ) -> Response:
     """Clear the stored API key.
@@ -798,6 +815,11 @@ async def clear_model_api_key_endpoint(
         object_type="ai_model",
         object_id=model.id,
     )
+    # `_autocheck`'s own gate also lets a keyless row with an endpoint through — right after a create,
+    # where the endpoint may need no key, wrong here: a keyed endpoint just lost its key, and probing
+    # it retries until the wake deadline to report `cold/deadline` for what is really "no key".
+    if has_resolvable_credential(model, settings):
+        await _autocheck(db, settings, model)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

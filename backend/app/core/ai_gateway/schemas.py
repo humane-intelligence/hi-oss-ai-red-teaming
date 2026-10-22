@@ -180,6 +180,13 @@ _EXAMPLE_CREATE: dict[str, Any] = {
 }
 
 
+_MODEL_ID_DESCRIPTION = (
+    "Identifier the provider's API expects, without the routing prefix the provider field adds "
+    "(`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes "
+    "through as typed."
+)
+
+
 class AiModelResponse(BaseModel):
     """Public view of an `AiModel` row.
 
@@ -196,7 +203,7 @@ class AiModelResponse(BaseModel):
     provider: ProviderVendor = Field(description="Vendor whose API this row routes to.")
     input_modalities: list[Modality] = Field(description="What the model accepts in a prompt.")
     output_modalities: list[Modality] = Field(description="What the model can return.")
-    provider_model_id: str = Field(description="Identifier the provider's API expects.")
+    provider_model_id: str = Field(description=_MODEL_ID_DESCRIPTION)
     endpoint_name: str | None = Field(default=None, description="Provider-side inference-endpoint admin name.")
     inference_endpoint: str | None = Field(
         default=None, description="Custom inference URL, when the row points at one."
@@ -405,7 +412,11 @@ class AiModelCreate(BaseModel):
         default_factory=lambda: [Modality.TEXT],
         description="What the model can return. Defaults to text only.",
     )
-    provider_model_id: str = Field(min_length=1, max_length=255, description="Identifier the provider's API expects.")
+    provider_model_id: str = Field(
+        min_length=1,
+        max_length=255,
+        description=_MODEL_ID_DESCRIPTION,
+    )
     endpoint_name: str | None = Field(default=None, max_length=255, description="Provider-side endpoint admin name.")
     inference_endpoint: str | None = Field(
         default=None,
@@ -534,7 +545,12 @@ class AiModelUpdate(BaseModel):
         default=None,
         description="Replaces the declared reply set wholesale. Must be non-empty; deduped and re-sorted.",
     )
-    provider_model_id: str | None = Field(default=None, min_length=1, max_length=255)
+    provider_model_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description=_MODEL_ID_DESCRIPTION,
+    )
     endpoint_name: str | None = Field(default=None, max_length=255)
     inference_endpoint: str | None = Field(default=None, max_length=1024)
     icon_file: str | None = Field(default=None, max_length=255)
