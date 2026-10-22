@@ -7,6 +7,7 @@ import {
   healthClass,
   healthLabel,
   imageUnconfirmedHint,
+  healthReasonLabel,
   IMAGE_UNCONFIRMED_HINT_LABEL,
   IMAGE_UNCONFIRMED_LABEL,
   modalityLabel,
@@ -97,7 +98,7 @@ export function AiModelDetailPage() {
                     </span>
                     {model.health_check_status === 'dead' && model.last_health_reason && (
                       <span className="text-muted-foreground text-xs font-normal">
-                        {model.last_health_reason}
+                        {healthReasonLabel(model.last_health_reason)}
                       </span>
                     )}
                   </span>
