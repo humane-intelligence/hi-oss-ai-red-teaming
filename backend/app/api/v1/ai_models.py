@@ -11,7 +11,6 @@ from sqlalchemy import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_gateway.dependencies import AiModelFiltersDep
-from app.core.ai_gateway.enums import Modality
 from app.core.ai_gateway.inference_params import dump_inference_params
 from app.core.ai_gateway.models import PROBED_CALL_FIELDS
 from app.core.ai_gateway.models import AiModel
@@ -110,18 +109,21 @@ def _ai_model_snapshot(model: AiModel) -> dict[str, object]:
     }
 
 
-async def _autocheck_image_declaration(db: AsyncSession, settings: Settings, model: AiModel) -> None:
-    """Start a health check for a row that has just declared image input, without being asked.
+async def _autocheck(db: AsyncSession, settings: Settings, model: AiModel) -> None:
+    """Start a health check for a row whose call just changed, without being asked.
 
-    After the write, never gating it: the endpoint may be legitimately asleep or throttled, and
-    neither is a reason to refuse a registry row. Wired into the routes rather than
-    `create_model`/`update_model` so the bulk endpoints cannot turn one paste into
+    The save-time rules catch the mistakes they can see (a doubled prefix, a missing URL); a
+    typo in the id, a wrong key or a dead endpoint only the provider can report, and an
+    operator who never presses the manual button would otherwise learn it from the first
+    failed chat. After the write, never gating it: the endpoint may be legitimately asleep or
+    throttled, and neither is a reason to refuse a registry row. Wired into the routes rather
+    than `create_model`/`update_model` so the bulk endpoints cannot turn one paste into
     `bulk_max_rows` provider calls. An in-flight check is *superseded*, not deferred to —
     `start_health_check` re-stamps the CAS token, so the older run loses on settle rather than
     settling a finding for a pair a later PATCH has already replaced.
     """
-    # A disabled row is never dispatched to, so the gap this closes cannot be reached from it.
-    if model.is_disabled or Modality.IMAGE not in model.input_modalities:
+    # A disabled row is never dispatched to, so there is nothing to learn about it yet.
+    if model.is_disabled:
         return
     if not has_resolvable_credential(model, settings) and model.inference_endpoint is None:
         # Nothing to call: no key on the row, none in the deployment's settings for this vendor, and
@@ -327,7 +329,7 @@ async def create_model_endpoint(
         object_id=model.id,
         after=_ai_model_snapshot(model),
     )
-    await _autocheck_image_declaration(db, settings, model)
+    await _autocheck(db, settings, model)
     response.headers["Location"] = f"/api/v1/ai-models/{model.id}"
     return AiModelResponse.from_model(model)
 
@@ -716,7 +718,7 @@ async def update_model_endpoint(
     # from the old one. A re-enable counts too: the row was skipped while disabled, so this is the
     # moment its declaration starts mattering to dispatch.
     if set(PROBED_CALL_FIELDS) & diff_after.keys() or diff_after.get("is_disabled") is False:
-        await _autocheck_image_declaration(db, settings, updated)
+        await _autocheck(db, settings, updated)
     return AiModelResponse.from_model(updated)
 
 
@@ -759,6 +761,8 @@ async def set_model_api_key_endpoint(
         object_type="ai_model",
         object_id=model.id,
     )
+    # "Row first, key after" is a supported flow, and the row's create found nothing to call.
+    await _autocheck(db, settings, model)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

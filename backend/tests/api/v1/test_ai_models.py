@@ -2464,22 +2464,66 @@ async def test_patch_survives_an_undecryptable_stored_key(
 
 
 @pytest.mark.integration
-async def test_create_without_image_starts_no_check(
+async def test_create_without_image_starts_a_check_too(
     auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Nothing to contradict, so nothing to spend a provider call on.
+    # A text-only row has no declaration to contradict, but its id, key and endpoint are as
+    # unverified as any other's — the check is what tells the operator before the first chat does.
     enqueued: list[dict[str, object]] = []
     monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
     caller = await create_user_service(db_session, email="autocheck-text@example.com", roles=[admin_role])
 
     response = await auth_db_client.post(
         "/api/v1/ai-models",
-        json=_create_payload(),
+        json=_create_payload(api_key="sk-probe"),
         headers={"Authorization": f"Bearer {_token(caller)}"},
     )
 
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.json()["health_check_status"] is None
+    assert response.json()["health_check_status"] == "checking"
+    assert enqueued == [{"args": [response.json()["id"]], "countdown": 1}]
+
+
+@pytest.mark.integration
+async def test_set_api_key_starts_a_check(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Row first, key after: the create had nothing to call, so the key is the first moment a check can run.
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-key@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(), headers=headers)
+    assert created.status_code == status.HTTP_201_CREATED
+    assert created.json()["health_check_status"] is None
+    assert enqueued == []
+
+    response = await auth_db_client.put(
+        f"/api/v1/ai-models/{created.json()['id']}/api-key", json={"api_key": "sk-probe"}, headers=headers
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert enqueued == [{"args": [created.json()["id"]], "countdown": 1}]
+    detail = await auth_db_client.get(f"/api/v1/ai-models/{created.json()['id']}", headers=headers)
+    assert detail.json()["health_check_status"] == "checking"
+
+
+@pytest.mark.integration
+async def test_set_api_key_on_a_disabled_row_starts_no_check(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    enqueued: list[dict[str, object]] = []
+    monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
+    caller = await create_user_service(db_session, email="autocheck-key-off@example.com", roles=[admin_role])
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(is_disabled=True), headers=headers)
+    assert created.status_code == status.HTTP_201_CREATED
+
+    response = await auth_db_client.put(
+        f"/api/v1/ai-models/{created.json()['id']}/api-key", json={"api_key": "sk-probe"}, headers=headers
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
     assert enqueued == []
 
 
