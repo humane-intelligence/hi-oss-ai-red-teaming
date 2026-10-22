@@ -101,6 +101,8 @@ One switch per model that lets it use the web the way its provider natively allo
 | `openai` | `litellm.supports_web_search("openai/<id>")` | genuinely per model (`*-search-preview` and the newer families: yes; `gpt-4o`: no) |
 | everything else (`azure`, `aws_bedrock`, `cohere`, `huggingface`, `generic`) | unsupported | no option litellm can translate `web_search_options` into |
 
+The switch governs only the tools the gateway attaches. A provider that searches on its own — an OpenRouter `:online` model, Gemini grounding enabled in Google's console — is online with the switch off and shows no marker, and an OpenAI-compatible endpoint that silently drops `web_search_options` (OpenRouter's chat completions, verified 2026-10-22) is exactly why `generic` reads as unsupported rather than best-effort.
+
 The module stays litellm-free at import (the one `import litellm` sits inside the OpenAI branch), so the CRUD path keeps its no-litellm import rule.
 
 **Enforcement, twice.** Saving `web_access=true` on an unsupported pair is a **400** pinned to the field (`WebAccessUnsupportedError`, `loc=["body","web_access"]`), checked on the *merged* row in `create_model` and in `update_model` whenever a patch touches `provider`, `provider_model_id` or `web_access` — so moving the model id under an enabled switch is caught too. Like the `inference_endpoint` rule it is advisory, not an invariant (a row written past the service, or a capability-map change, can leave the switch on for a pair that lost support), which is why dispatch re-checks on the stored row and refuses with `ProviderBadRequestError` rather than sending the call: with `drop_params=True` litellm would silently discard the tools and the console would show a switch that does nothing.

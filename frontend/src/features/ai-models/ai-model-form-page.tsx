@@ -599,7 +599,7 @@ export function AiModelFormPage() {
                 />
                 Internet access
               </label>
-              <InfoHint text="Lets the model search the web while it answers — and, on Anthropic, open a specific URL. It uses the provider's own web tools, so it only works where the provider has them (Anthropic and Google models, and OpenAI's search-enabled ones), and the provider bills each search. Off, the model answers from its training data alone." />
+              <InfoHint text="Lets the model search the web while it answers — and, on Anthropic, open a specific URL. It uses the provider's own web tools, so it only works where the provider has them (Anthropic and Google models, and OpenAI's search-enabled ones), and the provider bills each search. Off, the console adds no web tools — a model whose provider searches on its own (a search plugin, grounding set in the provider's console) can still be online." />
             </div>
             {webAccessLocked && (
               <p id="web-access-lock" className="text-muted-foreground text-xs">
