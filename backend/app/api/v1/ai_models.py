@@ -75,7 +75,8 @@ _FORBIDDEN = problem_response("Caller lacks the required permission.")
 _NOT_FOUND = problem_response("Model does not exist.")
 _CONFLICT = problem_response("A model with this name, or this model_alias, already exists.")
 _INVALID_ROW = problem_response(
-    "A generic provider requires an inference_endpoint, or web_access is on for a model with no web option."
+    "A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider "
+    "field adds, or web_access is on for a model with no web option."
 )
 _NOT_RESTORABLE = problem_response(
     "No restorable model with this id: never deleted, or deleted longer than the restore window ago."

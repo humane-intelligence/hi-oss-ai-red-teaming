@@ -16,6 +16,7 @@ from app.core.ai_gateway.filters import AiModelFilters
 from app.core.ai_gateway.models import AiModel
 from app.core.ai_gateway.schemas import AiModelUpdateChanges
 from app.core.ai_gateway.services.ai_models import MissingInferenceEndpointError
+from app.core.ai_gateway.services.ai_models import PrefixedProviderModelIdError
 from app.core.ai_gateway.services.ai_models import WebAccessUnsupportedError
 from app.core.ai_gateway.services.ai_models import _duplicate_conflict
 from app.core.ai_gateway.services.ai_models import clear_api_key
@@ -24,6 +25,7 @@ from app.core.ai_gateway.services.ai_models import get_model
 from app.core.ai_gateway.services.ai_models import get_model_by_name
 from app.core.ai_gateway.services.ai_models import list_labels
 from app.core.ai_gateway.services.ai_models import list_models
+from app.core.ai_gateway.services.ai_models import prefixed_model_id
 from app.core.ai_gateway.services.ai_models import set_api_key
 from app.core.ai_gateway.services.ai_models import soft_delete_model
 from app.core.ai_gateway.services.ai_models import update_model
@@ -1009,3 +1011,124 @@ async def test_update_model_leaves_a_legacy_web_access_row_editable(db_session: 
 
     assert updated.name == "legacy-web-2"
     assert updated.web_access is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("provider", "provider_model_id", "expected"),
+    [
+        (ProviderVendor.ANTHROPIC, "anthropic/claude-sonnet-4-5", "anthropic"),
+        (ProviderVendor.ANTHROPIC, "Anthropic/claude-sonnet-4-5", "anthropic"),
+        (ProviderVendor.GOOGLE, "gemini/gemini-2.5-flash", "gemini"),
+        (ProviderVendor.GOOGLE, "google/gemini-2.5-flash", "google"),
+        (ProviderVendor.AWS_BEDROCK, "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0", "bedrock"),
+        (ProviderVendor.AWS_BEDROCK, "aws_bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0", "aws_bedrock"),
+        (ProviderVendor.OPENAI, "openai/gpt-4.1", "openai"),
+        (ProviderVendor.COHERE, "cohere/command-r-plus", "cohere"),
+        (ProviderVendor.HUGGINGFACE, "huggingface/meta-llama/Llama-3.1-8B-Instruct", "huggingface"),
+        (ProviderVendor.AZURE, "azure/my-deployment", "azure"),
+        # Legitimate ids with dots and slashes of their own.
+        (ProviderVendor.ANTHROPIC, "claude-sonnet-4-5", None),
+        (ProviderVendor.AWS_BEDROCK, "anthropic.claude-3-5-sonnet-20240620-v1:0", None),
+        (ProviderVendor.HUGGINGFACE, "meta-llama/Llama-3.1-8B-Instruct", None),
+        # Another vendor's prefix is not this vendor's mistake — litellm sends it as typed.
+        (ProviderVendor.OPENAI, "anthropic/claude-sonnet-4-5", None),
+    ],
+)
+def test_prefixed_model_id_names_the_prefix_a_vendor_hosted_call_would_double(
+    provider: ProviderVendor, provider_model_id: str, expected: str | None
+) -> None:
+    assert prefixed_model_id(provider, provider_model_id, None) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("provider", "inference_endpoint"),
+    [
+        # An OpenAI-compatible route takes whatever id the endpoint expects (OpenRouter's `anthropic/…`).
+        (ProviderVendor.GENERIC, "https://openrouter.ai/api/v1"),
+        # So does a vendor-format proxy: OpenRouter's Anthropic Messages endpoint wants the prefixed form.
+        (ProviderVendor.ANTHROPIC, "https://openrouter.ai/api"),
+    ],
+)
+def test_prefixed_model_id_lets_a_prefixed_id_through_to_a_custom_endpoint(
+    provider: ProviderVendor, inference_endpoint: str
+) -> None:
+    assert prefixed_model_id(provider, "anthropic/claude-sonnet-4-5", inference_endpoint) is None
+
+
+@pytest.mark.integration
+async def test_create_model_rejects_a_prefixed_model_id_on_the_field(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    with pytest.raises(PrefixedProviderModelIdError) as exc_info:
+        await create_model(
+            db_session,
+            app_settings,
+            name="doubled",
+            model_alias="doubled",
+            provider=ProviderVendor.ANTHROPIC,
+            provider_model_id="anthropic/claude-sonnet-4-5",
+        )
+
+    assert exc_info.value.errors is not None
+    assert exc_info.value.errors[0].loc == ["body", "provider_model_id"]
+    assert exc_info.value.errors[0].msg == 'Drop the "anthropic/" prefix — the Provider field adds it.'
+
+
+@pytest.mark.integration
+async def test_update_model_rejects_moving_the_model_id_onto_a_prefix(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="id-move",
+        model_alias="id-move",
+        provider=ProviderVendor.GOOGLE,
+        provider_model_id="gemini-2.5-flash",
+    )
+
+    with pytest.raises(PrefixedProviderModelIdError):
+        await update_model(
+            db_session, model, AiModelUpdateChanges.model_validate({"provider_model_id": "google/gemini-2.5-flash"})
+        )
+
+
+@pytest.mark.integration
+async def test_update_model_rechecks_the_prefix_when_the_provider_moves_under_the_id(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    # Fine under openai (another vendor's prefix is just an id there), doubled once the provider matches it.
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="provider-move",
+        model_alias="provider-move",
+        provider=ProviderVendor.OPENAI,
+        provider_model_id="anthropic/claude-sonnet-4-5",
+    )
+
+    with pytest.raises(PrefixedProviderModelIdError):
+        await update_model(db_session, model, AiModelUpdateChanges.model_validate({"provider": "anthropic"}))
+
+
+@pytest.mark.integration
+async def test_update_model_rechecks_the_prefix_when_the_endpoint_that_excused_it_is_cleared(
+    db_session: AsyncSession, app_settings: Settings
+) -> None:
+    model = await create_model(
+        db_session,
+        app_settings,
+        name="via-proxy",
+        model_alias="via-proxy",
+        provider=ProviderVendor.ANTHROPIC,
+        provider_model_id="anthropic/claude-sonnet-4-5",
+        inference_endpoint="https://openrouter.ai/api",
+    )
+
+    renamed = await update_model(db_session, model, AiModelUpdateChanges.model_validate({"name": "Still via proxy"}))
+    assert renamed.provider_model_id == "anthropic/claude-sonnet-4-5"
+
+    with pytest.raises(PrefixedProviderModelIdError):
+        await update_model(db_session, model, AiModelUpdateChanges.model_validate({"inference_endpoint": None}))

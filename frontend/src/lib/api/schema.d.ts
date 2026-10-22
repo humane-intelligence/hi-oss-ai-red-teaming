@@ -3271,7 +3271,7 @@ export interface components {
             output_modalities?: components["schemas"]["Modality"][];
             /**
              * Provider Model Id
-             * @description Identifier the provider's API expects.
+             * @description Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
              */
             provider_model_id: string;
             /**
@@ -3417,7 +3417,7 @@ export interface components {
             output_modalities: components["schemas"]["Modality"][];
             /**
              * Provider Model Id
-             * @description Identifier the provider's API expects.
+             * @description Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
              */
             provider_model_id: string;
             /**
@@ -3591,7 +3591,10 @@ export interface components {
              * @description Replaces the declared reply set wholesale. Must be non-empty; deduped and re-sorted.
              */
             output_modalities?: components["schemas"]["Modality"][] | null;
-            /** Provider Model Id */
+            /**
+             * Provider Model Id
+             * @description Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`, not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
+             */
             provider_model_id?: string | null;
             /** Endpoint Name */
             endpoint_name?: string | null;
@@ -15416,7 +15419,7 @@ export interface operations {
                     "application/json": components["schemas"]["AiModelResponse"];
                 };
             };
-            /** @description A generic provider requires an inference_endpoint, or web_access is on for a model with no web option. */
+            /** @description A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider field adds, or web_access is on for a model with no web option. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -15832,7 +15835,7 @@ export interface operations {
                     "application/json": components["schemas"]["AiModelResponse"];
                 };
             };
-            /** @description A generic provider requires an inference_endpoint, or web_access is on for a model with no web option. */
+            /** @description A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider field adds, or web_access is on for a model with no web option. */
             400: {
                 headers: {
                     [name: string]: unknown;

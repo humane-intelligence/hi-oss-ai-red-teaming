@@ -3499,7 +3499,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A generic provider requires an inference_endpoint, or web_access is on for a model with no web option.
+          description: A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider
+            field adds, or web_access is on for a model with no web option.
           content:
             application/problem+json:
               schema:
@@ -3835,7 +3836,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A generic provider requires an inference_endpoint, or web_access is on for a model with no web option.
+          description: A generic provider requires an inference_endpoint, the provider_model_id carries the prefix the provider
+            field adds, or web_access is on for a model with no web option.
           content:
             application/problem+json:
               schema:
@@ -16041,7 +16043,8 @@ components:
           maxLength: 255
           minLength: 1
           title: Provider Model Id
-          description: Identifier the provider's API expects.
+          description: Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`,
+            not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
         endpoint_name:
           anyOf:
           - type: string
@@ -16199,7 +16202,8 @@ components:
         provider_model_id:
           type: string
           title: Provider Model Id
-          description: Identifier the provider's API expects.
+          description: Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`,
+            not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
         endpoint_name:
           anyOf:
           - type: string
@@ -16455,6 +16459,8 @@ components:
             minLength: 1
           - type: 'null'
           title: Provider Model Id
+          description: Identifier the provider's API expects, without the routing prefix the provider field adds (`claude-sonnet-4-5`,
+            not `anthropic/claude-sonnet-4-5`). With your own inference_endpoint the id goes through as typed.
         endpoint_name:
           anyOf:
           - type: string

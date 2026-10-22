@@ -2872,3 +2872,73 @@ async def test_create_model_rejects_web_access_without_a_web_option_on_the_field
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["errors"][0]["loc"] == ["body", "web_access"]
+
+
+@pytest.mark.integration
+async def test_create_model_rejects_a_prefixed_model_id_on_the_field(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="prefixed@example.com", roles=[admin_role])
+
+    response = await auth_db_client.post(
+        "/api/v1/ai-models",
+        json=_create_payload(provider="anthropic", provider_model_id="anthropic/claude-sonnet-4-5"),
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    error = response.json()["errors"][0]
+    assert error["loc"] == ["body", "provider_model_id"]
+    assert error["type"] == "provider_model_id_prefixed"
+
+
+@pytest.mark.integration
+async def test_bulk_create_isolates_a_prefixed_row(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="bulk-prefixed@example.com", roles=[admin_role])
+
+    response = await auth_db_client.post(
+        "/api/v1/ai-models/bulk",
+        json={
+            "rows": [
+                _bulk_row(
+                    "bad",
+                    name="Doubled",
+                    model_alias="doubled",
+                    provider="anthropic",
+                    provider_model_id="anthropic/claude-sonnet-4-5",
+                ),
+                _bulk_row("ok", name="Fine", model_alias="fine"),
+            ]
+        },
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    results = {row["row_key"]: row for row in response.json()["results"]}
+    assert results["bad"]["error"]["status"] == status.HTTP_400_BAD_REQUEST
+    assert results["bad"]["error"]["errors"][0]["loc"][-1] == "provider_model_id"
+    assert results["ok"]["error"] is None
+
+
+@pytest.mark.integration
+async def test_patch_model_rejects_moving_the_model_id_onto_a_prefix(
+    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role
+) -> None:
+    caller = await create_user_service(db_session, email="patch-prefixed@example.com", roles=[admin_role])
+    created = await auth_db_client.post(
+        "/api/v1/ai-models",
+        json=_create_payload(provider="anthropic", provider_model_id="claude-sonnet-4-5"),
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+
+    response = await auth_db_client.patch(
+        f"/api/v1/ai-models/{created.json()['id']}",
+        json={"provider_model_id": "anthropic/claude-sonnet-4-5"},
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"][0]["loc"] == ["body", "provider_model_id"]

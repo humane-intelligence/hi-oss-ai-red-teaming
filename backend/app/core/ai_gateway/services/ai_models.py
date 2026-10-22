@@ -27,6 +27,7 @@ from sqlmodel import select
 
 from app.core.ai_gateway.crypto import decrypt_secret
 from app.core.ai_gateway.crypto import encrypt_secret
+from app.core.ai_gateway.enums import LITELLM_PREFIX
 from app.core.ai_gateway.enums import Modality
 from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.filters import AiModelFilters
@@ -154,6 +155,49 @@ def _require_inference_endpoint(provider: ProviderVendor, inference_endpoint: st
         raise MissingInferenceEndpointError
 
 
+class PrefixedProviderModelIdError(BadRequestError):
+    """`provider_model_id` starts with the routing prefix the `provider` field adds — 400.
+
+    The adapter sends `<prefix>/<provider_model_id>`, so an id copied with its prefix from
+    a provider list (`anthropic/claude-…` under `anthropic`) reaches the vendor doubled and
+    404s there — the health check then says only that the model was not found. Checked
+    only when the call goes to the vendor's own API: with an `inference_endpoint` the id
+    is whatever that proxy expects (OpenRouter's Anthropic-format endpoint wants the
+    `anthropic/` form), and `generic` always has one. Advisory like the endpoint rule; a
+    typo it cannot see is for the health check after the save.
+    """
+
+    def __init__(self, prefix: str) -> None:
+        detail = f'Drop the "{prefix}/" prefix — the Provider field adds it.'
+        super().__init__(detail)
+        self.errors = [
+            ProblemErrorItem(loc=["body", "provider_model_id"], msg=detail, type="provider_model_id_prefixed")
+        ]
+
+
+def prefixed_model_id(provider: ProviderVendor, provider_model_id: str, inference_endpoint: str | None) -> str | None:
+    """The prefix a vendor-hosted call would double, or None when the id is fine as typed.
+
+    Both litellm's prefix and the vendor's own name count (`google` takes `gemini/` and
+    `google/`); the comparison folds case, as a pasted `Anthropic/` is the same mistake.
+    """
+    if provider is ProviderVendor.GENERIC or (inference_endpoint or "").strip():
+        return None
+    lowered = provider_model_id.lower()
+    for prefix in dict.fromkeys((LITELLM_PREFIX[provider], provider.value)):
+        if lowered.startswith(f"{prefix}/"):
+            return prefix
+    return None
+
+
+def _require_unprefixed_model_id(
+    provider: ProviderVendor, provider_model_id: str, inference_endpoint: str | None
+) -> None:
+    prefix = prefixed_model_id(provider, provider_model_id, inference_endpoint)
+    if prefix is not None:
+        raise PrefixedProviderModelIdError(prefix)
+
+
 class WebAccessUnsupportedError(BadRequestError):
     """`web_access` is on for a provider/model pair with no web option — 400.
 
@@ -239,8 +283,11 @@ async def create_model(  # noqa: PLR0913 — keyword-only args mirror the row's 
             ``inference_endpoint`` is given.
         WebAccessUnsupportedError: If ``web_access`` is set on a provider/model
             pair that has no web option.
+        PrefixedProviderModelIdError: If ``provider_model_id`` carries the routing
+            prefix ``provider`` adds and no ``inference_endpoint`` overrides the base.
     """
     _require_inference_endpoint(provider, inference_endpoint)
+    _require_unprefixed_model_id(provider, provider_model_id, inference_endpoint)
     _require_web_access_supported(provider, provider_model_id, web_access)
     model = AiModel(
         name=name,
@@ -477,6 +524,9 @@ async def update_model(session: AsyncSession, model: AiModel, changes: AiModelUp
         WebAccessUnsupportedError: If the row ends up with ``web_access`` on for a
             provider/model pair that has no web option — whether the patch flipped
             the switch, moved the model id, or changed the provider.
+        PrefixedProviderModelIdError: If the row ends up vendor-hosted with a
+            prefixed ``provider_model_id`` — whether the patch moved the id, changed
+            the provider under it, or cleared the ``inference_endpoint`` that excused it.
 
     A patch that *changes* any of ``PROBED_CALL_FIELDS`` clears ``capability_mismatch``: the
     finding is evidence about the exact call the probe made, and only a fresh health check can
@@ -508,6 +558,8 @@ async def update_model(session: AsyncSession, model: AiModel, changes: AiModelUp
     # legacy row that predates the rule.
     if {"provider", "inference_endpoint"} & changes.model_fields_set:
         _require_inference_endpoint(model.provider, model.inference_endpoint)
+    if {"provider", "provider_model_id", "inference_endpoint"} & changes.model_fields_set:
+        _require_unprefixed_model_id(model.provider, model.provider_model_id, model.inference_endpoint)
     if {"provider", "provider_model_id", "web_access"} & changes.model_fields_set:
         _require_web_access_supported(model.provider, model.provider_model_id, model.web_access)
     # A recorded mismatch is an accusation against one specific call; once any part of it moves

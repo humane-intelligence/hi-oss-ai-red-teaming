@@ -10,6 +10,7 @@ from app.core.ai_gateway.chat import ChatMessage
 from app.core.ai_gateway.chat import ImageContentPart
 from app.core.ai_gateway.chat import ImageUrl
 from app.core.ai_gateway.chat import TextContentPart
+from app.core.ai_gateway.enums import LITELLM_PREFIX
 from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.exceptions import ProviderAuthError
 from app.core.ai_gateway.exceptions import ProviderBadRequestError
@@ -20,7 +21,6 @@ from app.core.ai_gateway.exceptions import ProviderRateLimitError
 from app.core.ai_gateway.exceptions import ProviderTimeoutError
 from app.core.ai_gateway.exceptions import ProviderUnavailableError
 from app.core.ai_gateway.providers.base import ModelProvider
-from app.core.ai_gateway.providers.litellm import _LITELLM_PREFIX
 from app.core.ai_gateway.providers.litellm import LiteLLMProvider
 from app.core.ai_gateway.providers.litellm import _delta_role
 from app.core.ai_gateway.providers.litellm import _map_error
@@ -161,7 +161,7 @@ async def test_chat_maps_malformed_response_to_provider_error(monkeypatch: pytes
 @pytest.mark.unit
 def test_litellm_prefix_covers_every_vendor() -> None:
     # A vendor added to the enum without a prefix would KeyError at dispatch.
-    assert set(_LITELLM_PREFIX) == set(ProviderVendor)
+    assert set(LITELLM_PREFIX) == set(ProviderVendor)
 
 
 @pytest.mark.unit
