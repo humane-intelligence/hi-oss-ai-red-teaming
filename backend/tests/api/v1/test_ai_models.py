@@ -2967,18 +2967,20 @@ async def test_bulk_create_isolates_a_prefixed_row(
 
 
 @pytest.mark.integration
-async def test_clear_api_key_starts_a_check_when_the_row_can_still_be_called(
+async def test_clear_api_key_starts_a_check_when_a_platform_credential_remains(
     auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A generic row keeps its own endpoint without the key, so the verdict proven with the old key is
-    # re-taken rather than left standing.
+    # Bedrock authenticates from the worker's environment, so the row is still callable — with a
+    # different credential than the one the last verdict proved, which is why it is re-taken.
     enqueued: list[dict[str, object]] = []
     monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
     caller = await create_user_service(db_session, email="autocheck-clear@example.com", roles=[admin_role])
     headers = {"Authorization": f"Bearer {_token(caller)}"}
     created = await auth_db_client.post(
         "/api/v1/ai-models",
-        json=_create_payload(provider="generic", inference_endpoint="http://slm:8080/v1", api_key="sk-probe"),
+        json=_create_payload(
+            provider="aws_bedrock", provider_model_id="anthropic.claude-3-5-sonnet-20240620-v1:0", api_key="sk-probe"
+        ),
         headers=headers,
     )
     assert created.status_code == status.HTTP_201_CREATED
@@ -2991,14 +2993,29 @@ async def test_clear_api_key_starts_a_check_when_the_row_can_still_be_called(
 
 
 @pytest.mark.integration
-async def test_clear_api_key_starts_no_check_when_nothing_is_left_to_call(
-    auth_db_client: AsyncClient, db_session: AsyncSession, admin_role: Role, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        # An endpoint alone is not a credential: probing a keyed endpoint without its key would spin to
+        # the wake deadline and report `cold/deadline` for what is really "no key".
+        {"provider": "generic", "inference_endpoint": "http://slm:8080/v1"},
+    ],
+)
+async def test_clear_api_key_starts_no_check_when_no_credential_remains(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_role: Role,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
 ) -> None:
     enqueued: list[dict[str, object]] = []
     monkeypatch.setattr(ai_models_route.run_model_health_check, "apply_async", lambda *a, **k: enqueued.append(k))
     caller = await create_user_service(db_session, email="autocheck-clear-off@example.com", roles=[admin_role])
     headers = {"Authorization": f"Bearer {_token(caller)}"}
-    created = await auth_db_client.post("/api/v1/ai-models", json=_create_payload(api_key="sk-probe"), headers=headers)
+    created = await auth_db_client.post(
+        "/api/v1/ai-models", json=_create_payload(api_key="sk-probe", **overrides), headers=headers
+    )
     assert created.status_code == status.HTTP_201_CREATED
     enqueued.clear()
 

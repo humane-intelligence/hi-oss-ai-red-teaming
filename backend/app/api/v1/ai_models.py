@@ -779,8 +779,8 @@ async def set_model_api_key_endpoint(
     summary="Clear model API key",
     description=(
         "Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health "
-        "check when the row can still be called without it (a platform credential for its `provider`, or its "
-        "own `inference_endpoint`), so a verdict proven with the cleared key does not linger."
+        "check when a platform credential for the `provider` still authenticates the row, so a verdict proven "
+        "with the cleared key does not linger; a row left with no credential is not probed."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
@@ -815,7 +815,11 @@ async def clear_model_api_key_endpoint(
         object_type="ai_model",
         object_id=model.id,
     )
-    await _autocheck(db, settings, model)
+    # `_autocheck`'s own gate also lets a keyless row with an endpoint through — right after a create,
+    # where the endpoint may need no key, wrong here: a keyed endpoint just lost its key, and probing
+    # it retries until the wake deadline to report `cold/deadline` for what is really "no key".
+    if has_resolvable_credential(model, settings):
+        await _autocheck(db, settings, model)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

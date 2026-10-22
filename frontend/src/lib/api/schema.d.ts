@@ -975,7 +975,7 @@ export interface paths {
         post?: never;
         /**
          * Clear model API key
-         * @description Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health check when the row can still be called without it (a platform credential for its `provider`, or its own `inference_endpoint`), so a verdict proven with the cleared key does not linger.
+         * @description Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health check when a platform credential for the `provider` still authenticates the row, so a verdict proven with the cleared key does not linger; a row left with no credential is not probed.
          */
         delete: operations["clear_model_api_key_endpoint_api_v1_ai_models__model_id__api_key_delete"];
         options?: never;

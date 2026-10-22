@@ -2133,7 +2133,7 @@
                 }
               ]
             },
-            "description": "Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health check when the row can still be called without it (a platform credential for its `provider`, or its own `inference_endpoint`), so a verdict proven with the cleared key does not linger.\n\n**Requires permission:** `models:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `model_id` (string<uuid>, required)\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 204 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Model does not exist. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+            "description": "Remove the stored credential. Idempotent — succeeds whether or not a key was set. Starts a health check when a platform credential for the `provider` still authenticates the row, so a verdict proven with the cleared key does not linger; a row left with no credential is not probed.\n\n**Requires permission:** `models:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `model_id` (string<uuid>, required)\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 204 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Model does not exist. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
           },
           "response": []
         },
