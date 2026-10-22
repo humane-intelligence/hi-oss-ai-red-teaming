@@ -71,7 +71,7 @@ Watch out for `drop_params`: it has a side effect. If you pass a parameter under
 
 `litellm` wants a string like `"anthropic/claude-..."`. We keep `vendor` (an enum) and `provider_model_id` (the provider's string) separately. The adapter joins them via a prefix map.
 
-The `_LITELLM_PREFIX` map:
+The `LITELLM_PREFIX` map (in `enums.py`, beside the vendor enum, so the save-time prefix rule in `services.ai_models` reads it without importing litellm):
 
 | vendor | litellm prefix |
 |---|---|
@@ -91,7 +91,7 @@ The `_LITELLM_PREFIX` map:
 ```python
 @staticmethod
 def _model(vendor: ProviderVendor, provider_model_id: str) -> str:
-    prefix = _LITELLM_PREFIX.get(vendor)
+    prefix = LITELLM_PREFIX.get(vendor)
     if prefix is None:
         raise ProviderBadRequestError(f"No litellm routing for provider vendor {vendor!r}.")
     return f"{prefix}/{provider_model_id}"
@@ -163,6 +163,7 @@ The whole `ProviderError` hierarchy is described in [AI Gateway - error taxonomy
 | `AuthenticationError` | `ProviderAuthError` |
 | `RateLimitError` | `ProviderRateLimitError` |
 | `Timeout` | `ProviderTimeoutError` |
+| `NotFoundError` | `ProviderNotFoundError` |
 | `BadRequestError` | `ProviderBadRequestError` |
 | `ServiceUnavailableError` | `ProviderUnavailableError` |
 | `APIConnectionError` | `ProviderUnavailableError` |

@@ -265,7 +265,7 @@ The call is built **outside** the `try`, so only the provider's refusal can be r
 `dispatch_health(model, settings, *, provider=None) -> tuple[WarmupStatus, str | None]` is the fourth entry point and the classifier `dispatch_probe` now delegates to. Three differences from the warmup wrapper:
 
 - **It takes an already-resolved `AiModel` row**, not an alias — going straight to `_build_call`, so it works on a **disabled** model (the manual health check must be usable *before* enabling an endpoint).
-- **It returns a machine reason** alongside the status (`timeout`, `unreachable`, `context-window`, `auth`, `bad-request`, `error`, `None` when alive), which is what gets persisted to `AiModel.last_health_reason`.
+- **It returns a machine reason** alongside the status (`timeout`, `unreachable`, `context-window`, `auth`, `bad-request`, `model-not-found`, `error`, `None` when alive), which is what gets persisted to `AiModel.last_health_reason`.
 - The fault → verdict mapping is a **table**, `_HEALTH_FAULTS`, instead of an `except` ladder; anything unmapped falls through to `(ERROR, "error")`.
 
 Like the warmup path it never records metrics (a probe isn't real traffic) and never raises `ProviderError`. The persisted-verdict machinery that loops it until the wake-deadline lives in `app/core/ai_gateway/services/health.py` — see [AiModel](../data-models/ai-model.md) and [Celery workers](celery-workers.md).

@@ -32,7 +32,7 @@ Step by step:
 1. The `conversations:participate` gate - this is the **only** permission check (the endpoint resolves no object in the DB, so there's nothing to scope).
 2. Computes `params = body.params.model_dump(exclude_none=True)` or `None`.
 3. `await dispatch_stream(...)` - resolves the model and opens the stream. Resolution errors (alias, credential, declared capabilities) surface **here**, before the first chunk.
-4. Maps pre-stream errors to `problem+json`: `ProviderBadRequestError` -> 400, the rest of `ProviderError` -> 502.
+4. Maps pre-stream errors to `problem+json`: `ProviderBadRequestError` and `ProviderNotFoundError` -> 400, the rest of `ProviderError` -> 502.
 5. **Releases the DB session** (`await db.close()`) - before the stream starts.
 6. Returns `EventSourceResponse(stream_sse(chunks))`.
 
@@ -52,7 +52,7 @@ async def stream_chat(
         chunks = await dispatch_stream(
             db, settings, model_alias=body.model_alias, messages=body.messages, params=params
         )
-    except ProviderBadRequestError as exc:
+    except (ProviderBadRequestError, ProviderNotFoundError) as exc:
         raise BadRequestError(str(exc)) from exc
     except ProviderError as exc:
         raise BadGatewayError(str(exc)) from exc
@@ -119,6 +119,7 @@ An important pitfall: `dispatch_stream` is **deliberately not an async generator
 |---|---|
 | alias doesn't exist / disabled | at `await dispatch_stream` (before the first chunk) -> 404 |
 | unsupported modality / bad params | at `await` -> `ProviderBadRequestError` -> 400 |
+| no such model at the provider | at `await` -> `ProviderNotFoundError` -> 400 |
 | credential undecryptable | at `await` -> `ProviderUnavailableError` -> 502 |
 | provider fails mid-stream | during iteration in `stream_sse` -> event `error` |
 

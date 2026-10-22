@@ -21,6 +21,7 @@ classDiagram
     ProviderError <|-- ProviderAuthError
     ProviderError <|-- ProviderTimeoutError
     ProviderError <|-- ProviderBadRequestError
+    ProviderError <|-- ProviderNotFoundError
     ProviderError <|-- ProviderContextWindowError
     ProviderError <|-- ProviderUnavailableError
     note for ProviderError "base, fallback for unrecognized"
@@ -34,7 +35,8 @@ All subclasses inherit **directly** from `ProviderError` (a flat hierarchy). In 
 | `ProviderRateLimitError` | the provider returned 429 |
 | `ProviderAuthError` | bad / missing / unauthorized credentials |
 | `ProviderTimeoutError` | timeout exceeded |
-| `ProviderBadRequestError` | malformed: bad params, unknown model, unsupported modality |
+| `ProviderBadRequestError` | malformed: bad params, unsupported modality |
+| `ProviderNotFoundError` | the provider has no model under that id (404): a doubled prefix, a typo, a retired id — the health check records it as `model-not-found` |
 | `ProviderContextWindowError` | input longer than the model's context window |
 | `ProviderUnavailableError` | 5xx / dropped connection / **unreadable credential at-rest** |
 
