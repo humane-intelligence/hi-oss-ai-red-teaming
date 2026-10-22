@@ -6,6 +6,9 @@ per-model capability map decides there. The remaining vendors have no option lit
 translate `web_search_options` into. The map is not consulted for Anthropic or Google because
 it is keyed by exact model ids and misses their aliases (`claude-sonnet-4-5` unknown, the dated
 id supported), which would wrongly lock the switch on most Claude rows.
+
+The console mirrors the vendors this never allows (`neverHasWebAccess` in
+`frontend/src/features/ai-models/labels.ts`) to lock the switch before a save — move both together.
 """
 
 from app.core.ai_gateway.enums import ProviderVendor

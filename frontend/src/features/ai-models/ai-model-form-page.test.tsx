@@ -1017,7 +1017,15 @@ describe('AiModelFormPage — internet access', () => {
     expect(screen.getByText(refusal)).toBeInTheDocument()
   })
 
-  it('drops a tick when the provider moves to one with no web option, and frees it back', async () => {
+  it('drops a tick when the provider moves to one with no web option, and the drop reaches the body', async () => {
+    let captured: Record<string, unknown> | null = null
+    server.use(
+      http.post('http://localhost/api/v1/ai-models', async ({ request }) => {
+        captured = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(modelResponse({}), { status: 201 })
+      }),
+    )
+
     const user = userEvent.setup()
     renderForm('/ai-models/new?kind=provider')
 
@@ -1033,6 +1041,62 @@ describe('AiModelFormPage — internet access', () => {
     await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic')
     expect(box).toBeEnabled()
     expect(screen.queryByText(refusal)).toBeNull()
+
+    await user.click(box)
+    await user.selectOptions(screen.getByLabelText('Provider'), 'cohere')
+    await user.type(screen.getByLabelText('Name'), 'Command')
+    await user.type(screen.getByLabelText('Alias'), 'command')
+    await user.type(screen.getByLabelText('Provider model id'), 'command-r')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect(captured!.provider).toBe('cohere')
+    expect(captured!.web_access).toBe(false)
+  })
+
+  it('drops the tick when the kind moves to your own endpoint', async () => {
+    const user = userEvent.setup()
+    renderForm('/ai-models/new?kind=provider')
+
+    const box = await screen.findByLabelText('Internet access')
+    await user.click(box)
+    await user.click(screen.getByRole('button', { name: /change/i }))
+    await user.click(screen.getByRole('button', { name: /Your own endpoint/ }))
+
+    expect(box).not.toBeChecked()
+    expect(box).toBeDisabled()
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+  })
+
+  it('keeps a stored true editable on a vendor that never has a web option, re-tick included', async () => {
+    let captured: Record<string, unknown> | null = null
+    server.use(
+      http.get(`http://localhost/api/v1/ai-models/${MODEL_ID}`, () =>
+        HttpResponse.json(
+          modelResponse({}, { provider: 'cohere', web_access: true, web_access_supported: false }),
+        ),
+      ),
+      http.patch(`http://localhost/api/v1/ai-models/${MODEL_ID}`, async ({ request }) => {
+        captured = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(modelResponse({}))
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderForm(`/ai-models/${MODEL_ID}/edit`)
+
+    const box = await screen.findByLabelText('Internet access')
+    await waitFor(() => expect(box).toBeChecked())
+    expect(box).toBeEnabled()
+    await user.click(box)
+    expect(box).not.toBeChecked()
+    expect(box).toBeEnabled()
+    await user.click(box)
+    expect(box).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect(captured!).not.toHaveProperty('web_access')
   })
 
   it('locks the switch and says why when the stored model has no web option', async () => {

@@ -178,27 +178,29 @@ export function AiModelFormPage() {
   const advancedParamsDisabled = useWatch({ control, name: 'advanced_params_disabled' })
   const providerModelId = useWatch({ control, name: 'provider_model_id' })
   const webAccess = useWatch({ control, name: 'web_access' })
-  // Locked up front for a vendor that never has a web option (create included); for the rest
-  // support is known only for the stored pair — the backend decides per provider/model, so once
-  // either moves the switch is offered again and a wrong pick comes back as a 400 pinned to it.
-  // Never locked while on: support can be withdrawn under a row (a capability-map change, a row
-  // written past the service), and switching it off must stay possible — the gateway refuses
-  // every chat meanwhile.
-  const webAccessLocked =
-    (neverHasWebAccess(provider) && !webAccess) ||
-    (isEdit &&
-      existing.data?.web_access_supported === false &&
-      existing.data.web_access === false &&
-      provider === existing.data.provider &&
-      providerModelId === existing.data.provider_model_id)
+  // The backend decides wherever it has an answer — the stored pair's `web_access_supported` —
+  // so a vendor lifted off its "never" set frees stored rows without a console change; the
+  // vendor list only fills the gap (create, or a moved pair), where a wrong pick would come
+  // back as a 400 pinned to the switch. A stored true is never locked, whatever the support:
+  // it can be withdrawn under a row (a capability-map change, a row written past the service)
+  // and switching it off must stay possible — the gateway refuses every chat meanwhile — and
+  // keying that arm on the stored value, not the live one, keeps an untick reversible.
+  const pairUnchanged =
+    isEdit &&
+    provider === existing.data?.provider &&
+    providerModelId === existing.data?.provider_model_id
+  const webAccessLocked = pairUnchanged
+    ? existing.data?.web_access === false && existing.data?.web_access_supported === false
+    : !webAccess && neverHasWebAccess(provider)
   // On edit the row's own provider decides; the URL kind belongs to the create flow.
   const showEndpointFields = isEdit || kind === 'custom'
 
-  // Whether the URL is required rides on `provider`, so a stale "Required" would
-  // otherwise sit under an optional field until the next submit. A tick carried over to a
-  // vendor without a web option would only come back as a 400, so it goes with the move.
+  // Whether the URL is required rides on `provider`, so a stale "Required" would otherwise sit
+  // under an optional field until the next submit — likewise a 400 pinned to the switch, which
+  // the rule re-runs for on save. A tick carried over to a vendor without a web option would
+  // only come back as that 400, so it goes with the move.
   const onProviderChange = (e: { target: { value: string } }) => {
-    clearErrors('inference_endpoint')
+    clearErrors(['inference_endpoint', 'web_access'])
     if (neverHasWebAccess(e.target.value)) setValue('web_access', false)
   }
 
@@ -214,7 +216,7 @@ export function AiModelFormPage() {
     const nextProvider = next === 'custom' ? CUSTOM_PROVIDERS[0] : VENDOR_PROVIDERS[0]
     setValue('provider', nextProvider, { shouldDirty: true })
     setValue('inference_endpoint', '')
-    clearErrors('inference_endpoint')
+    clearErrors(['inference_endpoint', 'web_access'])
     if (neverHasWebAccess(nextProvider)) setValue('web_access', false)
   }
 
@@ -423,7 +425,10 @@ export function AiModelFormPage() {
                 htmlFor="provider_model_id"
                 error={formState.errors.provider_model_id?.message}
               >
-                <Input id="provider_model_id" {...register('provider_model_id')} />
+                <Input
+                  id="provider_model_id"
+                  {...register('provider_model_id', { onChange: () => clearErrors('web_access') })}
+                />
               </FormField>
               <FormField
                 label="Alias"
@@ -608,7 +613,7 @@ export function AiModelFormPage() {
                 />
                 Internet access
               </label>
-              <InfoHint text="Lets the model search the web while it answers — and, on Anthropic, open a specific URL. It uses the provider's own web tools, so it only works where the provider has them (Anthropic and Google models, and OpenAI's search-enabled ones), and the provider bills each search. Off, the console adds no web tools — a model whose provider searches on its own (a search plugin, grounding set in the provider's console) can still be online." />
+              <InfoHint text="Lets the model search the web while it answers — and, on Anthropic, open a specific URL. It uses the provider's own web tools, so it only works where the provider has them (Anthropic and Google models, and OpenAI's search-enabled ones), and the provider bills each search. Off, the console adds no web tools — a model whose provider searches on its own, like an OpenRouter ‘:online’ model, can still be online." />
             </div>
             {webAccessLocked && (
               <p id="web-access-lock" className="text-muted-foreground text-xs">

@@ -13,7 +13,13 @@ export const requiresInferenceEndpoint = (p: (typeof PROVIDERS)[number]) => p ==
 // has nothing to translate `web_search_options` into there), so the form can lock it before a
 // save instead of letting the 400 explain. OpenAI is per model and Anthropic/Google always have
 // one — those stay the backend's call.
-const NO_WEB_ACCESS = new Set<string>(['generic', 'huggingface', 'azure', 'cohere', 'aws_bedrock'])
+const NO_WEB_ACCESS: ReadonlySet<string> = new Set<(typeof PROVIDERS)[number]>([
+  'generic',
+  'huggingface',
+  'azure',
+  'cohere',
+  'aws_bedrock',
+])
 export const neverHasWebAccess = (p: string) => NO_WEB_ACCESS.has(p)
 
 // Which half of the registry a new model belongs to. Chosen once, up front — it

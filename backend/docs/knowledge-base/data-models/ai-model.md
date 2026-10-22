@@ -101,7 +101,7 @@ One switch per model that lets it use the web the way its provider natively allo
 | `openai` | `litellm.supports_web_search("openai/<id>")` | genuinely per model (`*-search-preview` and the newer families: yes; `gpt-4o`: no) |
 | everything else (`azure`, `aws_bedrock`, `cohere`, `huggingface`, `generic`) | unsupported | no option litellm can translate `web_search_options` into |
 
-The switch governs only the tools the gateway attaches. A provider that searches on its own — an OpenRouter `:online` model, Gemini grounding enabled in Google's console — is online with the switch off and shows no marker, and an OpenAI-compatible endpoint that silently drops `web_search_options` (OpenRouter's chat completions, verified 2026-10-22) is exactly why `generic` reads as unsupported rather than best-effort.
+The switch governs only the tools the gateway attaches. A provider that searches on its own — an OpenRouter `:online` model — is online with the switch off and shows no marker, and an OpenAI-compatible endpoint that silently drops `web_search_options` (OpenRouter's chat completions, verified 2026-10-22) is exactly why `generic` reads as unsupported rather than best-effort.
 
 The module stays litellm-free at import (the one `import litellm` sits inside the OpenAI branch), so the CRUD path keeps its no-litellm import rule.
 
