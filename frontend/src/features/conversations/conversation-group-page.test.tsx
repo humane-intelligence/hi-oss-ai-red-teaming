@@ -1167,7 +1167,7 @@ describe('ConversationGroupPage — labels and flags in a pane', () => {
     renderPage(['conversations:read', 'annotations:read'])
 
     // One per pane: each reads its own conversation, so each reports its own failure.
-    expect(await screen.findAllByText(/labels are unavailable/i)).toHaveLength(2)
+    await waitFor(() => expect(screen.getAllByText(/labels are unavailable/i)).toHaveLength(2))
   })
 
   it('says so when a pane holds more annotations than one page', async () => {
@@ -1182,7 +1182,9 @@ describe('ConversationGroupPage — labels and flags in a pane', () => {
     )
     renderPage(['conversations:read', 'annotations:read'])
 
-    expect(await screen.findAllByText(/showing the 100 most recent labels of 250/i)).toHaveLength(2)
+    await waitFor(() =>
+      expect(screen.getAllByText(/showing the 100 most recent labels of 250/i)).toHaveLength(2),
+    )
   })
 
   it('badges a message the caller has already flagged', async () => {

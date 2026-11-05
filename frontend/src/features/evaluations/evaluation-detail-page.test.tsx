@@ -212,10 +212,8 @@ describe('EvaluationDetailPage — duplicate', () => {
       'evaluation_groups:read',
     ])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
-    )
-    await user.click(screen.getByRole('button', { name: /duplicate/i }))
+    // Duplicate appears only once the async group fetch says the group accepts evaluations.
+    await user.click(await screen.findByRole('button', { name: /duplicate/i }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('checkbox'))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /duplicate/i }))
 
@@ -246,10 +244,8 @@ describe('EvaluationDetailPage — duplicate', () => {
     const user = userEvent.setup()
     renderPage(['evaluations:read', 'evaluations:create', 'evaluation_groups:read'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
-    )
-    await user.click(screen.getByRole('button', { name: /duplicate/i }))
+    // Duplicate appears only once the async group fetch says the group accepts evaluations.
+    await user.click(await screen.findByRole('button', { name: /duplicate/i }))
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: /duplicate/i }),
     )

@@ -1069,10 +1069,11 @@ describe('ConversationDetailPage — tags', () => {
     )
     renderWithPerms(['conversations:read', 'conversations:update'])
 
+    // The chips render before the evaluation's tag policy arrives; the marker follows it.
     const items = within(await screen.findByTestId('message-tags')).getAllByRole('listitem')
     const legacy = items.find((li) => li.textContent?.includes('legacy'))
     const env = items.find((li) => li.textContent?.startsWith('env'))
-    expect(legacy).toHaveTextContent('(not sent to the model)')
+    await waitFor(() => expect(legacy).toHaveTextContent('(not sent to the model)'))
     expect(env).not.toHaveTextContent('(not sent to the model)')
   })
 
