@@ -156,7 +156,11 @@ package = false
 # Patch precision, not the `~=major.minor` the deps rule asks for: this override deliberately
 # defeats an upstream cap, and only 0.6.x is known good. `~=0.6` would let `make update` pull
 # 0.7 straight past that. Drop the whole thing once pgcli lifts the cap.
-override-dependencies = ["sqlparse~=0.6.0"]
+#
+# litellm caps filelock <4, but every fix for its 2026-11 advisories is 4.x. Unlike sqlparse this
+# reaches the image (litellm → huggingface-hub). 4.0's only break is the SoftReadWriteLock
+# on-disk protocol, which neither uses. Drop once litellm lifts the cap.
+override-dependencies = ["sqlparse~=0.6.0", "filelock~=4.2"]
 
 # ---------------------------------------------------------------------------
 # Bandit — security linter (ruff "S" rules are a subset, bandit goes deeper)
