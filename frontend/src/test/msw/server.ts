@@ -2,7 +2,7 @@ import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 
 // AuthShell and the status page fetch /version on every render; a default keeps
-// tests that don't care about it from tripping onUnhandledRequest: 'error'.
+// tests that don't care about it from tripping onUnhandledFrame: 'error'.
 // Survives resetHandlers() (part of the initial set); override per-test with server.use().
 const defaultHandlers = [
   http.get('http://localhost/version', () =>
@@ -40,7 +40,7 @@ const defaultHandlers = [
   // so only tests that care about suggestions need to override it.
   http.get('http://localhost/api/v1/ai-models/labels', () => HttpResponse.json([])),
   // The export dialog resolves the red_teamer role id via useRoles on every open;
-  // a default keeps tests that don't care about it from tripping onUnhandledRequest.
+  // a default keeps tests that don't care about it from tripping onUnhandledFrame.
   http.get('http://localhost/api/v1/roles', () =>
     HttpResponse.json({
       items: [

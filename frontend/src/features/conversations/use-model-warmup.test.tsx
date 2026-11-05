@@ -108,7 +108,7 @@ describe('useModelWarmup poll loop', () => {
 
 describe('useWarmupGate', () => {
   it('never probes and never blocks when disabled', () => {
-    // No MSW handler is registered — if it probed, `onUnhandledRequest: 'error'` would throw.
+    // No MSW handler is registered — if it probed, `onUnhandledFrame: 'error'` would throw.
     const { result } = renderHook(() => useWarmupGate(EVAL_ID, ASSIGN_ID, false))
 
     expect(result.current.state).toBe('idle')

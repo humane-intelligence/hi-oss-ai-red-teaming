@@ -9,7 +9,7 @@ configure({ asyncUtilTimeout: 5_000 })
 // Start MSW at the top level so globalThis.fetch is patched before any module
 // that calls createClient() captures it. beforeAll() runs after module evaluation,
 // which is too late for openapi-fetch's one-time fetch capture.
-server.listen({ onUnhandledRequest: 'error' })
+server.listen({ onUnhandledFrame: 'error' })
 
 // jsdom implements no ResizeObserver; components that observe their own box (the dropdown's
 // viewport clamp) construct one on open, so every test rendering one needs it to exist.
