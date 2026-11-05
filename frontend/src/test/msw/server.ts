@@ -61,6 +61,14 @@ const defaultHandlers = [
       offset: 0,
     }),
   ),
+  // The system-preferences page lists published terms beside the settings it is under test for.
+  http.get('http://localhost/api/v1/terms', () =>
+    HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+  ),
+  // The conversation page reads its task checklist on every render; nothing checked off by default.
+  http.get('http://localhost/api/v1/conversations/:conversationId/completed-tasks', () =>
+    HttpResponse.json([]),
+  ),
 ]
 
 export const server = setupServer(...defaultHandlers)
