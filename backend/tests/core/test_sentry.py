@@ -64,7 +64,7 @@ def test_init_sentry_initializes_with_dsn(monkeypatch: pytest.MonkeyPatch) -> No
     assert call["dsn"] == "https://key@sentry.example.com/1"
     assert call["environment"] == "prod"
     assert call["release"] == "deadbee"
-    assert call["send_default_pii"] is False
+    assert "send_default_pii" not in call
     assert call["max_request_body_size"] == "never"
     assert call["include_local_variables"] is False
     assert call["traces_sample_rate"] == 0.0
@@ -168,7 +168,7 @@ def test_reports_unhandled_500_with_request_id_not_502(sentry_events: list[Event
 @pytest.mark.unit
 @pytest.mark.usefixtures("_reset_logging")
 def test_local_variables_are_not_captured(sentry_events: list[Event]) -> None:
-    """`include_local_variables=False` — neither `send_default_pii` nor
+    """`include_local_variables=False` — neither the data-collection defaults nor
     `max_request_body_size` (checked above) touches per-frame local variables, so a
     secret merely sitting in scope on the exception's stack (e.g. a DB password held
     locally by asyncpg's connect internals) must be kept out some other way.

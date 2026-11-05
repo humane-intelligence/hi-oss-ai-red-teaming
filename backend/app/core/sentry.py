@@ -30,8 +30,10 @@ def init_sentry(settings: Settings) -> None:
     middleware stack at init, and the stack is assembled lazily on the first (lifespan)
     ASGI scope — after a lifespan-time init would have run, leaving the filter inert.
     `max_request_body_size="never"` keeps request bodies (red-team prompts) out of
-    events (`send_default_pii=False` does not gate the body). `include_local_variables=False`
-    because neither of those flags touches per-frame local variables: a traceback crossing
+    events: the SDK's default data collection includes them. User info stays off by that
+    same default (`send_default_pii` is deprecated since 2.72 and warns when set at all).
+    `include_local_variables=False` because no data-collection setting touches per-frame
+    local variables: a traceback crossing
     asyncpg/SQLAlchemy internals (e.g. a DB-down connection error) both blows past
     GlitchTip's envelope size limit (silently dropped — the SDK doesn't surface ingest
     errors without `debug=True`) and risks shipping secrets that happen to be in scope
@@ -49,7 +51,6 @@ def init_sentry(settings: Settings) -> None:
             dsn=dsn,
             environment=settings.environment,
             release=display_version(settings.git_sha),
-            send_default_pii=False,
             max_request_body_size="never",
             include_local_variables=False,
             traces_sample_rate=0.0,
