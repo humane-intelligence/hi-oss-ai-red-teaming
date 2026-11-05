@@ -1,7 +1,7 @@
 # ===========================================================================
 # Builder — resolves and installs production dependencies into /opt/venv
 # ===========================================================================
-FROM python:3.14.7-slim AS builder
+FROM python:3.14.9-slim AS builder
 
 WORKDIR /src
 
@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-ins
 # ===========================================================================
 # Production — slim runtime: no uv, no dev deps, no tests, non-root user
 # ===========================================================================
-FROM python:3.14.7-slim AS runtime
+FROM python:3.14.9-slim AS runtime
 
 # Pull the latest Debian security patches — the python:slim base lags the
 # security repo, and CI gates the build on fixed HIGH/CRITICAL CVEs (Trivy,
