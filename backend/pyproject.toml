@@ -31,7 +31,8 @@ dependencies = [
     "sse-starlette~=3.4",
     "boto3~=1.43",
     "pillow~=13.0",
-    "sentry-sdk~=2.66",
+    # 2.72+ stops reporting an unhandled 500 from a sync endpoint (tests/core/test_sentry.py).
+    "sentry-sdk~=2.71.0",
     "prometheus-fastapi-instrumentator~=8.1",
     "prometheus-client~=0.26",
     "cryptography~=50.0",
@@ -156,7 +157,11 @@ package = false
 # Patch precision, not the `~=major.minor` the deps rule asks for: this override deliberately
 # defeats an upstream cap, and only 0.6.x is known good. `~=0.6` would let `make update` pull
 # 0.7 straight past that. Drop the whole thing once pgcli lifts the cap.
-override-dependencies = ["sqlparse~=0.6.0"]
+#
+# litellm caps filelock <4, but every fix for its 2026-11 advisories is 4.x. Unlike sqlparse this
+# reaches the image (litellm → huggingface-hub). 4.0's only break is the SoftReadWriteLock
+# on-disk protocol, which neither uses. Drop once litellm lifts the cap.
+override-dependencies = ["sqlparse~=0.6.0", "filelock~=4.2"]
 
 # ---------------------------------------------------------------------------
 # Bandit — security linter (ruff "S" rules are a subset, bandit goes deeper)
@@ -209,6 +214,7 @@ minversion = "9.0"
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 addopts = [
     "-ra",                        # short summary for all non-passing outcomes

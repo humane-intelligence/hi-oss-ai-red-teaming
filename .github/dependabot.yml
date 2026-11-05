@@ -32,6 +32,11 @@ updates:
       prefix: deps
     labels:
       - dependencies
+    ignore:
+      # Held at 2.71 in backend/pyproject.toml: 2.72+ stops reporting unhandled 500s from sync
+      # endpoints. Drop both once a release passes tests/core/test_sentry.py.
+      - dependency-name: "sentry-sdk"
+        versions: [">=2.72"]
     groups:
       python-non-major:
         update-types:
