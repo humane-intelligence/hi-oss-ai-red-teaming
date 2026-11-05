@@ -23,6 +23,8 @@ const defaultHandlers = [
       },
     }),
   ),
+  // The login screen lists the configured SSO providers on every render; none by default.
+  http.get('http://localhost/api/v1/auth/oidc/providers', () => HttpResponse.json([])),
   // The signup screens, the account page and the acceptance gate all read the current terms.
   // "Nothing published" (404) is the shipped state and what `useCurrentTerms` maps to `null`, so
   // this default keeps every test that predates consent behaving exactly as before.

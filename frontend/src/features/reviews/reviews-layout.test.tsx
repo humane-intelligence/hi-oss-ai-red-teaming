@@ -128,7 +128,7 @@ describe('ReviewsLayout', () => {
   })
 
   it('redirects /reviews to the Queue tab (active by default)', async () => {
-    server.use(...queueHandlers())
+    server.use(...allHandlers())
     renderPage()
     const queueTab = screen.getByRole('tab', { name: /queue/i })
     expect(queueTab).toHaveAttribute('aria-selected', 'true')
@@ -139,7 +139,7 @@ describe('ReviewsLayout', () => {
   })
 
   it('default route shows queue content', async () => {
-    server.use(...queueHandlers())
+    server.use(...allHandlers())
     renderPage()
     await waitFor(() => expect(screen.getByText('Queue item reason')).toBeInTheDocument())
     // The queue item has no scenario_id, so its review rigor is the no-challenge default.
@@ -159,7 +159,7 @@ describe('ReviewsLayout', () => {
   })
 
   it('/reviews/all activates the All reviews tab', async () => {
-    server.use(...reviewsHandlers())
+    server.use(...allHandlers())
     renderPage('/reviews/all')
     expect(screen.getByRole('tab', { name: /all reviews/i })).toHaveAttribute(
       'aria-selected',

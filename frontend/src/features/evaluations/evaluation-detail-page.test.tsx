@@ -240,6 +240,7 @@ describe('EvaluationDetailPage — duplicate', () => {
       http.get('http://localhost/api/v1/evaluations/dup-id/conversation-groups', () =>
         HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
       ),
+      http.get('http://localhost/api/v1/evaluations/dup-id/tag-keys', () => HttpResponse.json([])),
     )
     const user = userEvent.setup()
     renderPage(['evaluations:read', 'evaluations:create', 'evaluation_groups:read'])
@@ -390,6 +391,9 @@ describe('EvaluationDetailPage — data license', () => {
       ),
       http.get('http://localhost/api/v1/licenses', () =>
         HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/tag-keys`, () =>
+        HttpResponse.json([]),
       ),
     ]
   }

@@ -53,6 +53,7 @@ describe('AssignModelDialog — assign (create)', () => {
   // `FormField` cannot clone aria props onto a `<Controller>`, so this pair is wired by hand and
   // needs a test: without it the trigger loses its error styling and the reason is never announced.
   it('marks the model trigger invalid and points it at the error', async () => {
+    server.use(aiModelsHandler())
     const user = userEvent.setup()
     renderDialog(<AssignModelDialog evaluationId={EVAL_ID} open onOpenChange={() => {}} />)
 

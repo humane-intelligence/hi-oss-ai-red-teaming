@@ -1142,6 +1142,10 @@ describe('EvaluationGroupFormPage — data license', () => {
 
     await waitFor(() => expect(patchBody).toBeDefined())
     expect(patchBody!.data_license_id).toBe(licenseStub('CC-BY-4.0').id)
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loc').textContent).toBe(`/evaluation-groups/${GROUP_ID}`),
+    )
   })
 
   it('edit resetting the license to Platform default PATCHes data_license: null', async () => {
@@ -1185,6 +1189,10 @@ describe('EvaluationGroupFormPage — data license', () => {
 
     await waitFor(() => expect(patchBody).toBeDefined())
     expect(patchBody!.data_license_id).toBeNull()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loc').textContent).toBe(`/evaluation-groups/${GROUP_ID}`),
+    )
   })
 
   it('Save as draft carries the chosen data_license', async () => {

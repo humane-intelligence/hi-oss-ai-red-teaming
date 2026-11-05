@@ -386,16 +386,18 @@ describe('ExportDialog', () => {
   })
 
   it('blocks export while a typed red-teamer term is unresolved (no option picked)', async () => {
+    let searched: string | null = null
     server.use(
       templatesHandler([info('flags', 'Flags')]),
-      http.get('http://localhost/api/v1/evaluation-groups/:id/members', () =>
-        HttpResponse.json({
+      http.get('http://localhost/api/v1/evaluation-groups/:id/members', ({ request }) => {
+        searched = new URL(request.url).searchParams.get('search')
+        return HttpResponse.json({
           items: [{ user: { id: 'u1', email: 'alice@ex.com' }, roles: [] }],
           total: 1,
           limit: 20,
           offset: 0,
-        }),
-      ),
+        })
+      }),
     )
     const u = userEvent.setup()
     renderDialog(['flags:read', 'roles:read'])
@@ -405,6 +407,8 @@ describe('ExportDialog', () => {
     // Typed but not picked → export blocked + inline hint, so we never silently export unfiltered.
     await waitFor(() => expect(screen.getByText(/pick a red-teamer/i)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /^export$/i })).toBeDisabled()
+    // Let the debounced search land inside this test rather than after its handlers are reset.
+    await waitFor(() => expect(searched).toBe('ali'))
   })
 
   it('reviews export reviewer picker searches annotators server-side', async () => {
