@@ -175,14 +175,16 @@ describe('AppShell nav gating', () => {
     expect(screen.getByRole('link', { name: /backend status/i })).toBeInTheDocument()
   })
 
-  it('shows the notification bell with notifications:read', () => {
+  it('shows the notification bell with notifications:read', async () => {
     server.use(
       http.get('http://localhost/api/v1/notifications', () =>
-        HttpResponse.json({ items: [], total: 0, limit: 20, offset: 0 }),
+        HttpResponse.json({ items: [], total: 3, limit: 1, offset: 0 }),
       ),
     )
     renderShell(['notifications:read'])
-    expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Notifications, 3 unread' }),
+    ).toBeInTheDocument()
   })
 
   it('hides the notification bell without notifications:read', () => {

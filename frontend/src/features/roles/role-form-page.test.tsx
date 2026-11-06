@@ -106,6 +106,13 @@ describe('RoleFormPage — create', () => {
           is_participant_default: false,
         })
       }),
+      roleHandler({
+        ...ROLE_VIEWER,
+        id: 'r-new',
+        name: 'lead_reviewer',
+        display_name: 'Lead Reviewer',
+        permissions: ['reviews:read'],
+      }),
     )
     renderForm('/roles/new')
 
@@ -119,6 +126,8 @@ describe('RoleFormPage — create', () => {
     expect(body!.name).toBe('lead_reviewer')
     expect(body!.display_name).toBe('Lead Reviewer')
     expect(body!.permissions).toEqual(['reviews:read'])
+    // A create lands on the new role's edit page.
+    expect(await screen.findByRole('heading', { name: 'Lead Reviewer' })).toBeInTheDocument()
   })
 
   it('rejects an invalid role name client-side without POSTing', async () => {

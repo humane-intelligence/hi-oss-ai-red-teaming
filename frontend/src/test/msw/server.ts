@@ -2,7 +2,7 @@ import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 
 // AuthShell and the status page fetch /version on every render; a default keeps
-// tests that don't care about it from tripping onUnhandledRequest: 'error'.
+// tests that don't care about it from tripping onUnhandledFrame: 'error'.
 // Survives resetHandlers() (part of the initial set); override per-test with server.use().
 const defaultHandlers = [
   http.get('http://localhost/version', () =>
@@ -23,6 +23,8 @@ const defaultHandlers = [
       },
     }),
   ),
+  // The login screen lists the configured SSO providers on every render; none by default.
+  http.get('http://localhost/api/v1/auth/oidc/providers', () => HttpResponse.json([])),
   // The signup screens, the account page and the acceptance gate all read the current terms.
   // "Nothing published" (404) is the shipped state and what `useCurrentTerms` maps to `null`, so
   // this default keeps every test that predates consent behaving exactly as before.
@@ -40,7 +42,7 @@ const defaultHandlers = [
   // so only tests that care about suggestions need to override it.
   http.get('http://localhost/api/v1/ai-models/labels', () => HttpResponse.json([])),
   // The export dialog resolves the red_teamer role id via useRoles on every open;
-  // a default keeps tests that don't care about it from tripping onUnhandledRequest.
+  // a default keeps tests that don't care about it from tripping onUnhandledFrame.
   http.get('http://localhost/api/v1/roles', () =>
     HttpResponse.json({
       items: [
@@ -60,6 +62,14 @@ const defaultHandlers = [
       limit: 100,
       offset: 0,
     }),
+  ),
+  // The system-preferences page lists published terms beside the settings it is under test for.
+  http.get('http://localhost/api/v1/terms', () =>
+    HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+  ),
+  // The conversation page reads its task checklist on every render; nothing checked off by default.
+  http.get('http://localhost/api/v1/conversations/:conversationId/completed-tasks', () =>
+    HttpResponse.json([]),
   ),
 ]
 

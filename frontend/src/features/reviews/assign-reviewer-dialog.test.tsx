@@ -276,11 +276,13 @@ describe('AssignReviewerDialog', () => {
   // The visible picker list reflects the CURRENT search — it must not accumulate every reviewer seen
   // this session (options current-scoped; only poolByFlag accumulates, for the pre-filter).
   it('narrows the picker list as the search changes', async () => {
+    let lastSearch = ''
     server.use(
       http.get(
         `http://localhost/api/v1/submissions/${FLAG_ID}/assignable-reviewers`,
         ({ request }) => {
           const q = new URL(request.url).searchParams.get('search')?.toLowerCase() ?? ''
+          lastSearch = q
           const all = [
             { id: 'u1', email: 'ada@example.com' },
             { id: 'u2', email: 'bob@example.com' },
@@ -308,6 +310,8 @@ describe('AssignReviewerDialog', () => {
     await waitFor(() =>
       expect(screen.queryByRole('option', { name: /ada@example\.com/ })).not.toBeInTheDocument(),
     )
+    // "b" already drops ada; let the debounced read for the full term land inside this test.
+    await waitFor(() => expect(lastSearch).toBe('bob'))
   })
 
   it('failure summary names the flag and the reviewer', async () => {

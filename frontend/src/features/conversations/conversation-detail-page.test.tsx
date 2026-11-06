@@ -339,11 +339,31 @@ describe('ConversationDetailPage — composer attachments', () => {
 
 describe('ConversationDetailPage — scenario header', () => {
   it('shows scenario name and description when conversation has a matching scenario_id', async () => {
-    server.use(...baseHandlers(conversationWithScenario))
+    server.use(
+      ...baseHandlers(conversationWithScenario),
+      http.get(`http://localhost/api/v1/scenarios/${SCENARIO_ID}/tasks`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: 'task-0001-0000-0000-000000000000',
+              scenario_id: SCENARIO_ID,
+              name: 'Extract secret',
+              description: 'Get the key',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+    )
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Prompt injection')).toBeInTheDocument())
     expect(screen.getByText('Coax a restricted answer')).toBeInTheDocument()
+    expect(await screen.findByText('Extract secret')).toBeInTheDocument()
   })
 
   it('shows a tombstone note when the scenario is not in the live list', async () => {
@@ -1069,10 +1089,11 @@ describe('ConversationDetailPage — tags', () => {
     )
     renderWithPerms(['conversations:read', 'conversations:update'])
 
+    // The chips render before the evaluation's tag policy arrives; the marker follows it.
     const items = within(await screen.findByTestId('message-tags')).getAllByRole('listitem')
     const legacy = items.find((li) => li.textContent?.includes('legacy'))
     const env = items.find((li) => li.textContent?.startsWith('env'))
-    expect(legacy).toHaveTextContent('(not sent to the model)')
+    await waitFor(() => expect(legacy).toHaveTextContent('(not sent to the model)'))
     expect(env).not.toHaveTextContent('(not sent to the model)')
   })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -58,14 +58,18 @@ function renderControls(
 }
 
 describe('ListViewControls', () => {
-  it('shows the saved-views menu when the caller has saved_views:read', () => {
+  it('shows the saved-views menu when the caller has saved_views:read', async () => {
+    let listed = false
     server.use(
-      http.get('http://localhost/api/v1/saved-views', () =>
-        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
-      ),
+      http.get('http://localhost/api/v1/saved-views', () => {
+        listed = true
+        return HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 })
+      }),
     )
     renderControls(['saved_views:read'])
     expect(screen.getByRole('button', { name: 'Saved views' })).toBeInTheDocument()
+    // The menu lists the caller's views on mount; let that land before the handlers are reset.
+    await waitFor(() => expect(listed).toBe(true))
   })
 
   it('hides the saved-views menu without the permission', () => {

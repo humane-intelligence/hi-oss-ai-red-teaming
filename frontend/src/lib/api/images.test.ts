@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/msw/server'
 import { tokenStore } from '@/lib/auth/token-store'
@@ -28,23 +28,24 @@ describe('validateImageFile', () => {
 
 describe('uploadPrivateImage', () => {
   it('posts multipart form data with is_private=true and returns the asset', async () => {
-    // Asserted on the raw body: undici's multipart parser chokes on jsdom's FormData
-    // (test-env mismatch only), so request.formData() is unusable here.
+    // Asserted on the FormData: jsdom's Blob has no stream(), so the wire body cannot be read here.
+    const append = vi.spyOn(FormData.prototype, 'append')
+    onTestFinished(() => append.mockRestore())
     let contentType: string | null = null
-    let rawBody = ''
     server.use(
-      http.post('http://localhost/api/v1/images', async ({ request }) => {
+      http.post('http://localhost/api/v1/images', ({ request }) => {
         contentType = request.headers.get('Content-Type')
-        rawBody = await request.text()
         return HttpResponse.json(ASSET, { status: 201 })
       }),
     )
-    const asset = await uploadPrivateImage(new File(['x'], 'shot.png', { type: 'image/png' }))
+    const file = new File(['x'], 'shot.png', { type: 'image/png' })
+    const asset = await uploadPrivateImage(file)
     expect(asset.key).toBe(ASSET.key)
     expect(contentType).toMatch(/^multipart\/form-data/)
-    expect(rawBody).toContain('name="is_private"')
-    expect(rawBody).toContain('name="file"')
-    expect(rawBody).toContain('Content-Type: image/png')
+    expect(append.mock.calls).toEqual([
+      ['file', file],
+      ['is_private', 'true'],
+    ])
   })
 })
 

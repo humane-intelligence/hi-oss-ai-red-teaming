@@ -683,14 +683,24 @@ describe('EvaluationGroupDetailPage — tabs', () => {
   it('opens on the Exports tab from a deep link', async () => {
     // Export authority is its own permission, not `:update` — editing a group must not confer
     // every member's transcripts, flags and reviews.
-    server.use(...makeHandlers(withPerms(baseGroup, ['evaluation_groups:export'])))
+    server.use(
+      ...makeHandlers(withPerms(baseGroup, ['evaluation_groups:export'])),
+      http.get('http://localhost/api/v1/exports/jobs', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0 }),
+      ),
+    )
     renderPage(['evaluation_groups:read'], `/evaluation-groups/${GROUP_ID}?tab=exports`)
 
     expect(await screen.findByRole('tab', { name: 'Exports', selected: true })).toBeInTheDocument()
   })
 
   it('opens on the Metrics tab from a deep link', async () => {
-    server.use(...makeHandlers(withPerms(baseGroup, ['evaluation_groups:view_metrics'])))
+    server.use(
+      ...makeHandlers(withPerms(baseGroup, ['evaluation_groups:view_metrics'])),
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/metrics`, () =>
+        HttpResponse.json(groupMetricsStub({ group_id: GROUP_ID })),
+      ),
+    )
     renderPage(['evaluation_groups:read'], `/evaluation-groups/${GROUP_ID}?tab=metrics`)
 
     expect(await screen.findByRole('tab', { name: 'Metrics', selected: true })).toBeInTheDocument()
