@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/msw/server'
 import { tokenStore } from '@/lib/auth/token-store'
@@ -28,9 +28,9 @@ describe('validateImageFile', () => {
 
 describe('uploadPrivateImage', () => {
   it('posts multipart form data with is_private=true and returns the asset', async () => {
-    // Asserted on the FormData, not the wire body: jsdom's Blob has no stream(), so undici
-    // cannot serialize the file part and reading the request body fails (test-env mismatch only).
+    // Asserted on the FormData: jsdom's Blob has no stream(), so the wire body cannot be read here.
     const append = vi.spyOn(FormData.prototype, 'append')
+    onTestFinished(() => append.mockRestore())
     let contentType: string | null = null
     server.use(
       http.post('http://localhost/api/v1/images', ({ request }) => {
@@ -46,7 +46,6 @@ describe('uploadPrivateImage', () => {
       ['file', file],
       ['is_private', 'true'],
     ])
-    append.mockRestore()
   })
 })
 

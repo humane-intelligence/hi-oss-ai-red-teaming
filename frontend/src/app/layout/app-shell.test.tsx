@@ -176,17 +176,15 @@ describe('AppShell nav gating', () => {
   })
 
   it('shows the notification bell with notifications:read', async () => {
-    let countRead = false
     server.use(
-      http.get('http://localhost/api/v1/notifications', () => {
-        countRead = true
-        return HttpResponse.json({ items: [], total: 0, limit: 20, offset: 0 })
-      }),
+      http.get('http://localhost/api/v1/notifications', () =>
+        HttpResponse.json({ items: [], total: 3, limit: 1, offset: 0 }),
+      ),
     )
     renderShell(['notifications:read'])
-    expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument()
-    // The bell reads its unread count on mount; let that land before the handlers are reset.
-    await waitFor(() => expect(countRead).toBe(true))
+    expect(
+      await screen.findByRole('button', { name: 'Notifications, 3 unread' }),
+    ).toBeInTheDocument()
   })
 
   it('hides the notification bell without notifications:read', () => {

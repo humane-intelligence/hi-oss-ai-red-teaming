@@ -245,7 +245,6 @@ describe('EvaluationDetailPage — duplicate', () => {
     const user = userEvent.setup()
     renderPage(['evaluations:read', 'evaluations:create', 'evaluation_groups:read'])
 
-    // Duplicate appears only once the async group fetch says the group accepts evaluations.
     await user.click(await screen.findByRole('button', { name: /duplicate/i }))
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: /duplicate/i }),
