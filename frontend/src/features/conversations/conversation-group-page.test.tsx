@@ -1109,7 +1109,7 @@ describe('ConversationGroupPage — labels and flags in a pane', () => {
 
   it('hides labels entirely from a caller holding no annotation key', async () => {
     // No handler for the annotations route: with the key absent the query must never run, and
-    // `onUnhandledFrame: 'error'` fails this test if it does.
+    // the unhandled-request check in setup fails this test if it does.
     server.use(paneMessage(CONV_A), ...baseHandlers())
     renderPage(['conversations:read'])
 

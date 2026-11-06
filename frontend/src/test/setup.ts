@@ -11,6 +11,12 @@ configure({ asyncUtilTimeout: 5_000 })
 // which is too late for openapi-fetch's one-time fetch capture.
 server.listen({ onUnhandledFrame: 'error' })
 
+// 'error' only logs and rejects the fetch, which the app swallows; record it so afterEach fails the test.
+const unhandledRequests: string[] = []
+server.events.on('request:unhandled', ({ request }) => {
+  unhandledRequests.push(`${request.method} ${request.url}`)
+})
+
 // jsdom implements no ResizeObserver; components that observe their own box (the dropdown's
 // viewport clamp) construct one on open, so every test rendering one needs it to exist.
 class ResizeObserverStub implements ResizeObserver {
@@ -50,5 +56,8 @@ afterEach(() => {
   cleanup()
   server.resetHandlers()
   localStorage.clear()
+  if (unhandledRequests.length > 0) {
+    throw new Error(`Unhandled requests:\n${unhandledRequests.splice(0).join('\n')}`)
+  }
 })
 afterAll(() => server.close())
