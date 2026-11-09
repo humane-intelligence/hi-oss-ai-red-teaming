@@ -497,3 +497,194 @@ describe('EvaluationFormPage — create object-gating', () => {
     expect(body!.evaluation_group_id).toBe(GROUP_ID)
   })
 })
+
+const COVER_KEY = '2026/11/09/cover.png'
+
+function uploadHandler(onUpload: () => void = () => {}) {
+  return http.post('http://localhost/api/v1/images', () => {
+    onUpload()
+    return HttpResponse.json(
+      {
+        id: 'a0000000-0000-0000-0000-000000000001',
+        key: COVER_KEY,
+        url: `/api/v1/images/${COVER_KEY}`,
+        content_type: 'image/png',
+        width: 10,
+        height: 10,
+        size_bytes: 68,
+        is_private: false,
+        created_at: '2026-11-09T00:00:00Z',
+      },
+      { status: 201 },
+    )
+  })
+}
+
+function editWithCover(coverImage: string | null) {
+  return http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+    HttpResponse.json({
+      id: EVAL_ID,
+      title: 'Prompt injection sweep',
+      description: null,
+      status: 'draft',
+      evaluation_group_id: GROUP_ID,
+      cover_image: coverImage,
+      mask_models_enabled: true,
+      tags_enabled: true,
+      created_by_id: 'user-0001',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      user_permissions: ['evaluations:update'],
+    }),
+  )
+}
+
+function captureUpdate(onBody: (body: Record<string, unknown>) => void) {
+  return http.patch(`http://localhost/api/v1/evaluations/${EVAL_ID}`, async ({ request }) => {
+    onBody((await request.json()) as Record<string, unknown>)
+    return HttpResponse.json({ id: EVAL_ID })
+  })
+}
+
+const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement
+
+describe('EvaluationFormPage — cover image', () => {
+  it('uploads the picked image as public and creates with its key', async () => {
+    let body: Record<string, unknown> | null = null
+    server.use(
+      ...handlers(['evaluations:create']),
+      uploadHandler(),
+      http.post('http://localhost/api/v1/evaluations', async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ id: 'new-eval' }, { status: 201 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderCreate()
+
+    await user.type(await screen.findByLabelText('Title'), 'With a cover')
+    await user.upload(fileInput(), new File(['x'], 'cover.png', { type: 'image/png' }))
+    expect(await screen.findByRole('img', { name: 'Cover image' })).toHaveAttribute(
+      'src',
+      `http://localhost/api/v1/images/${COVER_KEY}`,
+    )
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body!.cover_image).toBe(COVER_KEY)
+  })
+
+  it('rejects an unsupported file inline without uploading it', async () => {
+    let uploads = 0
+    server.use(
+      ...handlers(['evaluations:create']),
+      uploadHandler(() => uploads++),
+    )
+    renderCreate()
+
+    await screen.findByRole('button', { name: 'Upload image' })
+    // fireEvent, not user.upload: the latter drops a file the `accept` attribute filters out.
+    fireEvent.change(fileInput(), {
+      target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] },
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/JPEG, PNG, or WebP/)
+    expect(uploads).toBe(0)
+    expect(screen.queryByRole('img', { name: 'Cover image' })).toBeNull()
+  })
+
+  it('keeps the form unsubmittable while the upload is in flight', async () => {
+    server.use(...handlers(['evaluations:create']), uploadHandler())
+    const user = userEvent.setup()
+    renderCreate()
+
+    await user.type(await screen.findByLabelText('Title'), 'Busy')
+    // Asserted synchronously after the pick: holding the response open trips undici on jsdom's File body.
+    fireEvent.change(fileInput(), {
+      target: { files: [new File(['x'], 'cover.png', { type: 'image/png' })] },
+    })
+
+    expect(screen.getByRole('button', { name: 'Uploading…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled())
+  })
+
+  it('shows an upload failure inline and keeps the current cover', async () => {
+    server.use(
+      editWithCover('2026/01/01/old.png'),
+      ...handlers(['evaluations:update']),
+      http.post('http://localhost/api/v1/images', () =>
+        HttpResponse.json(
+          { type: 'about:blank', title: 'Bad Request', status: 400, detail: 'Not an image.' },
+          { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEdit()
+
+    await screen.findByRole('button', { name: 'Replace image' })
+    await user.upload(fileInput(), new File(['x'], 'cover.png', { type: 'image/png' }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Cover image' })).toHaveAttribute(
+      'src',
+      'http://localhost/api/v1/images/2026/01/01/old.png',
+    )
+  })
+
+  it('replaces an existing cover with the new key', async () => {
+    let body: Record<string, unknown> | null = null
+    server.use(
+      editWithCover('2026/01/01/old.png'),
+      ...handlers(['evaluations:update']),
+      uploadHandler(),
+      captureUpdate((b) => (body = b)),
+    )
+    const user = userEvent.setup()
+    renderEdit()
+
+    await screen.findByRole('button', { name: 'Replace image' })
+    await user.upload(fileInput(), new File(['x'], 'cover.png', { type: 'image/png' }))
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Cover image' })).toHaveAttribute(
+        'src',
+        `http://localhost/api/v1/images/${COVER_KEY}`,
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body!.cover_image).toBe(COVER_KEY)
+  })
+
+  it('removes the cover — saved as null', async () => {
+    let body: Record<string, unknown> | null = null
+    server.use(
+      editWithCover('2026/01/01/old.png'),
+      ...handlers(['evaluations:update']),
+      captureUpdate((b) => (body = b)),
+    )
+    const user = userEvent.setup()
+    renderEdit()
+
+    await user.click(await screen.findByRole('button', { name: 'Remove image' }))
+    expect(screen.queryByRole('img', { name: 'Cover image' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Upload image' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body!.cover_image).toBeNull()
+  })
+
+  it("keeps Replace and Remove when the stored cover can't be displayed", async () => {
+    server.use(editWithCover('typed by hand'), ...handlers(['evaluations:update']))
+    renderEdit()
+
+    fireEvent.error(await screen.findByRole('img', { name: 'Cover image' }))
+
+    expect(await screen.findByText(/can’t be displayed/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Replace image' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Remove image' })).toBeEnabled()
+  })
+})

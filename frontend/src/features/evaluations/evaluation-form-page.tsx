@@ -1,10 +1,11 @@
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useEvaluation } from './queries'
+import { CoverImageField } from './cover-image-field'
 import { useCreateEvaluation, useUpdateEvaluation } from './mutations'
 import { useEvaluationGroup, useEvaluationGroups } from '@/features/evaluation-groups/queries'
 import {
@@ -111,6 +112,9 @@ export function EvaluationFormPage() {
   }, [existing.data, reset])
 
   useUnsavedGuard(formState.isDirty)
+
+  const [coverUploading, setCoverUploading] = useState(false)
+  const coverImage = useWatch({ control, name: 'cover_image' })
 
   // Resolve the parent group directly (its query key dedupes with the preset-group fetch)
   // so the "Inherit (…)" option reflects the group's real effective license. The scoped
@@ -343,12 +347,12 @@ export function EvaluationFormPage() {
             >
               <Textarea id="description" rows={4} {...register('description')} />
             </FormField>
-            <FormField
-              label="Cover image (optional)"
-              htmlFor="cover_image"
-              error={formState.errors.cover_image?.message}
-            >
-              <Input id="cover_image" {...register('cover_image')} />
+            <FormField label="Cover image (optional)" error={formState.errors.cover_image?.message}>
+              <CoverImageField
+                value={coverImage}
+                onChange={(key) => setValue('cover_image', key, { shouldDirty: true })}
+                onUploadingChange={setCoverUploading}
+              />
             </FormField>
             <div>
               <LicensePicker
@@ -401,7 +405,7 @@ export function EvaluationFormPage() {
               <Button type="button" variant="outline" onClick={() => navigate(-1)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={formState.isSubmitting}>
+              <Button type="submit" disabled={formState.isSubmitting || coverUploading}>
                 {formState.isSubmitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}
               </Button>
             </div>
