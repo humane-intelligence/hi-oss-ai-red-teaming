@@ -25,14 +25,18 @@ drift.
 """
 
 import uuid
+from typing import TYPE_CHECKING
 from typing import Any
 
 from sqlalchemy import Enum
 from sqlalchemy import Index
 from sqlalchemy import Text
 from sqlalchemy import case
+from sqlalchemy import func
+from sqlalchemy import select
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import column_property
 from sqlmodel import Field
 from sqlmodel import Relationship
 from sqlmodel import SQLModel
@@ -150,6 +154,11 @@ class Conversation(BaseModel, InferenceParamsMixin, table=True):
     # `parameters` JSONB is inherited from `InferenceParamsMixin` — the
     # most-specific (conversation) override layer of the cascade.
 
+    if TYPE_CHECKING:
+        # Mapped below the `Turn` class as a `column_property`, which a type checker cannot see.
+        @property
+        def turn_count(self) -> int: ...
+
 
 class Turn(BaseModel, table=True):
     """One exchange in a conversation: a user message plus the assistant reply/replies.
@@ -170,6 +179,20 @@ class Turn(BaseModel, table=True):
 
     conversation_id: uuid.UUID = Field(foreign_key="conversations.id", nullable=False, ondelete="CASCADE")
     turn_index: int = Field(nullable=False)
+
+
+# Counted in SQL with every conversation load, so a list answers "has this been used" without one
+# query per row. A mapper expression, not a column (nothing for Alembic to see), and unloaded on a
+# just-inserted row — the create paths refresh it explicitly. `expire_on_flush=False`: no write to
+# the conversation row changes its turns, and expiring it would make every update path lazy-load it,
+# which under async is a `MissingGreenlet`.
+Conversation.turn_count = column_property(  # ty: ignore[invalid-assignment]
+    select(func.count(col(Turn.id)))
+    .where(col(Turn.conversation_id) == col(Conversation.id), col(Turn.deleted_at).is_(None))
+    .correlate_except(Turn)
+    .scalar_subquery(),
+    expire_on_flush=False,
+)
 
 
 # The `Message.extra` key holding the tag map a reply's prompt carried. Named next to the column it

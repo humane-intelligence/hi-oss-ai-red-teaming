@@ -148,6 +148,8 @@ Any mismatch → 404 (addressing through an invisible evaluation doesn't confirm
 
 `content_protected` is resolved here from the evaluation's [effective licence](licenses.md) and never re-derived afterwards — a licence changed later does not reach conversations that already exist. See [Conversation content sealing](conversation-content-sealing.md).
 
+`ConversationResponse.turn_count` is the number of live turns, counted in SQL with every conversation load (a mapper expression on `Conversation`, not a column) — `0` marks a conversation that was started and never used. It rides along in the members embedded in a [group](conversation-groups.md) response, so lists need no query per row.
+
 ### Nested vs flat — different 404 semantics
 
 A deliberate difference:
