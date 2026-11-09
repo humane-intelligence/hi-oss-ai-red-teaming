@@ -11,7 +11,7 @@ export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 export const IMAGE_MAX_BYTES = 20 * 1024 * 1024
 
 export function validateImageFile(file: File): string | null {
-  if (!IMAGE_TYPES.includes(file.type)) return 'Only JPEG, PNG, or WebP images can be attached.'
+  if (!IMAGE_TYPES.includes(file.type)) return 'Only JPEG, PNG, or WebP images are supported.'
   if (file.size > IMAGE_MAX_BYTES) return 'Image is larger than 20 MB.'
   return null
 }

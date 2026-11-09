@@ -626,7 +626,7 @@ describe('EvaluationFormPage — cover image', () => {
     await screen.findByRole('button', { name: 'Replace image' })
     await user.upload(fileInput(), new File(['x'], 'cover.png', { type: 'image/png' }))
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not an image.')
     expect(screen.getByRole('img', { name: 'Cover image' })).toHaveAttribute(
       'src',
       'http://localhost/api/v1/images/2026/01/01/old.png',
@@ -675,6 +675,30 @@ describe('EvaluationFormPage — cover image', () => {
 
     await waitFor(() => expect(body).not.toBeNull())
     expect(body!.cover_image).toBeNull()
+  })
+
+  it('ties a server error on cover_image to the field group', async () => {
+    server.use(
+      editWithCover('2026/01/01/old.png'),
+      ...handlers(['evaluations:update']),
+      http.patch(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json(
+          {
+            detail: 'Request body failed validation.',
+            errors: [{ loc: ['body', 'cover_image'], msg: 'unknown image', type: 'value_error' }],
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderEdit()
+
+    await user.click(await screen.findByRole('button', { name: 'Save' }))
+
+    const group = screen.getByRole('group', { name: 'Cover image' })
+    await waitFor(() => expect(group).toHaveAttribute('aria-invalid', 'true'))
+    expect(group).toHaveAccessibleDescription('unknown image')
   })
 
   it("keeps Replace and Remove when the stored cover can't be displayed", async () => {

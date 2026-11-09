@@ -111,10 +111,11 @@ export function EvaluationFormPage() {
     })
   }, [existing.data, reset])
 
-  useUnsavedGuard(formState.isDirty)
-
   const [coverUploading, setCoverUploading] = useState(false)
   const coverImage = useWatch({ control, name: 'cover_image' })
+
+  // The form turns dirty only once the upload returns, so a pick in flight needs its own guard.
+  useUnsavedGuard(formState.isDirty || coverUploading)
 
   // Resolve the parent group directly (its query key dedupes with the preset-group fetch)
   // so the "Inherit (…)" option reflects the group's real effective license. The scoped
