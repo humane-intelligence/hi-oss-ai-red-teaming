@@ -56,7 +56,7 @@ export function CoverImageField({
     >
       {value &&
         (brokenKey === value ? (
-          <div className="text-muted-foreground flex h-32 w-56 items-center justify-center gap-2 rounded-md border text-sm">
+          <div className="text-muted-foreground flex h-32 w-56 flex-col items-center justify-center gap-2 rounded-md border p-3 text-center text-sm">
             <ImageOff className="size-4" aria-hidden="true" />
             Current cover can’t be displayed
           </div>
