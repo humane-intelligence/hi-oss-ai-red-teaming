@@ -18,11 +18,23 @@ export function validateImageFile(file: File): string | null {
 
 // Composer attachments upload private: conversation images are adversarial content,
 // and the backend rejects a public key on attach anyway.
-export async function uploadPrivateImage(file: File): Promise<MediaAssetResponse> {
+export function uploadPrivateImage(file: File): Promise<MediaAssetResponse> {
+  return uploadImage(file, true)
+}
+
+export function uploadPublicImage(file: File): Promise<MediaAssetResponse> {
+  return uploadImage(file, false)
+}
+
+export function publicImageUrl(key: string): string {
+  return `${BASE}/api/v1/images/${key}`
+}
+
+async function uploadImage(file: File, isPrivate: boolean): Promise<MediaAssetResponse> {
   return unwrap(
     await apiClient.POST('/api/v1/images', {
       // The generated type renders the binary part as `file: string`; the wire format is FormData.
-      body: { file, is_private: true } as unknown as { file: string; is_private: boolean },
+      body: { file, is_private: isPrivate } as unknown as { file: string; is_private: boolean },
       bodySerializer: (body) => {
         const fd = new FormData()
         fd.append('file', body.file as unknown as File)

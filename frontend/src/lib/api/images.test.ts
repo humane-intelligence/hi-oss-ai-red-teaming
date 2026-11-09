@@ -2,7 +2,13 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/msw/server'
 import { tokenStore } from '@/lib/auth/token-store'
-import { fetchImageBlob, uploadPrivateImage, validateImageFile } from './images'
+import {
+  fetchImageBlob,
+  publicImageUrl,
+  uploadPrivateImage,
+  uploadPublicImage,
+  validateImageFile,
+} from './images'
 
 const ASSET = {
   id: 'a0000000-0000-0000-0000-000000000001',
@@ -46,6 +52,31 @@ describe('uploadPrivateImage', () => {
       ['file', file],
       ['is_private', 'true'],
     ])
+  })
+})
+
+describe('uploadPublicImage', () => {
+  it('posts is_private=false', async () => {
+    const append = vi.spyOn(FormData.prototype, 'append')
+    onTestFinished(() => append.mockRestore())
+    server.use(
+      http.post('http://localhost/api/v1/images', () =>
+        HttpResponse.json({ ...ASSET, is_private: false }, { status: 201 }),
+      ),
+    )
+    const file = new File(['x'], 'cover.png', { type: 'image/png' })
+    const asset = await uploadPublicImage(file)
+    expect(asset.key).toBe(ASSET.key)
+    expect(append.mock.calls).toEqual([
+      ['file', file],
+      ['is_private', 'false'],
+    ])
+  })
+})
+
+describe('publicImageUrl', () => {
+  it('points at the public GET with the key as a path', () => {
+    expect(publicImageUrl(ASSET.key)).toBe(`http://localhost${ASSET.url}`)
   })
 })
 
