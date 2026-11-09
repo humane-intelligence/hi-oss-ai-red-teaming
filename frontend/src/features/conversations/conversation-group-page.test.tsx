@@ -69,6 +69,7 @@ function conv(id: string, modelId: string): ConversationResponse {
     evaluation_id: EVAL_ID,
     evaluation_ai_model_id: modelId,
     content_protected: false,
+    turn_count: 0,
     scenario_id: SCEN_ID,
     conversation_group_id: GROUP_ID,
     effective_license: licenseStub('CC-BY-4.0'),
