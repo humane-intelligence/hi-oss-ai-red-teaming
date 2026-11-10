@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { EvaluationDetailPage } from './evaluation-detail-page'
@@ -78,6 +78,10 @@ function baseHandlers(
   ]
 }
 
+function NewConversation() {
+  return <div>NEW CONVERSATION {useLocation().search}</div>
+}
+
 function renderPage(permissions: string[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const Wrapper = authWrapper(permissions)
@@ -88,6 +92,7 @@ function renderPage(permissions: string[]) {
           <Routes>
             <Route path="/evaluations/:id" element={<EvaluationDetailPage />} />
             <Route path="/evaluations/:id/edit" element={<div>EDIT PAGE</div>} />
+            <Route path="/evaluations/:id/conversation-groups/new" element={<NewConversation />} />
             <Route path="/evaluations" element={<div>Evaluations list</div>} />
             <Route path="/evaluation-groups" element={<div>Evaluation groups list</div>} />
             <Route path="/evaluation-groups/:id" element={<div>Group detail</div>} />
@@ -777,29 +782,78 @@ describe('EvaluationDetailPage — in-group authority', () => {
     expect(screen.queryByRole('tab', { name: 'Exports' })).toBeNull()
   })
 
-  it('offers New conversation when only the in-group role grants conversations:create', async () => {
-    server.use(groupWith(['conversations:read', 'conversations:create']), ...baseHandlers())
+  const withModel: EvaluationResponse = {
+    ...baseEvaluation,
+    models: [
+      {
+        assignment_id: 'assign-0001',
+        name: 'gpt-4o',
+        warmup_enabled: false,
+        advanced_params_disabled: false,
+        web_access: false,
+        input_modalities: ['text'],
+      },
+    ],
+  }
+  const canStart = groupWith(['conversations:read', 'conversations:create'])
+  const startButton = () => screen.findByRole('button', { name: /start a conversation/i })
+
+  it('offers one way to start a conversation, on in-group authority alone', async () => {
+    server.use(canStart, ...content, ...baseHandlers(withModel))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
-    )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /new conversation/i })).toBeInTheDocument(),
+    expect(await startButton()).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /new conversation/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^start$/i })).toBeNull()
+  })
+
+  it('says what is missing before a conversation can start', async () => {
+    server.use(canStart, ...content, ...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+    const noModel = await startButton()
+    expect(noModel).toBeDisabled()
+    expect(noModel).toHaveAttribute('title', 'Assign a model first')
+  })
+
+  it('says a scenario is missing when the evaluation has models but none', async () => {
+    server.use(canStart, ...baseHandlers(withModel))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+    await waitFor(async () =>
+      expect(await startButton()).toHaveAttribute('title', 'Add a scenario first'),
     )
   })
 
-  it('offers the header Start a conversation on the same in-group authority', async () => {
-    // Three entry points lead to the same create flow (header CTA, section button, scenario
-    // Start); one of them disagreeing on the source of authority is how the last bug survived.
-    server.use(groupWith(['conversations:read', 'conversations:create']), ...baseHandlers())
+  it('asks for the scenario first, then hands it to the new conversation page', async () => {
+    const user = userEvent.setup()
+    server.use(canStart, ...content, ...baseHandlers(withModel))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Continue' })).toBeDisabled()
+    await user.click(within(dialog).getByRole('combobox', { name: 'Scenario' }))
+    await user.click(await screen.findByRole('option', { name: 's2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText('NEW CONVERSATION ?scenario=s2')).toBeInTheDocument()
+  })
+
+  it('skips the dialog when there is only one scenario to pick', async () => {
+    const user = userEvent.setup()
+    server.use(
+      canStart,
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [scenario('s1')], total: 1, limit: 100, offset: 0 }),
+      ),
+      ...content,
+      ...baseHandlers(withModel),
     )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /start a conversation/i })).toBeInTheDocument(),
-    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+
+    expect(await screen.findByText('NEW CONVERSATION ?scenario=s1')).toBeInTheDocument()
   })
 })

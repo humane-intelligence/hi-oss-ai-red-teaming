@@ -24,6 +24,7 @@ import { AllowedTagsCard } from './allowed-tags-card'
 import { ScenariosSection } from '@/features/scenarios/scenarios-section'
 import { useEvaluationScenarios, useTaskCount } from '@/features/scenarios/queries'
 import { ConversationsSection } from '@/features/conversations/conversations-section'
+import { StartConversationDialog } from '@/features/conversations/start-conversation-dialog'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { groupAcceptsEvaluations } from '@/features/evaluation-groups/lifecycle'
@@ -79,7 +80,14 @@ export function EvaluationDetailPage() {
   )
   const metrics = useEvaluationMetrics(id ?? '', { enabled: canViewMetrics })
   const scenarios = useEvaluationScenarios(id ?? '')
-  const taskCount = useTaskCount((scenarios.data?.items ?? []).map((s) => s.id))
+  const scenarioItems = scenarios.data?.items ?? []
+  const taskCount = useTaskCount(scenarioItems.map((s) => s.id))
+  const startBlocked =
+    (evaluation?.models?.length ?? 0) === 0
+      ? 'Assign a model first'
+      : scenarioItems.length === 0
+        ? 'Add a scenario first'
+        : undefined
   const approve = useApproveEvaluation(id ?? '')
   const reject = useRejectEvaluation(id ?? '')
   const unassign = useUnassignModel(id ?? '')
@@ -89,6 +97,7 @@ export function EvaluationDetailPage() {
   const [includeChildren, setIncludeChildren] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
   // Export gates on the parent group's in-group owner / admin authority — the same
   // rule the server enforces (`assert_export_authority` → `evaluation_groups:export`,
   // `:manage` break-glass). Authority arrives with the async group fetch, so the
@@ -153,74 +162,6 @@ export function EvaluationDetailPage() {
                   <EvaluationStatusBadge status={evaluation.status} />
                 </div>
               </div>
-              <PageActions
-                primary={
-                  <>
-                    {conversationPerms.has('conversations:create') && (
-                      <Button
-                        size="sm"
-                        disabled={(evaluation.models?.length ?? 0) === 0}
-                        title={
-                          (evaluation.models?.length ?? 0) === 0
-                            ? 'Assign a model first'
-                            : undefined
-                        }
-                        onClick={() =>
-                          navigate(`/evaluations/${evaluation.id}/conversation-groups/new`)
-                        }
-                      >
-                        <MessageSquarePlus /> Start a conversation
-                      </Button>
-                    )}
-                    {has('evaluations:approve') && evaluation.status === 'under_review' && (
-                      <>
-                        <Button
-                          size="sm"
-                          disabled={approve.isPending}
-                          onClick={() => approve.mutate()}
-                        >
-                          Approve
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => setRejectOpen(true)}>
-                          Reject
-                        </Button>
-                      </>
-                    )}
-                  </>
-                }
-                secondary={[
-                  {
-                    key: 'duplicate',
-                    label: 'Duplicate',
-                    icon: Copy,
-                    onSelect: () => {
-                      setIncludeChildren(false)
-                      setDuplicateOpen(true)
-                    },
-                    disabled: duplicate.isPending,
-                    // Duplicate makes a new evaluation, so it gates on the global create
-                    // capability, not this evaluation's per-group authority (the backend still
-                    // enforces write access on the source). The copy lands in this group, so it
-                    // also needs the group to accept evaluations (approved/published, the backend
-                    // 409s otherwise); like Exports, the gate resolves with the async group fetch.
-                    when: has('evaluations:create') && groupAcceptsEvaluations(group?.status),
-                  },
-                  {
-                    key: 'edit',
-                    label: 'Edit',
-                    icon: Pencil,
-                    onSelect: () => navigate(`/evaluations/${evaluation.id}/edit`),
-                    when: has('evaluations:update'),
-                  },
-                  {
-                    key: 'export',
-                    label: 'Export',
-                    icon: Download,
-                    onSelect: () => setExportOpen(true),
-                    when: canExport,
-                  },
-                ]}
-              />
             </div>
 
             <Card>
@@ -264,6 +205,77 @@ export function EvaluationDetailPage() {
                 <StatTile label="Tasks to complete" value={taskCount ?? '—'} />
               </div>
             )}
+
+            <PageActions
+              primary={
+                <>
+                  {conversationPerms.has('conversations:create') && (
+                    <Button
+                      size="sm"
+                      disabled={startBlocked !== undefined}
+                      title={startBlocked}
+                      onClick={() => {
+                        // One scenario leaves nothing to choose, so the dialog would be a dead click.
+                        const only = scenarioItems.length === 1 ? scenarioItems[0] : undefined
+                        if (only)
+                          navigate(
+                            `/evaluations/${evaluation.id}/conversation-groups/new?scenario=${only.id}`,
+                          )
+                        else setStartOpen(true)
+                      }}
+                    >
+                      <MessageSquarePlus /> Start a conversation
+                    </Button>
+                  )}
+                  {has('evaluations:approve') && evaluation.status === 'under_review' && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={approve.isPending}
+                        onClick={() => approve.mutate()}
+                      >
+                        Approve
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setRejectOpen(true)}>
+                        Reject
+                      </Button>
+                    </>
+                  )}
+                </>
+              }
+              secondary={[
+                {
+                  key: 'duplicate',
+                  label: 'Duplicate',
+                  icon: Copy,
+                  onSelect: () => {
+                    setIncludeChildren(false)
+                    setDuplicateOpen(true)
+                  },
+                  disabled: duplicate.isPending,
+                  // Duplicate makes a new evaluation, so it gates on the global create
+                  // capability, not this evaluation's per-group authority (the backend still
+                  // enforces write access on the source). The copy lands in this group, so it
+                  // also needs the group to accept evaluations (approved/published, the backend
+                  // 409s otherwise); like Exports, the gate resolves with the async group fetch.
+                  when: has('evaluations:create') && groupAcceptsEvaluations(group?.status),
+                },
+                {
+                  key: 'edit',
+                  label: 'Edit',
+                  icon: Pencil,
+                  onSelect: () => navigate(`/evaluations/${evaluation.id}/edit`),
+                  when: has('evaluations:update'),
+                },
+                {
+                  key: 'export',
+                  label: 'Export',
+                  icon: Download,
+                  onSelect: () => setExportOpen(true),
+                  when: canExport,
+                },
+              ]}
+            />
           </header>
 
           {tabItems.length > 1 && <Tabs tabs={tabItems} value={activeTab} onChange={setTab} />}
@@ -278,18 +290,7 @@ export function EvaluationDetailPage() {
                   evaluation={evaluation}
                   groupPermissions={group?.user_permissions}
                 />
-                <ScenariosSection
-                  evaluationId={evaluation.id}
-                  onStartConversation={
-                    conversationPerms.has('conversations:create') &&
-                    (evaluation.models?.length ?? 0) > 0
-                      ? (scenarioId) =>
-                          navigate(
-                            `/evaluations/${evaluation.id}/conversation-groups/new?scenario=${scenarioId}`,
-                          )
-                      : undefined
-                  }
-                />
+                <ScenariosSection evaluationId={evaluation.id} />
               </div>
 
               <aside className="min-w-0 space-y-6">
@@ -505,6 +506,13 @@ export function EvaluationDetailPage() {
               advancedParamsDisabled={editTarget?.paramsDisabled}
             />
           )}
+
+          <StartConversationDialog
+            evaluationId={evaluation.id}
+            scenarios={scenarioItems}
+            open={startOpen}
+            onOpenChange={setStartOpen}
+          />
 
           <ExportDialog
             open={exportOpen}
