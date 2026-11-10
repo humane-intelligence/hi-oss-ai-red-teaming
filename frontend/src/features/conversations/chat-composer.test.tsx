@@ -59,6 +59,25 @@ describe('ChatComposer — per-message tags', () => {
     )
   })
 
+  it('opens the tags hint without toggling the Tags panel', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <ChatComposer
+        send={vi.fn()}
+        pending={false}
+        acceptsImages={false}
+        tagsEnabled
+        allowedTagKeys={null}
+        allowedKeysStatus="success"
+        placeholder="msg"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /model's instructions/ }))
+
+    expect(screen.getByRole('button', { name: /^tags/i })).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('locks the tag rows while a turn is in flight', async () => {
     // A tag edited mid-stream can't reach the in-flight turn, so offering the edit misreports it —
     // the attachment strip is disabled for the same reason.
@@ -432,5 +451,34 @@ describe('ChatComposer — refusing another row', () => {
     expect(document.getElementById(reasonId as string)).toHaveTextContent(
       /fill the empty row first/i,
     )
+  })
+})
+
+describe('ChatComposer — hint', () => {
+  const composer = (hint?: string) => (
+    <ChatComposer
+      send={vi.fn()}
+      pending={false}
+      acceptsImages={false}
+      tagsEnabled={false}
+      allowedTagKeys={null}
+      allowedKeysStatus="success"
+      placeholder="msg"
+      hint={hint}
+    />
+  )
+
+  it('describes the message box with the hint', () => {
+    renderWithProviders(composer('Press return to send.'))
+
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveAccessibleDescription(
+      'Press return to send.',
+    )
+  })
+
+  it('leaves the message box undescribed without a hint', () => {
+    renderWithProviders(composer())
+
+    expect(screen.getByRole('textbox', { name: 'Message' })).not.toHaveAttribute('aria-describedby')
   })
 })
