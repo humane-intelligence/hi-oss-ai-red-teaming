@@ -72,10 +72,12 @@ export function useMembersCompletedTasks(conversationIds: string[]) {
 // K/N from.
 // `conversationId` travels in the variables, not the hook argument: the group page owns
 // this mutation for every member conversation at once, so the rail can stay presentational
-// behind an `onToggle` prop.
-export function useToggleTaskCompletion() {
+// behind an `onToggle` prop. That fan-out passes `suppressErrorToast` and reports a failed
+// batch once itself, rather than once per member.
+export function useToggleTaskCompletion(opts?: { suppressErrorToast?: boolean }) {
   const qc = useQueryClient()
   return useMutation({
+    meta: opts?.suppressErrorToast ? { suppressErrorToast: true } : undefined,
     mutationFn: async ({
       conversationId,
       taskId,

@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '@/test/msw/server'
@@ -367,6 +368,28 @@ describe('ConversationGroupPage', () => {
     // The failed member is rolled back and the other keeps its write: the box says exactly that.
     await waitFor(() => expect(box).toBePartiallyChecked())
     await waitFor(() => expect(box).toBeEnabled())
+  })
+
+  it('reports a check-off that failed for several models once, not per model', async () => {
+    const toastError = vi.spyOn(toast, 'error').mockImplementation(() => '')
+    server.use(
+      ...baseHandlers(),
+      http.put(
+        `http://localhost/api/v1/conversations/:conversationId/completed-tasks/:taskId`,
+        () => HttpResponse.json({ detail: 'boom' }, { status: 500 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBeEnabled())
+    await user.click(box)
+
+    await waitFor(() => expect(box).toBeEnabled())
+    expect(box).not.toBeChecked()
+    expect(toastError).toHaveBeenCalledTimes(1)
+    toastError.mockRestore()
   })
 
   it('keeps the rail read-only for a caller without conversations:update', async () => {

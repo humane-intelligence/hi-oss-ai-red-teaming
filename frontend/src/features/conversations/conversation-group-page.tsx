@@ -35,6 +35,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError, fieldErrorsFromProblem } from '@/lib/api/problem'
 import { NotAuthorized } from '@/lib/auth/not-authorized'
+import { notifyMutationError } from '@/lib/query'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import type {
   ConversationGroupResponse,
@@ -87,7 +88,7 @@ export function ConversationGroupPage() {
   const memberCompletions = useMembersCompletedTasks(
     members.some(canReadCompletions) ? members.map((m) => m.id) : [],
   )
-  const toggleCompletion = useToggleTaskCompletion()
+  const toggleCompletion = useToggleTaskCompletion({ suppressErrorToast: true })
   // Task ids with a fan-out in flight, so the rail disables only that task's box.
   const [togglingTaskIds, setTogglingTaskIds] = useState<Set<string>>(new Set())
   // Owner-only, break-glass excluded — same rule as `canFlag` below. Check-off resolves
@@ -107,13 +108,15 @@ export function ConversationGroupPage() {
     setTogglingTaskIds((prev) => new Set(prev).add(taskId))
     void Promise.allSettled(
       targets.map((c) => toggleCompletion.mutateAsync({ conversationId: c.id, taskId, next })),
-    ).then(() =>
+    ).then((results) => {
+      const failed = results.find((r) => r.status === 'rejected')
+      if (failed) notifyMutationError(failed.reason)
       setTogglingTaskIds((prev) => {
         const nextSet = new Set(prev)
         nextSet.delete(taskId)
         return nextSet
-      }),
-    )
+      })
+    })
   }
 
   const [input, setInput] = useState('')

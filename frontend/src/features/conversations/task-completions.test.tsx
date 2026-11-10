@@ -145,3 +145,27 @@ describe('useMembersCompletedTasks', () => {
     await waitFor(() => expect(result.current.state).toBe('error'))
   })
 })
+
+describe('useToggleTaskCompletion error channel', () => {
+  it.each([
+    ['keeps the global toast by default', undefined, undefined],
+    [
+      'opts out of it for a caller that reports the batch itself',
+      true,
+      { suppressErrorToast: true },
+    ],
+  ] as const)('%s', async (_name, suppressErrorToast, meta) => {
+    const qc = client()
+    server.use(http.put(url, () => HttpResponse.json({ id: 'completion-1' })))
+
+    const { result } = renderHook(() => useToggleTaskCompletion({ suppressErrorToast }), {
+      wrapper: wrapper(qc),
+    })
+    await act(async () => {
+      await result.current.mutateAsync({ conversationId: CONV, taskId: TASK, next: true })
+    })
+
+    // The global `MutationCache.onError` reads this meta to skip its toast.
+    expect(qc.getMutationCache().getAll()[0]?.meta).toEqual(meta)
+  })
+})
