@@ -113,6 +113,7 @@ export function EvaluationFormPage() {
 
   const [coverUploading, setCoverUploading] = useState(false)
   const coverImage = useWatch({ control, name: 'cover_image' })
+  const coverLabelId = `${useId()}-cover-label`
 
   // The form turns dirty only once the upload returns, so a pick in flight needs its own guard.
   useUnsavedGuard(formState.isDirty || coverUploading)
@@ -348,8 +349,13 @@ export function EvaluationFormPage() {
             >
               <Textarea id="description" rows={4} {...register('description')} />
             </FormField>
-            <FormField label="Cover image (optional)" error={formState.errors.cover_image?.message}>
+            <FormField
+              label="Cover image (optional)"
+              labelId={coverLabelId}
+              error={formState.errors.cover_image?.message}
+            >
               <CoverImageField
+                labelId={coverLabelId}
                 value={coverImage}
                 onChange={(key) => setValue('cover_image', key, { shouldDirty: true })}
                 onUploadingChange={setCoverUploading}

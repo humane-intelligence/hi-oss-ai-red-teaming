@@ -10,15 +10,15 @@ export function CoverImageField({
   value,
   onChange,
   onUploadingChange,
+  labelId,
   'aria-describedby': describedBy,
-  'aria-invalid': invalid,
 }: {
   value: string
   onChange: (key: string) => void
   onUploadingChange: (uploading: boolean) => void
-  // Forwarded by `FormField`; a group carries them because no single control owns the field.
+  labelId: string
+  // Forwarded by `FormField`; the group carries it because no single control owns the field.
   'aria-describedby'?: string
-  'aria-invalid'?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -49,9 +49,8 @@ export function CoverImageField({
   return (
     <div
       role="group"
-      aria-label="Cover image"
+      aria-labelledby={labelId}
       aria-describedby={describedBy}
-      aria-invalid={invalid}
       className="space-y-2"
     >
       {value &&

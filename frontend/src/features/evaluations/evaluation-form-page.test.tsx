@@ -609,6 +609,27 @@ describe('EvaluationFormPage — cover image', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled())
   })
 
+  it('guards an untouched form against unload while the upload is in flight', async () => {
+    server.use(...handlers(['evaluations:create']), uploadHandler())
+    renderCreate()
+    const unload = () => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+
+    await screen.findByRole('button', { name: 'Upload image' })
+    expect(unload()).toBe(false)
+    // Same synchronous window as the submit test: holding the response open trips undici on jsdom.
+    fireEvent.change(fileInput(), {
+      target: { files: [new File(['x'], 'cover.png', { type: 'image/png' })] },
+    })
+
+    expect(screen.getByRole('button', { name: 'Uploading…' })).toBeInTheDocument()
+    expect(unload()).toBe(true)
+    await screen.findByRole('button', { name: 'Replace image' })
+  })
+
   it('shows an upload failure inline and keeps the current cover', async () => {
     server.use(
       editWithCover('2026/01/01/old.png'),
@@ -696,9 +717,8 @@ describe('EvaluationFormPage — cover image', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Save' }))
 
-    const group = screen.getByRole('group', { name: 'Cover image' })
-    await waitFor(() => expect(group).toHaveAttribute('aria-invalid', 'true'))
-    expect(group).toHaveAccessibleDescription('unknown image')
+    const group = screen.getByRole('group', { name: 'Cover image (optional)' })
+    await waitFor(() => expect(group).toHaveAccessibleDescription('unknown image'))
   })
 
   it("keeps Replace and Remove when the stored cover can't be displayed", async () => {
