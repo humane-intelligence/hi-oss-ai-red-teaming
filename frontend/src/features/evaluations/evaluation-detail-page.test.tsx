@@ -39,6 +39,7 @@ const GROUP_ID = baseEvaluation.evaluation_group_id
 function baseHandlers(
   evaluation: EvaluationResponse = baseEvaluation,
   groupTitle = 'Spring jailbreak',
+  groupOverrides: Record<string, unknown> = {},
 ) {
   return [
     http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () => HttpResponse.json(evaluation)),
@@ -71,6 +72,7 @@ function baseHandlers(
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
         evaluations: [],
+        ...groupOverrides,
       }),
     ),
   ]
@@ -108,6 +110,43 @@ describe('EvaluationDetailPage — group link', () => {
       const links = screen.getAllByRole('link', { name: /spring jailbreak/i })
       expect(links.length).toBeGreaterThanOrEqual(1)
     })
+  })
+})
+
+describe('EvaluationDetailPage — summary', () => {
+  const summary = () => screen.getByText('Evaluation group').closest('dl') as HTMLElement
+
+  it('labels the group, the dates and the description, and drops the author', async () => {
+    server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak', { end_date: '2026-12-02' }))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('Complete by')).toBeInTheDocument()
+    const dl = within(summary())
+    expect(dl.getByRole('link', { name: 'Spring jailbreak' })).toHaveAttribute(
+      'href',
+      `/evaluation-groups/${GROUP_ID}`,
+    )
+    const date = (value: string) =>
+      new Date(value).toLocaleDateString(undefined, { dateStyle: 'long' })
+    expect(dl.getByText('Date added').nextElementSibling).toHaveTextContent(
+      date(baseEvaluation.created_at),
+    )
+    // The group's end date, read as a calendar day: no shift across the viewer's timezone.
+    expect(dl.getByText('Complete by').nextElementSibling).toHaveTextContent(
+      date('2026-12-02T00:00:00'),
+    )
+    expect(dl.getByText('Evaluation description').nextElementSibling).toHaveTextContent(
+      'A test evaluation',
+    )
+    expect(screen.queryByText(/^by /)).toBeNull()
+  })
+
+  it('leaves out the deadline when the group has none', async () => {
+    server.use(...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await screen.findAllByRole('link', { name: 'Spring jailbreak' })
+    expect(within(summary()).queryByText('Complete by')).toBeNull()
   })
 })
 

@@ -28,7 +28,6 @@ import { useConversationGroups } from '@/features/conversations/queries'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { groupAcceptsEvaluations } from '@/features/evaluation-groups/lifecycle'
-import { useUserLookup } from '@/features/users/queries'
 import { LicenseValue } from '@/features/licenses/license-value'
 import { humanizeError } from '@/lib/api/problem'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
@@ -50,6 +49,9 @@ import {
   useEffectivePermissions,
 } from '@/lib/auth/use-permissions'
 
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString(undefined, { dateStyle: 'long' })
+
 // Every tab this page can address, whatever the caller's authority — see `useTabParam`.
 const TAB_VOCABULARY = ['overview', 'metrics', 'exports']
 
@@ -61,7 +63,6 @@ export function EvaluationDetailPage() {
   // Assigning a model needs the catalog (models:read) to pick one; editing an
   // existing assignment's params needs only evaluations:update.
   const canAssignModel = hasAll(['evaluations:update', 'models:read'])
-  const lookup = useUserLookup()
   const query = useEvaluation(id ?? '')
   const evaluation = query.data
   const groupId = evaluation?.evaluation_group_id ?? ''
@@ -160,19 +161,6 @@ export function EvaluationDetailPage() {
                   </h1>
                   <EvaluationStatusBadge status={evaluation.status} />
                 </div>
-                <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 font-mono text-xs">
-                  <Link
-                    to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
-                    className="hover:text-foreground underline-offset-2 hover:underline"
-                  >
-                    {group?.title ?? evaluation.evaluation_group_id}
-                  </Link>
-                  <span aria-hidden>·</span>
-                  <span>by {lookup(evaluation.created_by_id)}</span>
-                </p>
-                {evaluation.description && (
-                  <p className="text-muted-foreground max-w-2xl">{evaluation.description}</p>
-                )}
               </div>
               <PageActions
                 primary={
@@ -243,6 +231,31 @@ export function EvaluationDetailPage() {
                 ]}
               />
             </div>
+
+            <Card>
+              <CardContent className="pt-6">
+                <dl className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Evaluation group">
+                    <Link
+                      to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {group?.title ?? '…'}
+                    </Link>
+                  </Field>
+                  <Field label="Date added">{formatDate(evaluation.created_at)}</Field>
+                  {/* Evaluations carry no deadline of their own; the group's end date is it. */}
+                  {group?.end_date && (
+                    <Field label="Complete by">{formatDate(`${group.end_date}T00:00:00`)}</Field>
+                  )}
+                  {evaluation.description && (
+                    <Field label="Evaluation description" className="sm:col-span-3">
+                      <span className="whitespace-pre-line">{evaluation.description}</span>
+                    </Field>
+                  )}
+                </dl>
+              </CardContent>
+            </Card>
 
             {evaluation.rejection_reason && (
               <div className="border-destructive/40 bg-destructive/10 rounded-md border px-4 py-3 text-sm">
