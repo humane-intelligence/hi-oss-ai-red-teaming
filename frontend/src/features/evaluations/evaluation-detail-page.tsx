@@ -22,9 +22,8 @@ import { EvaluationMetricsPanel } from './metrics-section'
 import { AssignModelDialog } from './assign-model-dialog'
 import { AllowedTagsCard } from './allowed-tags-card'
 import { ScenariosSection } from '@/features/scenarios/scenarios-section'
-import { useEvaluationScenarios } from '@/features/scenarios/queries'
+import { useEvaluationScenarios, useTaskCount } from '@/features/scenarios/queries'
 import { ConversationsSection } from '@/features/conversations/conversations-section'
-import { useConversationGroups } from '@/features/conversations/queries'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { groupAcceptsEvaluations } from '@/features/evaluation-groups/lifecycle'
@@ -80,15 +79,7 @@ export function EvaluationDetailPage() {
   )
   const metrics = useEvaluationMetrics(id ?? '', { enabled: canViewMetrics })
   const scenarios = useEvaluationScenarios(id ?? '')
-  // Same authority the section uses, so the count tile doesn't read 0 for a caller whose
-  // conversation access comes from an in-group role.
-  const conversationGroups = useConversationGroups(id ?? '', {
-    groupPermissions: group?.user_permissions,
-  })
-  const conversationCount = (conversationGroups.data?.items ?? []).reduce(
-    (n, g) => n + (g.conversations?.length ?? 0),
-    0,
-  )
+  const taskCount = useTaskCount((scenarios.data?.items ?? []).map((s) => s.id))
   const approve = useApproveEvaluation(id ?? '')
   const reject = useRejectEvaluation(id ?? '')
   const unassign = useUnassignModel(id ?? '')
@@ -264,11 +255,15 @@ export function EvaluationDetailPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <StatTile label="Models" value={evaluation.models?.length ?? 0} />
-              <StatTile label="Scenarios" value={scenarios.data?.items.length ?? 0} />
-              <StatTile label="Conversations" value={conversationCount} />
-            </div>
+            {/* What the evaluation asks for, for whoever runs it; a red teamer sees their own
+                conversations below instead. Same authority as Exports. */}
+            {canExport && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <StatTile label="Models to test" value={evaluation.models?.length ?? 0} />
+                <StatTile label="Scenarios to test" value={scenarios.data?.total ?? '—'} />
+                <StatTile label="Tasks to complete" value={taskCount ?? '—'} />
+              </div>
+            )}
           </header>
 
           {tabItems.length > 1 && <Tabs tabs={tabItems} value={activeTab} onChange={setTab} />}

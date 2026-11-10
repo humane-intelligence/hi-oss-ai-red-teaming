@@ -718,6 +718,53 @@ describe('EvaluationDetailPage — in-group authority', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Exports' })).toBeInTheDocument())
   })
 
+  // Two scenarios with 2 and 3 tasks, ahead of the empty lists in baseHandlers().
+  const scenario = (sid: string) => ({
+    id: sid,
+    evaluation_id: EVAL_ID,
+    name: sid,
+    description: '',
+    position: 1,
+    required_reviews: 1,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  })
+  const content = [
+    http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+      HttpResponse.json({
+        items: [scenario('s1'), scenario('s2')],
+        total: 2,
+        limit: 100,
+        offset: 0,
+      }),
+    ),
+    http.get('http://localhost/api/v1/scenarios/s1/tasks', () =>
+      HttpResponse.json({ items: [], total: 2, limit: 100, offset: 0 }),
+    ),
+    http.get('http://localhost/api/v1/scenarios/s2/tasks', () =>
+      HttpResponse.json({ items: [], total: 3, limit: 100, offset: 0 }),
+    ),
+  ]
+  const tile = (label: string) => screen.getByText(label).nextElementSibling
+
+  it('shows what the evaluation asks for to whoever holds export authority', async () => {
+    server.use(groupWith(['evaluation_groups:export']), ...content, ...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(() => expect(tile('Tasks to complete')).toHaveTextContent('5'))
+    expect(tile('Scenarios to test')).toHaveTextContent('2')
+    expect(tile('Models to test')).toHaveTextContent(String(baseEvaluation.models?.length ?? 0))
+  })
+
+  it('shows no stat tiles to a member without that authority', async () => {
+    server.use(groupWith(['conversations:create']), ...content, ...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await screen.findAllByRole('link', { name: 'Spring jailbreak' })
+    expect(screen.queryByText('Models to test')).toBeNull()
+    expect(screen.queryByText('Tasks to complete')).toBeNull()
+  })
+
   it('does not offer the Exports tab on in-group evaluation_groups:update alone', async () => {
     // Export authority is deliberately its own permission: editing a group must not confer the
     // bundle of every member's transcripts, flags and reviews.
