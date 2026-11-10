@@ -150,6 +150,24 @@ function completedTasksHandler(convId: string, taskIds: string[] = []) {
   })
 }
 
+const completionUrl = (convId: string) =>
+  `/api/v1/conversations/${convId}/completed-tasks/${TASK_ID}`
+
+// Records the path of every check-off write of one method.
+function writesHandler(method: 'put' | 'delete') {
+  const urls: string[] = []
+  const handler = http[method](
+    `http://localhost/api/v1/conversations/:conversationId/completed-tasks/:taskId`,
+    ({ request }) => {
+      urls.push(new URL(request.url).pathname)
+      return method === 'put'
+        ? HttpResponse.json({ id: 'completion-1' })
+        : new HttpResponse(null, { status: 204 })
+    },
+  )
+  return { urls, handler }
+}
+
 function warmupHandler(assignmentId: string) {
   return http.post(
     `http://localhost/api/v1/evaluations/${EVAL_ID}/models/${assignmentId}/warmup`,
@@ -247,31 +265,19 @@ describe('ConversationGroupPage', () => {
     expect(await screen.findByText('Extract secret')).toBeInTheDocument()
   })
 
-  it('numbers the panes and the rail rows alike when two members share a name', async () => {
-    // Both models masked (absent from the evaluation's model list) → both panes and both
-    // rail rows collapse to "— masked —" without a position.
+  it('numbers the panes when two members share a name', async () => {
+    // Both models masked (absent from the evaluation's model list) → both panes collapse to
+    // "— masked —" without a position.
     server.use(
       http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
         HttpResponse.json({ ...evaluation, models: [] }),
       ),
       ...baseHandlers(),
     )
-    const user = userEvent.setup()
     renderPage()
 
-    // Panes carry the number...
     expect(await screen.findByLabelText('Message — masked — (1)')).toBeInTheDocument()
     expect(screen.getByLabelText('Message — masked — (2)')).toBeInTheDocument()
-
-    // ...and the rail's rows carry the same one for the same conversation, which is what
-    // makes a checkbox traceable to the pane it belongs to.
-    await user.click(await screen.findByRole('button', { name: /Extract secret/ }))
-    expect(
-      screen.getByRole('checkbox', { name: 'Extract secret — — masked — (1)' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('checkbox', { name: 'Extract secret — — masked — (2)' }),
-    ).toBeInTheDocument()
   })
 
   it('rolls the task up across members and derives K from their completions', async () => {
@@ -281,19 +287,72 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     // K comes from the members' own completion reads, not a separate group roll-up call.
-    expect(await screen.findByLabelText('Completed in 1 of 2 conversations')).toHaveTextContent(
-      '1/2',
+    expect(await screen.findByLabelText('Completed for 1 of 2 models')).toHaveTextContent('1/2')
+  })
+
+  it('checks the task off in every member conversation from one box', async () => {
+    const puts = writesHandler('put')
+    server.use(...baseHandlers(), puts.handler)
+    const user = userEvent.setup()
+    renderPage()
+
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBeEnabled())
+    await user.click(box)
+
+    await waitFor(() =>
+      expect(puts.urls.sort()).toEqual([completionUrl(CONV_A), completionUrl(CONV_B)]),
     )
   })
 
-  it('checks the task off in the member conversation whose box was clicked', async () => {
-    let putUrl = ''
+  it('completes only the members still missing the task when the box is mixed', async () => {
+    const puts = writesHandler('put')
+    server.use(completedTasksHandler(CONV_A, [TASK_ID]), ...baseHandlers(), puts.handler)
+    const user = userEvent.setup()
+    renderPage()
+
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBePartiallyChecked())
+    await user.click(box)
+
+    // CONV_A already has it; re-sending would be a no-op that a failure could roll back.
+    await waitFor(() => expect(puts.urls).toEqual([completionUrl(CONV_B)]))
+  })
+
+  it('clears the task in every member conversation on uncheck', async () => {
+    const deletes = writesHandler('delete')
     server.use(
+      completedTasksHandler(CONV_A, [TASK_ID]),
+      completedTasksHandler(CONV_B, [TASK_ID]),
+      ...baseHandlers(),
+      deletes.handler,
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBeChecked())
+    await user.click(box)
+
+    await waitFor(() =>
+      expect(deletes.urls.sort()).toEqual([completionUrl(CONV_A), completionUrl(CONV_B)]),
+    )
+  })
+
+  it('lands a partly failed check-off as mixed', async () => {
+    let doneInA = false
+    server.use(
+      http.get(`http://localhost/api/v1/conversations/${CONV_A}/completed-tasks`, () =>
+        HttpResponse.json(doneInA ? [{ task_id: TASK_ID }] : []),
+      ),
       ...baseHandlers(),
       http.put(
         `http://localhost/api/v1/conversations/:conversationId/completed-tasks/:taskId`,
-        ({ request }) => {
-          putUrl = new URL(request.url).pathname
+        ({ params }) => {
+          if (params.conversationId === CONV_B) {
+            return HttpResponse.json({ detail: 'boom' }, { status: 500 })
+          }
+          doneInA = true
           return HttpResponse.json({ id: 'completion-1' })
         },
       ),
@@ -301,15 +360,13 @@ describe('ConversationGroupPage', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: /Extract secret/ }))
-    const boxes = screen.getAllByRole('checkbox')
-    expect(boxes).toHaveLength(2) // one per member conversation
-    await user.click(boxes[1]!)
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBeEnabled())
+    await user.click(box)
 
-    // The second member's conversation, not the group and not the first member.
-    await waitFor(() =>
-      expect(putUrl).toBe(`/api/v1/conversations/${CONV_B}/completed-tasks/${TASK_ID}`),
-    )
+    // The failed member is rolled back and the other keeps its write: the box says exactly that.
+    await waitFor(() => expect(box).toBePartiallyChecked())
+    await waitFor(() => expect(box).toBeEnabled())
   })
 
   it('keeps the rail read-only for a caller without conversations:update', async () => {
@@ -321,7 +378,7 @@ describe('ConversationGroupPage', () => {
     // just the roll-up — no disclosure, no checkboxes.
     expect(screen.queryByRole('button', { name: /Extract secret/ })).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
-    expect(screen.getByText('Read-only — not your conversations.')).toBeInTheDocument()
+    expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
   })
 
   it('withholds task check-off from a break-glass viewer on someone else’s group', async () => {
@@ -349,10 +406,10 @@ describe('ConversationGroupPage', () => {
     // toggle would 404. Same reasoning as the flag control below.
     expect(screen.queryByRole('button', { name: /Extract secret/ })).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
-    expect(screen.getByText('Read-only — not your conversations.')).toBeInTheDocument()
+    expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
     // Reads *are* lifted by the break-glass, so the roll-up stays real here — this viewer is
     // not the one the counts are hidden from.
-    expect(await screen.findByLabelText('Completed in 1 of 2 conversations')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Completed for 1 of 2 models')).toBeInTheDocument()
   })
 
   it('shows no roll-up to a read_any supervisor, and reads no member completions', async () => {
@@ -382,7 +439,7 @@ describe('ConversationGroupPage', () => {
 
     expect(await screen.findByText('Extract secret')).toBeInTheDocument()
     // "0/2" here would report this red-teamer's work as nothing done.
-    expect(screen.queryByLabelText(/Completed in/)).toBeNull()
+    expect(screen.queryByLabelText(/Completed for/)).toBeNull()
     expect(screen.queryByRole('progressbar')).toBeNull()
     expect(
       screen.getByText("Completion progress isn't shown for conversations you don't own."),
@@ -393,6 +450,7 @@ describe('ConversationGroupPage', () => {
 
   it('still reads the caller’s own member of a mixed group, and keeps its checkbox live', async () => {
     const OTHER_USER = 'user-0002-0000-0000-000000000000'
+    const deletes = writesHandler('delete')
     server.use(
       http.get(
         `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${GROUP_ID}`,
@@ -405,19 +463,23 @@ describe('ConversationGroupPage', () => {
       ),
       completedTasksHandler(CONV_A, [TASK_ID]),
       ...baseHandlers(),
+      deletes.handler,
     )
     renderPage(['conversations:read', 'conversations:update'])
 
     expect(await screen.findByText('Extract secret')).toBeInTheDocument()
     // The group number stays hidden — CONV_B's completions are not the caller's to read.
-    expect(screen.queryByLabelText(/Completed in/)).toBeNull()
-    // But their own row must not be collateral: skipping the read would render it unchecked
-    // against a real completion, with a checkbox whose optimistic patch has no observer.
-    await userEvent.click(screen.getByRole('button', { name: /Extract secret/ }))
+    expect(screen.queryByLabelText(/Completed for/)).toBeNull()
+    // But their own member must not be collateral: skipping the read would render the box
+    // unchecked against a real completion, with an optimistic patch that has no observer.
     const box = screen.getByRole('checkbox')
-    expect(box).toBeChecked()
+    await waitFor(() => expect(box).toBeChecked())
     expect(box).not.toBeDisabled()
     expect(completedTasksCalls).toBeGreaterThan(0)
+
+    // The box covers the caller's member only; CONV_B's owner keeps their own state.
+    await userEvent.click(box)
+    await waitFor(() => expect(deletes.urls).toEqual([completionUrl(CONV_A)]))
   })
 
   it('disables Add model when the scenario is gone', async () => {
