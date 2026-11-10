@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError, fieldErrorsFromProblem } from '@/lib/api/problem'
 import { MAX_TAGS, MAX_TAG_KEY_LEN } from '@/lib/api/limits'
+import { InfoHint } from '@/components/shared/info-hint'
+import { TAGS_HINT } from './tag-hint'
 import { useEvaluationTagKeys } from './queries'
 import { useAddTagKey, useRemoveTagKey, useUpdateEvaluation } from './mutations'
 
@@ -62,7 +64,10 @@ export function AllowedTagsCard({
       <CardHeader>
         {/* Countless until the query settles: "(0)" beside "Loading allowed keys…" reads as a loaded
             empty set, which is a different state and the one an admin would act on. */}
-        <CardTitle>Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}</CardTitle>
+        <CardTitle className="flex items-center gap-1">
+          Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}
+          <InfoHint text={TAGS_HINT} />
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {canManage ? (

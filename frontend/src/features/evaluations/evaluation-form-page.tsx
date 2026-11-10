@@ -32,6 +32,8 @@ import { PlainSelect } from '@/components/ui/plain-select'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { InfoHint } from '@/components/shared/info-hint'
+import { TAGS_HINT } from './tag-hint'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
 
 const schema = z.object({
@@ -398,9 +400,13 @@ export function EvaluationFormPage() {
                 }
               />
               <FieldContent>
-                <FieldLabel htmlFor="tags_enabled" className="font-normal">
-                  Custom tags
-                </FieldLabel>
+                {/* Beside the label, not inside it: a button in a label would toggle the box. */}
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="tags_enabled" className="font-normal">
+                    Custom tags
+                  </FieldLabel>
+                  <InfoHint text={TAGS_HINT} />
+                </div>
                 <FieldDescription>
                   Checking this box allows custom tags to be added to conversations in this
                   evaluation.
