@@ -104,7 +104,8 @@ Two heavy runtime dependencies, treated differently:
     (`<GroupIdentityHeading>`), so the name is not printed twice. The organization appears only when
     the group has one and the lookup can name it.
   - **Pages below the group** (evaluation detail / create / edit, conversation pages, new
-    conversation): pass `path`, and the line reads `Group / Evaluation [/ Conversation]` down to
+    conversation): pass `path`, and the line reads
+    `Group / Evaluation [/ Conversation group] [/ Conversation]` down to
     the current page — no section root and no organization, which is an owner of the group and not
     a level of this hierarchy. The leaf is the page and does not link. There is no second
     breadcrumb in the page body on these pages.
@@ -114,8 +115,9 @@ Two heavy runtime dependencies, treated differently:
   below that the same line renders in the page instead** — the two are complementary, never both on
   screen. The handover is at `lg` rather than `md` because narrower than that the header has no
   width to give it: measured at 768px the organization and group each came out 0px wide. In the
-  header every crumb of a `path` trail may shrink to an ellipsis (`pinFirst={false}`); only a
-  section root keeps its full width. Rendered without the shell (every page test) there is no slot
+  header a section root keeps its full width and the names after it shrink to an ellipsis; a `path`
+  trail has no root (`pinFirst={false}`), so there the leaf is held (up to 40% of the line) and
+  the names before it give way. Rendered without the shell (every page test) there is no slot
   and the line renders in place at every width.
   Everywhere else a single `Section / leaf` breadcrumb is the whole hierarchy.
 - **Loading / empty / error.** `DataTable` covers all three for lists (skeleton / `emptyLabel`

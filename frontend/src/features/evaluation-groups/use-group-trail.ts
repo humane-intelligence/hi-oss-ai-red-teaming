@@ -4,8 +4,8 @@ import { usePermissions } from '@/lib/auth/use-permissions'
 import type { Crumb } from '@/components/shared/breadcrumbs'
 
 // The identity of the evaluation group a page sits inside: the section root, the owning
-// organization when there is one, then the group. Every page in the subtree shows the same line, so
-// the way back to the group never depends on which page you reached it from.
+// organization when there is one, then the group. Pages below the group take only `groupCrumb` and
+// continue it with their own path; either way the group is named from this one resolution.
 export function useGroupTrail(groupId: string): {
   crumbs: Crumb[]
   groupCrumb: Crumb | null

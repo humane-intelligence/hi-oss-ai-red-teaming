@@ -78,8 +78,6 @@ export function EvaluationFormPage() {
   // Editing an evaluation is also a page inside a group — it just learns the group from the
   // evaluation rather than from the route.
   const trailGroupId = isEdit ? (existing.data?.evaluation_group_id ?? '') : groupId
-  // The same resolution the identity line uses, rather than a third fetch of the same group: taking
-  // the title from anywhere else lets an untitled group be named above and dropped below.
   const groupPerms = useObjectPermissions(presetGroup.data?.user_permissions)
   const canCreateHere = !fromGroup || groupPerms.has('evaluations:create')
 

@@ -49,7 +49,7 @@ export function StartConversationDialog({
         }}
       >
         <FormField label="Scenario" htmlFor="start-scenario">
-          <Select value={scenarioId} onValueChange={setScenarioId}>
+          <Select value={scenario?.id ?? ''} onValueChange={setScenarioId}>
             <SelectTrigger id="start-scenario">
               <SelectValue placeholder="Select a scenario…" />
             </SelectTrigger>

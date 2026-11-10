@@ -79,12 +79,13 @@ export function useScenarioTasks(scenarioId: string) {
 }
 
 // The same per-scenario queries the scenario cards run, so counting adds no request of its own.
-// `undefined` until every scenario has answered: a partial sum would read as a real, smaller total.
-export function useTaskCount(scenarioIds: string[]): number | undefined {
+// `undefined` until the scenario list and every scenario have answered: a partial sum, or a zero
+// for a list that has not loaded, would read as a real total.
+export function useTaskCount(scenarioIds: string[] | undefined): number | undefined {
   return useQueries({
-    queries: scenarioIds.map(scenarioTasksQuery),
+    queries: (scenarioIds ?? []).map(scenarioTasksQuery),
     combine: (results) =>
-      results.every((r) => r.data)
+      scenarioIds && results.every((r) => r.data)
         ? results.reduce((n, r) => n + (r.data?.total ?? 0), 0)
         : undefined,
   })

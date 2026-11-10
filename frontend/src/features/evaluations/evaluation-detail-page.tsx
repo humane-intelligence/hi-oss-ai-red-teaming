@@ -81,11 +81,13 @@ export function EvaluationDetailPage() {
   const metrics = useEvaluationMetrics(id ?? '', { enabled: canViewMetrics })
   const scenarios = useEvaluationScenarios(id ?? '')
   const scenarioItems = scenarios.data?.items ?? []
-  const taskCount = useTaskCount(scenarioItems.map((s) => s.id))
+  const taskCount = useTaskCount(scenarios.data?.items.map((s) => s.id))
+  // A reason only for what is known to be missing: a scenario list still loading, or one that
+  // failed to load, is not an evaluation without scenarios.
   const startBlocked =
     (evaluation?.models?.length ?? 0) === 0
       ? 'Assign a model first'
-      : scenarioItems.length === 0
+      : scenarios.data?.items.length === 0
         ? 'Add a scenario first'
         : undefined
   const approve = useApproveEvaluation(id ?? '')
@@ -153,15 +155,11 @@ export function EvaluationDetailPage() {
           <GroupIdentity groupId={groupId} path={[{ label: evaluation.title }]} />
 
           <header className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 space-y-2">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="font-display text-2xl font-semibold tracking-tight">
-                    {evaluation.title}
-                  </h1>
-                  <EvaluationStatusBadge status={evaluation.status} />
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-2xl font-semibold tracking-tight">
+                {evaluation.title}
+              </h1>
+              <EvaluationStatusBadge status={evaluation.status} />
             </div>
 
             <Card>
@@ -170,9 +168,9 @@ export function EvaluationDetailPage() {
                   <Field label="Evaluation group">
                     <Link
                       to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
-                      className="underline-offset-2 hover:underline"
+                      className="underline underline-offset-2"
                     >
-                      {group?.title ?? '…'}
+                      {group ? (group.title ?? 'Untitled draft') : '…'}
                     </Link>
                   </Field>
                   <Field label="Date added">{formatDate(evaluation.created_at)}</Field>
@@ -199,7 +197,7 @@ export function EvaluationDetailPage() {
             {/* What the evaluation asks for, for whoever runs it; a red teamer sees their own
                 conversations below instead. Same authority as Exports. */}
             {canExport && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-3">
                 <StatTile label="Models to test" value={evaluation.models?.length ?? 0} />
                 <StatTile label="Scenarios to test" value={scenarios.data?.total ?? '—'} />
                 <StatTile label="Tasks to complete" value={taskCount ?? '—'} />
@@ -212,7 +210,7 @@ export function EvaluationDetailPage() {
                   {conversationPerms.has('conversations:create') && (
                     <Button
                       size="sm"
-                      disabled={startBlocked !== undefined}
+                      disabled={startBlocked !== undefined || !scenarios.data}
                       title={startBlocked}
                       onClick={() => {
                         // One scenario leaves nothing to choose, so the dialog would be a dead click.

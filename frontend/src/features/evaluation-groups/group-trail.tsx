@@ -23,7 +23,9 @@ export function GroupIdentity({ groupId, path }: { groupId: string; path?: Crumb
   // Same type scale as the trail it stands in for, so the line keeps its height. Hidden above the
   // handover only where the header carries the line — without a slot the page is the only place it
   // can appear, and hiding it there would let the trail pop in instead of holding its row.
-  if (isPending)
+  // A path trail has crumbs of its own to show before the group resolves; replacing them with a
+  // placeholder would blank the line on every deep link.
+  if (isPending && !path)
     return <p className={cn('text-muted-foreground text-sm', slot && 'lg:hidden')}>Loading…</p>
   const inPage = <Breadcrumbs items={crumbs} label="Evaluation group" />
   if (!slot) return inPage

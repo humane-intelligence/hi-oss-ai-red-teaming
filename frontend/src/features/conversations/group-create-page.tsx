@@ -136,6 +136,15 @@ export function GroupCreatePage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      {evaluation.data && (
+        <GroupIdentity
+          groupId={evaluation.data.evaluation_group_id}
+          path={[
+            { label: evaluation.data.title, to: `/evaluations/${evalId}` },
+            { label: 'New conversation' },
+          ]}
+        />
+      )}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -147,16 +156,6 @@ export function GroupCreatePage() {
         </Button>
         <h1 className="text-xl font-semibold">New conversation</h1>
       </div>
-
-      {evaluation.data && (
-        <GroupIdentity
-          groupId={evaluation.data.evaluation_group_id}
-          path={[
-            { label: evaluation.data.title, to: `/evaluations/${evalId}` },
-            { label: 'New conversation' },
-          ]}
-        />
-      )}
 
       {evaluation.isPending && <p className="text-muted-foreground">Loading…</p>}
 

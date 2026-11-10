@@ -131,14 +131,14 @@ describe('EvaluationDetailPage — summary', () => {
       'href',
       `/evaluation-groups/${GROUP_ID}`,
     )
-    const date = (value: string) =>
-      new Date(value).toLocaleDateString(undefined, { dateStyle: 'long' })
+    // Built from calendar parts, not by parsing the same strings the page parses: a date-only
+    // value read as UTC would land on the previous day west of Greenwich.
+    const long = (d: Date) => d.toLocaleDateString(undefined, { dateStyle: 'long' })
     expect(dl.getByText('Date added').nextElementSibling).toHaveTextContent(
-      date(baseEvaluation.created_at),
+      long(new Date(baseEvaluation.created_at)),
     )
-    // The group's end date, read as a calendar day: no shift across the viewer's timezone.
     expect(dl.getByText('Complete by').nextElementSibling).toHaveTextContent(
-      date('2026-12-02T00:00:00'),
+      long(new Date(2026, 11, 2)),
     )
     expect(dl.getByText('Evaluation description').nextElementSibling).toHaveTextContent(
       'A test evaluation',
@@ -751,6 +751,21 @@ describe('EvaluationDetailPage — in-group authority', () => {
     ),
   ]
   const tile = (label: string) => screen.getByText(label).nextElementSibling
+  const withModel: EvaluationResponse = {
+    ...baseEvaluation,
+    models: [
+      {
+        assignment_id: 'assign-0001',
+        name: 'gpt-4o',
+        warmup_enabled: false,
+        advanced_params_disabled: false,
+        web_access: false,
+        input_modalities: ['text'],
+      },
+    ],
+  }
+  const canStart = groupWith(['conversations:read', 'conversations:create'])
+  const startButton = () => screen.findByRole('button', { name: /start a conversation/i })
 
   it('shows what the evaluation asks for to whoever holds export authority', async () => {
     server.use(groupWith(['evaluation_groups:export']), ...content, ...baseHandlers())
@@ -759,6 +774,24 @@ describe('EvaluationDetailPage — in-group authority', () => {
     await waitFor(() => expect(tile('Tasks to complete')).toHaveTextContent('5'))
     expect(tile('Scenarios to test')).toHaveTextContent('2')
     expect(tile('Models to test')).toHaveTextContent(String(baseEvaluation.models?.length ?? 0))
+  })
+
+  it('claims no totals and no missing scenario when the scenario list fails to load', async () => {
+    server.use(
+      groupWith(['evaluation_groups:export', 'conversations:create']),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ title: 'boom', status: 500 }, { status: 500 }),
+      ),
+      ...baseHandlers(withModel),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(() => expect(tile('Models to test')).toHaveTextContent('1'))
+    expect(tile('Scenarios to test')).toHaveTextContent('—')
+    expect(tile('Tasks to complete')).toHaveTextContent('—')
+    const start = await startButton()
+    expect(start).toBeDisabled()
+    expect(start).not.toHaveAttribute('title')
   })
 
   it('shows no stat tiles to a member without that authority', async () => {
@@ -782,27 +815,11 @@ describe('EvaluationDetailPage — in-group authority', () => {
     expect(screen.queryByRole('tab', { name: 'Exports' })).toBeNull()
   })
 
-  const withModel: EvaluationResponse = {
-    ...baseEvaluation,
-    models: [
-      {
-        assignment_id: 'assign-0001',
-        name: 'gpt-4o',
-        warmup_enabled: false,
-        advanced_params_disabled: false,
-        web_access: false,
-        input_modalities: ['text'],
-      },
-    ],
-  }
-  const canStart = groupWith(['conversations:read', 'conversations:create'])
-  const startButton = () => screen.findByRole('button', { name: /start a conversation/i })
-
   it('offers one way to start a conversation, on in-group authority alone', async () => {
     server.use(canStart, ...content, ...baseHandlers(withModel))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    expect(await startButton()).toBeEnabled()
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
     expect(screen.queryByRole('button', { name: /new conversation/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /^start$/i })).toBeNull()
   })
