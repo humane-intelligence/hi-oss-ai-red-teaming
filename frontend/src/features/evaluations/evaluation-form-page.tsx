@@ -134,6 +134,7 @@ export function EvaluationFormPage() {
   // the catalog here adds no request — it is what names the sentinel among the options.
   const licenseCatalog = useLicenses()
   const licenseNoteId = `${useId()}-license-note`
+  const tagsDescriptionId = `${useId()}-tags-description`
 
   // Gate a preselected-group create before rendering the form; the cross-group picker
   // path (no group yet) stays backend-enforced on submit. A failed group load is an
@@ -394,6 +395,7 @@ export function EvaluationFormPage() {
             <Field orientation="horizontal">
               <Checkbox
                 id="tags_enabled"
+                aria-describedby={tagsDescriptionId}
                 checked={tagsEnabled}
                 onCheckedChange={(next) =>
                   setValue('tags_enabled', next === true, { shouldDirty: true })
@@ -407,7 +409,7 @@ export function EvaluationFormPage() {
                   </FieldLabel>
                   <InfoHint text={TAGS_HINT} />
                 </div>
-                <FieldDescription>
+                <FieldDescription id={tagsDescriptionId}>
                   Checking this box allows custom tags to be added to conversations in this
                   evaluation.
                 </FieldDescription>
