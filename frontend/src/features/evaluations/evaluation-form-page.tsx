@@ -399,12 +399,11 @@ export function EvaluationFormPage() {
               />
               <FieldContent>
                 <FieldLabel htmlFor="tags_enabled" className="font-normal">
-                  Allow tags on this evaluation’s conversations
+                  Custom tags
                 </FieldLabel>
                 <FieldDescription>
-                  Off hides every tagging control; tags already saved stay on the record, read-only,
-                  and stop being sent to the model. Which keys are allowed is set later, on the
-                  evaluation’s Allowed tags card.
+                  Checking this box allows custom tags to be added to conversations in this
+                  evaluation.
                 </FieldDescription>
               </FieldContent>
             </Field>
