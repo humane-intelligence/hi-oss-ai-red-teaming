@@ -309,7 +309,7 @@ export function ConversationGroupPage() {
                     placeholder={
                       anyWarming
                         ? 'Waiting for every model to warm up…'
-                        : 'Message all models… (Enter to send, Shift+Enter for newline)'
+                        : 'Type here to message all models in this conversation. Press return to send. Use shift + return for line breaks.'
                     }
                     rows={2}
                     className="min-h-0"
