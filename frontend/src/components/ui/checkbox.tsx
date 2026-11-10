@@ -4,7 +4,7 @@ import { Checkbox as CheckboxPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
-// Diverges from the registry file, which draws nothing for `indeterminate`.
+// Diverges from the registry file, which draws a check on an unfilled box for `indeterminate`.
 function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
   return (
     <CheckboxPrimitive.Root

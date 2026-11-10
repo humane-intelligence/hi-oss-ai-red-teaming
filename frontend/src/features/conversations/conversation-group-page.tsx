@@ -76,7 +76,7 @@ export function ConversationGroupPage() {
   // The roll-up needs *every* member readable — a partial count is exactly the kind of number
   // the rail must not assert.
   const countsReadable = members.every(canReadCompletions)
-  // Per member, not the group roll-up endpoint: the rail checks tasks off per conversation,
+  // Per member, not the group roll-up endpoint: completion is stored per conversation,
   // and these are the same cache entries the conversation page writes — so a toggle there
   // is already reflected here, and the K/N roll-up derives from one source.
   //

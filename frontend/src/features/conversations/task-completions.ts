@@ -35,9 +35,9 @@ export function useCompletedTasks(conversationId: string) {
   return useQuery(completedTasksQueryOptions(conversationId))
 }
 
-// Every member conversation's completed tasks, for the group view's per-conversation
-// rows. One read per member instead of the group roll-up endpoint, so the rail can derive
-// K/N from the same sets that drive the checkboxes.
+// Every member conversation's completed tasks, for the group view's task rail. One read per
+// member instead of the group roll-up endpoint, so the rail can derive K/N from the same sets
+// that drive the checkboxes.
 //
 // Why that trade is sound: the fan-out is bounded by `max_conversation_group_size` (4) by
 // config, not by hope, and these reads are a sibling of the group response rather than a
