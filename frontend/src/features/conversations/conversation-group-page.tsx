@@ -1,9 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
-import { useGroupTrail } from '@/features/evaluation-groups/use-group-trail'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { FormField } from '@/components/shared/form-field'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -174,7 +172,6 @@ export function ConversationGroupPage() {
   }
 
   const evalTitle = evaluation.data?.title
-  const { groupTitle } = useGroupTrail(evaluation.data?.evaluation_group_id ?? '')
 
   if (authority.pending) return <DetailSkeleton />
   if (authority.failed)
@@ -199,17 +196,9 @@ export function ConversationGroupPage() {
 
       {group && evaluation.data && (
         <>
-          <GroupIdentity groupId={evaluation.data.evaluation_group_id} />
-          <Breadcrumbs
-            items={[
-              ...(groupTitle
-                ? [
-                    {
-                      label: groupTitle,
-                      to: `/evaluation-groups/${evaluation.data.evaluation_group_id}`,
-                    },
-                  ]
-                : []),
+          <GroupIdentity
+            groupId={evaluation.data.evaluation_group_id}
+            path={[
               { label: evalTitle ?? 'Evaluation', to: `/evaluations/${evalId}` },
               { label: group.name },
             ]}

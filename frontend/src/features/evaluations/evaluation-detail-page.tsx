@@ -149,9 +149,7 @@ export function EvaluationDetailPage() {
 
       {evaluation && (
         <>
-          {/* Identity only: a path trail here would carry the group, which the line above ends
-              with, and the evaluation, which is the heading below. */}
-          <GroupIdentity groupId={groupId} />
+          <GroupIdentity groupId={groupId} path={[{ label: evaluation.title }]} />
 
           <header className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-4">

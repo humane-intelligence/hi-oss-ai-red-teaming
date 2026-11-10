@@ -5,6 +5,7 @@ import { useEvaluation } from '@/features/evaluations/queries'
 import { useEvaluationScenarios } from '@/features/scenarios/queries'
 import { useGroupAuthority } from './use-group-authority'
 import { AuthorityError } from './authority-error'
+import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { useCreateConversationGroup } from './mutations'
@@ -146,6 +147,16 @@ export function GroupCreatePage() {
         </Button>
         <h1 className="text-xl font-semibold">New conversation</h1>
       </div>
+
+      {evaluation.data && (
+        <GroupIdentity
+          groupId={evaluation.data.evaluation_group_id}
+          path={[
+            { label: evaluation.data.title, to: `/evaluations/${evalId}` },
+            { label: 'New conversation' },
+          ]}
+        />
+      )}
 
       {evaluation.isPending && <p className="text-muted-foreground">Loading…</p>}
 

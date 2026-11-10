@@ -84,6 +84,25 @@ describe('GroupIdentity', () => {
     )
   })
 
+  it('with a path reads group, then the path, and drops the section root and the organization', async () => {
+    server.use(groupHandler(ORG_ID), orgHandler(ORG_NAME))
+    renderTrail(
+      <GroupIdentity
+        groupId={GROUP_ID}
+        path={[{ label: 'An evaluation', to: '/evaluations/e1' }, { label: 'A conversation' }]}
+      />,
+    )
+
+    const nav = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    await within(nav).findByRole('link', { name: GROUP_TITLE })
+    expect(
+      within(nav)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([GROUP_TITLE, 'An evaluation', 'A conversation'])
+    expect(within(nav).getByText('A conversation')).toHaveAttribute('aria-current', 'page')
+  })
+
   it('fills the header slot and keeps a page copy for the widths the bar cannot carry', async () => {
     server.use(groupHandler(ORG_ID), orgHandler(ORG_NAME))
     const slot = document.createElement('div')

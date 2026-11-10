@@ -1480,9 +1480,11 @@ describe('ConversationDetailPage — the way back to the evaluation group', () =
       await within(identity).findByRole('link', { name: 'Spring Jailbreak Sprint' }),
     ).toHaveAttribute('href', '/evaluation-groups/grp-0000-0000-0000-000000000000')
 
-    // The path opens with the group on every page in the subtree, not only on the evaluation ones.
-    const path = screen.getByRole('navigation', { name: 'Breadcrumb' })
-    expect(within(path).getByRole('link', { name: 'Spring Jailbreak Sprint' })).toBeInTheDocument()
+    // One line, group first, down to this conversation — no second trail repeating the group.
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
+    expect(within(identity).getAllByRole('listitem').at(-1)).toHaveTextContent(
+      conversationTombstonedScenario.title ?? 'Single conversation',
+    )
   })
 })
 

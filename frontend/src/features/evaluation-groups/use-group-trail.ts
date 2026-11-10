@@ -8,6 +8,7 @@ import type { Crumb } from '@/components/shared/breadcrumbs'
 // the way back to the group never depends on which page you reached it from.
 export function useGroupTrail(groupId: string): {
   crumbs: Crumb[]
+  groupCrumb: Crumb | null
   org: { name: string; to: string } | null
   groupTitle: string | undefined
   isPending: boolean
@@ -29,12 +30,15 @@ export function useGroupTrail(groupId: string): {
   // Named or absent, never an id: the organization is a crumb only once it can be labelled.
   const org = orgId && orgName ? { name: orgName, to: `/organizations/${orgId}` } : null
 
+  const groupCrumb = groupTitle ? { label: groupTitle, to: `/evaluation-groups/${groupId}` } : null
+
   return {
     crumbs: [
       { label: 'Evaluation Groups', to: '/evaluation-groups' },
       ...(org ? [{ label: org.name, to: org.to }] : []),
-      ...(groupTitle ? [{ label: groupTitle, to: `/evaluation-groups/${groupId}` }] : []),
+      ...(groupCrumb ? [groupCrumb] : []),
     ],
+    groupCrumb,
     org,
     groupTitle,
     // Only the group's own fetch gates the trail. The organization is a decoration on it, so the

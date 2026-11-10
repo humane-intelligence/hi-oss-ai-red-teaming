@@ -111,20 +111,19 @@ describe('EvaluationDetailPage — group link', () => {
   })
 })
 
-describe('EvaluationDetailPage — the two navigations', () => {
-  it('says where the page sits once, and says it in the identity line', async () => {
+describe('EvaluationDetailPage — the trail', () => {
+  it('reads group / evaluation, with no section root and no second trail', async () => {
     server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak'))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
     const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
-    expect(within(identity).getByRole('link', { name: 'Evaluation Groups' })).toBeInTheDocument()
     expect(
       await within(identity).findByRole('link', { name: /spring jailbreak/i }),
     ).toBeInTheDocument()
+    // The page itself is the leaf, and a leaf does not link.
+    expect(within(identity).getByText('Test evaluation')).toHaveAttribute('aria-current', 'page')
+    expect(within(identity).queryByRole('link', { name: 'Evaluation Groups' })).toBeNull()
 
-    // No second trail: it could only carry the group this line ends with and the evaluation the
-    // heading below states, so it printed both twice. (The meta line under the heading still links
-    // the group beside its author — pre-existing, and the only remaining repeat.)
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: 'Test evaluation' })).toBeInTheDocument()
     expect(within(identity).getAllByRole('link', { name: /spring jailbreak/i })).toHaveLength(1)
