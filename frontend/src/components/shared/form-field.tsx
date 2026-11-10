@@ -41,6 +41,7 @@ export function FormField({
   description,
   descriptionId,
   errorId,
+  labelId,
   orientation,
   children,
 }: {
@@ -56,6 +57,9 @@ export function FormField({
   descriptionId?: string
   // Same, for the error: a caller whose child swallows cloned props needs a stable id to point at.
   errorId?: string
+  // For a control the label can't point at with `htmlFor` (a group), so it can point back with
+  // `aria-labelledby`.
+  labelId?: string
   orientation?: 'vertical' | 'horizontal'
   children: ReactNode
 }) {
@@ -72,7 +76,9 @@ export function FormField({
       {/* The hint sits beside the label, not inside it: nesting changes the label's text and
           `getByLabelText` no longer matches the field. */}
       <div className="flex items-center gap-1.5">
-        <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+        <FieldLabel id={labelId} htmlFor={htmlFor}>
+          {label}
+        </FieldLabel>
         {hint && <InfoHint text={hint} />}
       </div>
       {wire(children, describedBy, Boolean(error))}
