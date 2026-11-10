@@ -471,6 +471,30 @@ describe('ConversationGroupPage', () => {
     expect(completedTasksCalls).toBe(0)
   })
 
+  it('checks the task off only in the caller’s own member of a mixed group', async () => {
+    const OTHER_USER = 'user-0002-0000-0000-000000000000'
+    const puts = writesHandler('put')
+    server.use(
+      http.get(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${GROUP_ID}`,
+        () =>
+          HttpResponse.json(
+            group([conv(CONV_A, MODEL_A), { ...conv(CONV_B, MODEL_B), user_id: OTHER_USER }]),
+          ),
+      ),
+      ...baseHandlers(),
+      puts.handler,
+    )
+    renderPage(['conversations:read', 'conversations:update'])
+
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBeEnabled())
+    await userEvent.click(box)
+
+    // CONV_B also lacks the task, so only ownership keeps it out — a write there would 404.
+    await waitFor(() => expect(puts.urls).toEqual([completionUrl(CONV_A)]))
+  })
+
   it('still reads the caller’s own member of a mixed group, and keeps its checkbox live', async () => {
     const OTHER_USER = 'user-0002-0000-0000-000000000000'
     const deletes = writesHandler('delete')
