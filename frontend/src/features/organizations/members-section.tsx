@@ -24,7 +24,7 @@ function AddMemberDialog({
 }) {
   const [search, setSearch] = useState('')
   const users = useUsers(
-    { limit: 50, offset: 0, search: search.trim() || undefined },
+    { limit: 50, offset: 0, search: search.trim() || undefined, order_by: 'email' },
     { enabled: open },
   )
   const add = useAddOrganizationMember(organizationId)

@@ -234,13 +234,13 @@ describe('MembersSection — add flow', () => {
     expect(body.role_ids).toContain(ROLE_ID)
   })
 
-  it('sends the typed term as the server-side search', async () => {
-    const searches: (string | null)[] = []
+  it('sends the typed term as the server-side search, ordered by email', async () => {
+    const queries: URLSearchParams[] = []
     server.use(
       http.get('http://localhost/api/v1/auth/users', ({ request }) => {
-        const search = new URL(request.url).searchParams.get('search')
-        searches.push(search)
-        const items = search === 'car' ? [user3] : []
+        const query = new URL(request.url).searchParams
+        queries.push(query)
+        const items = query.get('search') === 'car' ? [user3] : []
         return HttpResponse.json({ items, total: items.length, limit: 50, offset: 0 })
       }),
       ...baseHandlers(),
@@ -259,7 +259,9 @@ describe('MembersSection — add flow', () => {
     expect(
       await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
     ).toBeInTheDocument()
-    expect(searches).toContain('car')
+    const last = queries.at(-1)
+    expect(last?.get('search')).toBe('car')
+    expect(last?.get('order_by')).toBe('email')
   })
 
   it('does not offer users who are already members', async () => {
