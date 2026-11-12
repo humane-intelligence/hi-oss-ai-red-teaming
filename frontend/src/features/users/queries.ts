@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api/client'
 import { unwrap } from '@/lib/api/fetcher'
 import { usePermissions } from '@/lib/auth/use-permissions'
@@ -67,6 +67,36 @@ export function useUsers(
           },
         }),
       ),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useInfiniteUsers(
+  params: { limit: number; search?: string; order_by?: UserOrderBy },
+  options?: { enabled?: boolean },
+) {
+  return useInfiniteQuery({
+    queryKey: ['users', 'infinite', params],
+    enabled: options?.enabled ?? true,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await apiClient.GET('/api/v1/auth/users', {
+          params: {
+            query: {
+              limit: params.limit,
+              offset: pageParam,
+              ...(params.search !== undefined && { search: params.search }),
+              order_by: params.order_by,
+            },
+          },
+        }),
+      ),
+    getNextPageParam: (last) => {
+      const next = last.offset + last.items.length
+      // An empty page ends the list too: a total that shrank mid-scroll can't re-request one offset forever.
+      return last.items.length > 0 && next < last.total ? next : undefined
+    },
     placeholderData: keepPreviousData,
   })
 }

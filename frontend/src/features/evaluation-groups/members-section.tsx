@@ -4,7 +4,7 @@ import { useGroupMembers, useGroupAnnotators } from './queries'
 import { useAddGroupMember, useRemoveGroupMember, useUpdateGroupMember } from './mutations'
 import { BulkInviteDialog } from './bulk-invite-dialog'
 import { RolesPicker } from '@/features/users/roles-picker'
-import { useUsers } from '@/features/users/queries'
+import { useInfiniteUsers } from '@/features/users/queries'
 import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SearchSelect } from '@/components/shared/search-select'
@@ -26,8 +26,8 @@ function AddMemberDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const [search, setSearch] = useState('')
-  const users = useUsers(
-    { limit: 50, offset: 0, search: search.trim() || undefined, order_by: 'email' },
+  const users = useInfiniteUsers(
+    { limit: 50, search: search.trim() || undefined, order_by: 'email' },
     { enabled: open },
   )
   const add = useAddGroupMember(groupId)
@@ -38,8 +38,15 @@ function AddMemberDialog({
 
   const canSubmit = userId !== '' && roleIds.length > 0 && !add.isPending
 
-  const taken = new Set(currentMemberIds)
-  const candidates = (users.data?.items ?? []).filter((u) => !taken.has(u.id))
+  const members = new Set(currentMemberIds)
+  const options = (users.data?.pages ?? [])
+    .flatMap((page) => page.items)
+    .map((u) => ({
+      value: u.id,
+      label: [fullName(u), u.email].filter(Boolean).join(' · '),
+      disabled: members.has(u.id),
+      hint: members.has(u.id) ? 'Already a member' : undefined,
+    }))
 
   function reset() {
     setSearch('')
@@ -60,11 +67,12 @@ function AddMemberDialog({
           onSearchChange={setSearch}
           isPending={users.isLoading}
           isError={users.isError}
-          emptyLabel="No matching users who aren't already members."
-          options={candidates.map((u) => ({
-            value: u.id,
-            label: [fullName(u), u.email].filter(Boolean).join(' · '),
-          }))}
+          emptyLabel="No matching users."
+          options={options}
+          // Don't cancel a fetch in flight: a new term's first page, or the page already coming.
+          onLoadMore={() => void users.fetchNextPage({ cancelRefetch: false })}
+          hasMore={users.hasNextPage}
+          isLoadingMore={users.isFetchingNextPage}
         />
         <div className="space-y-1.5">
           <Label>Roles</Label>

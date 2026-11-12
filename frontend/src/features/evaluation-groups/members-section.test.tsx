@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -53,6 +53,23 @@ const user3 = {
   email: 'carol@example.com',
   first_name: 'Carol',
   last_name: 'Danvers',
+}
+
+const user4 = {
+  ...user1,
+  id: 'usr-0004-0000-0000-000000000000',
+  email: 'dave@example.com',
+  first_name: 'Dave',
+  last_name: 'Bowman',
+}
+
+// jsdom has no layout: give the listbox the geometry of one scrolled to its end.
+function scrollListToEnd() {
+  const list = screen.getByRole('listbox')
+  Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true })
+  Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true })
+  Object.defineProperty(list, 'scrollTop', { value: 800, configurable: true })
+  fireEvent.scroll(list)
 }
 
 const role1 = {
@@ -264,7 +281,7 @@ describe('MembersSection — add flow', () => {
     expect(last?.get('order_by')).toBe('email')
   })
 
-  it('does not offer users who are already members', async () => {
+  it('shows existing members as disabled options marked "Already a member"', async () => {
     server.use(
       http.get('http://localhost/api/v1/auth/users', () =>
         HttpResponse.json({ items: [user1, user3], total: 2, limit: 50, offset: 0 }),
@@ -280,8 +297,47 @@ describe('MembersSection — add flow', () => {
 
     expect(
       await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    ).not.toHaveAttribute('aria-disabled')
+    const ada = screen.getByRole('option', {
+      name: 'Ada Lovelace · ada@example.com Already a member',
+    })
+    expect(ada).toHaveAttribute('aria-disabled', 'true')
+    await user.click(ada)
+    expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' })).toHaveValue(
+      '',
+    )
+  })
+
+  it('loads the next page when the list is scrolled to the end, and stops at the total', async () => {
+    const offsets: (string | null)[] = []
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset')
+        offsets.push(offset)
+        const items = offset === '0' ? [user3] : [user4]
+        return HttpResponse.json({ items, total: 2, limit: 50, offset: Number(offset) })
+      }),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }))
+    await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' })
+
+    scrollListToEnd()
+    expect(
+      await screen.findByRole('option', { name: 'Dave Bowman · dave@example.com' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /ada@example\.com/ })).toBeNull()
+    expect(
+      screen.getByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    ).toBeInTheDocument()
+
+    scrollListToEnd()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(offsets).toEqual(['0', '1'])
   })
 
   it('labels a user without a name by email alone', async () => {
