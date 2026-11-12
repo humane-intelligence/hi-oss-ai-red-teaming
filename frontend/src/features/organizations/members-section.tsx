@@ -3,30 +3,13 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useOrganizationMembers } from './queries'
 import { useAddOrganizationMember, useRemoveOrganizationMember } from './mutations'
 import { useUsers } from '@/features/users/queries'
+import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SearchSelect } from '@/components/shared/search-select'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { UserResponse } from '@/lib/api/types'
-
-function displayName(user: {
-  first_name?: string | null
-  last_name?: string | null
-  email: string
-}) {
-  const name = [user.first_name, user.last_name].filter(Boolean).join(' ')
-  return name || user.email
-}
-
-function optionLabel(user: {
-  first_name?: string | null
-  last_name?: string | null
-  email: string
-}) {
-  const name = displayName(user)
-  return name === user.email ? name : `${name} · ${user.email}`
-}
 
 function AddMemberDialog({
   organizationId,
@@ -74,7 +57,10 @@ function AddMemberDialog({
           isPending={users.isLoading}
           isError={users.isError}
           emptyLabel="No matching users who aren't already members."
-          options={candidates.map((u) => ({ value: u.id, label: optionLabel(u) }))}
+          options={candidates.map((u) => ({
+            value: u.id,
+            label: [fullName(u), u.email].filter(Boolean).join(' · '),
+          }))}
         />
         <p className="text-muted-foreground text-xs">
           A user belongs to one organization — assigning them here moves them out of any
@@ -130,9 +116,7 @@ export function MembersSection({ organizationId }: { organizationId: string }) {
           <div key={m.id} className="bg-card flex items-center gap-3 rounded-md border px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="font-medium">{displayName(m)}</div>
-              {displayName(m) !== m.email && (
-                <div className="text-muted-foreground text-sm">{m.email}</div>
-              )}
+              {fullName(m) && <div className="text-muted-foreground text-sm">{m.email}</div>}
             </div>
             {canManageMembers && (
               <Button

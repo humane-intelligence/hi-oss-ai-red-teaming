@@ -5,6 +5,7 @@ import { useAddGroupMember, useRemoveGroupMember, useUpdateGroupMember } from '.
 import { BulkInviteDialog } from './bulk-invite-dialog'
 import { RolesPicker } from '@/features/users/roles-picker'
 import { useUsers } from '@/features/users/queries'
+import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SearchSelect } from '@/components/shared/search-select'
 import { Modal } from '@/components/ui/modal'
@@ -12,24 +13,6 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useObjectPermissions, usePermissions } from '@/lib/auth/use-permissions'
 import type { EvaluationGroupAccessLevel, ObjectMemberResponse } from '@/lib/api/types'
-
-function displayName(user: {
-  first_name?: string | null
-  last_name?: string | null
-  email: string
-}) {
-  const name = [user.first_name, user.last_name].filter(Boolean).join(' ')
-  return name || user.email
-}
-
-function optionLabel(user: {
-  first_name?: string | null
-  last_name?: string | null
-  email: string
-}) {
-  const name = displayName(user)
-  return name === user.email ? name : `${name} · ${user.email}`
-}
 
 function AddMemberDialog({
   groupId,
@@ -78,7 +61,10 @@ function AddMemberDialog({
           isPending={users.isLoading}
           isError={users.isError}
           emptyLabel="No matching users who aren't already members."
-          options={candidates.map((u) => ({ value: u.id, label: optionLabel(u) }))}
+          options={candidates.map((u) => ({
+            value: u.id,
+            label: [fullName(u), u.email].filter(Boolean).join(' · '),
+          }))}
         />
         <div className="space-y-1.5">
           <Label>Roles</Label>
@@ -219,7 +205,7 @@ export function MembersSection({
           >
             <div className="min-w-0 flex-1">
               <div className="font-medium">{displayName(m.user)}</div>
-              {displayName(m.user) !== m.user.email && (
+              {fullName(m.user) && (
                 <div className="text-muted-foreground text-sm">{m.user.email}</div>
               )}
               <div className="text-muted-foreground text-sm">
