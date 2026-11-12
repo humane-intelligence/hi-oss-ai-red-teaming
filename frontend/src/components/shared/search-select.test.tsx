@@ -146,6 +146,12 @@ describe('SearchSelect (typeahead combobox)', () => {
     expect(onChange).toHaveBeenCalledWith('')
   })
 
+  it('editing the text after a pick clears the selection', () => {
+    const { onChange } = setup({ value: 'u1' })
+    fireEvent.change(screen.getByLabelText('Red-teamer'), { target: { value: 'alice@ex.co' } })
+    expect(onChange).toHaveBeenCalledWith('')
+  })
+
   it('shows loading / error / empty states while open', () => {
     const { rerender } = render(
       <SearchSelect

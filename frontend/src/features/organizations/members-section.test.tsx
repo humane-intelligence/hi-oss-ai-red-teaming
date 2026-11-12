@@ -137,6 +137,31 @@ describe('Organization MembersSection — add flow', () => {
     await waitFor(() => expect(captured).toEqual({ user_id: USER_ID_3 }))
   })
 
+  it('disables Add once the picked user is edited away', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', () =>
+        HttpResponse.json({ items: [user3], total: 1, limit: 50, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(MANAGER)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    const dialog = screen.getByRole('dialog')
+    const combobox = within(dialog).getByRole('combobox', { name: 'User' })
+
+    await user.click(combobox)
+    await user.click(
+      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    )
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeEnabled()
+
+    await user.type(combobox, 'x')
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled()
+  })
+
   it('clears the typed term when the dialog is reopened', async () => {
     server.use(...baseHandlers())
 

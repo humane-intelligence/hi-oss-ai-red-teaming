@@ -7,12 +7,12 @@ import { cn } from '@/lib/utils'
 type Option = { value: string; label: string }
 
 // Typeahead combobox: type and the list auto-opens + live-filters (debounced → server);
-// click or ↑/↓+Enter to pick, Esc / outside-click to close. Shared by the export pickers.
+// click or ↑/↓+Enter to pick, Esc / outside-click to close. Shared by the export and member pickers.
 // The listbox is positioned `fixed` (coords from the input's rect) so it escapes a dialog's
 // inner `overflow-y-auto` clip while staying a descendant of the <dialog> top layer — a portal
 // to document.body would render *under* a showModal() dialog instead.
 // Contract note: `value` drives only `aria-selected` — the component does not render a label for a
-// pre-seeded `value`. Both current call sites start empty; a pre-seeded reuse (edit form / deep
+// pre-seeded `value`. Every current call site starts empty; a pre-seeded reuse (edit form / deep
 // link) needs a value→label resolution added first.
 export function SearchSelect({
   label,
@@ -118,7 +118,7 @@ export function SearchSelect({
             setTerm(event.target.value)
             setOpen(true)
             setActive(-1)
-            if (event.target.value === '' && value) onChange('') // clearing the box clears the filter
+            if (value) onChange('') // any edit drops the pick, so the box never shows one user while another is selected
           }}
           onKeyDown={onKeyDown}
         />

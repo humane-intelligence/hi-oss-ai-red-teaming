@@ -304,6 +304,36 @@ describe('MembersSection — add flow', () => {
     expect(await screen.findByRole('option', { name: 'carol@example.com' })).toBeInTheDocument()
   })
 
+  it('disables Add once the picked user is edited away', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', () =>
+        HttpResponse.json({ items: [user3], total: 1, limit: 50, offset: 0 }),
+      ),
+      http.get('http://localhost/api/v1/roles', () =>
+        HttpResponse.json({ items: [role1], total: 1, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    const dialog = screen.getByRole('dialog')
+    const combobox = within(dialog).getByRole('combobox', { name: 'User' })
+
+    await user.click(combobox)
+    await user.click(
+      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    )
+    await waitFor(() => expect(within(dialog).getByLabelText('Red Teamer')).toBeInTheDocument())
+    await user.click(within(dialog).getByLabelText('Red Teamer'))
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeEnabled()
+
+    await user.type(combobox, 'x')
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled()
+  })
+
   it('clears the typed term when the dialog is reopened', async () => {
     server.use(...baseHandlers())
 
