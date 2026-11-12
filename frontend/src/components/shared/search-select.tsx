@@ -123,7 +123,9 @@ export function SearchSelect({
         ? 'Could not load results.'
         : options.length === 0
           ? emptyLabel
-          : ''
+          : isLoadingMore
+            ? 'Loading more…'
+            : ''
 
   return (
     <FormField label={label} htmlFor={htmlFor} error={error}>

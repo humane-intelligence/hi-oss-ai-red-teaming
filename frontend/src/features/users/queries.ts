@@ -40,7 +40,6 @@ export function useUsers(
     offset: number
     status?: UserStatus
     email?: string
-    search?: string
     role_id?: string
     order_by?: UserOrderBy
     deleted?: boolean
@@ -59,7 +58,6 @@ export function useUsers(
               offset: params.offset,
               ...(params.status !== undefined && { status: params.status }),
               ...(params.email !== undefined && { email: params.email }),
-              ...(params.search !== undefined && { search: params.search }),
               ...(params.role_id !== undefined && { role_id: params.role_id }),
               order_by: params.order_by,
               deleted: params.deleted,

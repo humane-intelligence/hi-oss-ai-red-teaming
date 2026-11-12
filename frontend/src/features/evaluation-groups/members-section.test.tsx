@@ -362,6 +362,35 @@ describe('MembersSection — add flow', () => {
     expect(await screen.findByRole('option', { name: 'carol@example.com' })).toBeInTheDocument()
   })
 
+  it('keeps the loaded users listed when the next page fails to load', async () => {
+    const offsets: (string | null)[] = []
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset')
+        offsets.push(offset)
+        if (offset !== '0') return HttpResponse.json({ title: 'Boom' }, { status: 500 })
+        return HttpResponse.json({ items: [user3], total: 2, limit: 50, offset: 0 })
+      }),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }))
+    await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' })
+
+    scrollListToEnd()
+    await waitFor(() => expect(offsets).toContain('1'))
+    await waitFor(() => expect(screen.queryByText('Loading more…')).toBeNull())
+
+    expect(
+      screen.getByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Could not load results.')).toBeNull()
+  })
+
   it('disables Add once the picked user is edited away', async () => {
     server.use(
       http.get('http://localhost/api/v1/auth/users', () =>

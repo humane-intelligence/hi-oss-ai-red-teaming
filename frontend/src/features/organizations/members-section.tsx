@@ -62,10 +62,11 @@ function AddMemberDialog({
           onChange={setUserId}
           onSearchChange={setSearch}
           isPending={users.isLoading}
-          isError={users.isError}
+          // A failed next page keeps the loaded ones listed; scrolling to the end retries it.
+          isError={users.isError && !users.isFetchNextPageError}
           emptyLabel="No matching users."
           options={options}
-          // Don't cancel a fetch in flight: a new term's first page, or the page already coming.
+          // Don't cancel a background refetch of the pages already loaded.
           onLoadMore={() => void users.fetchNextPage({ cancelRefetch: false })}
           hasMore={users.hasNextPage}
           isLoadingMore={users.isFetchingNextPage}

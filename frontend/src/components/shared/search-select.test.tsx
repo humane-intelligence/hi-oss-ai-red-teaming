@@ -259,6 +259,7 @@ describe('SearchSelect (typeahead combobox)', () => {
       scrollList(800)
       expect(onLoadMore).not.toHaveBeenCalled()
       expect(within(screen.getByRole('listbox')).getByText('Loading more…')).toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Loading more…')
     })
 
     it('scrolls back to the top when the term changes', () => {
