@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
+import { server } from '@/test/msw/server'
+import { authWrapper } from '@/lib/auth/auth.testutils'
+import { MembersSection } from './members-section'
+
+const ORG_ID = 'org-0001-0000-0000-000000000000'
+const USER_ID = 'usr-0001-0000-0000-000000000000'
+const USER_ID_2 = 'usr-0002-0000-0000-000000000000'
+const USER_ID_3 = 'usr-0003-0000-0000-000000000000'
+
+const user1 = {
+  id: USER_ID,
+  email: 'ada@example.com',
+  first_name: 'Ada',
+  last_name: 'Lovelace',
+  status: 'active',
+  provider: 'local',
+  email_verified: true,
+  roles: [],
+  permissions: [],
+}
+
+const nameless = {
+  ...user1,
+  id: USER_ID_2,
+  email: 'bob@example.com',
+  first_name: null,
+  last_name: null,
+}
+
+const user3 = {
+  ...user1,
+  id: USER_ID_3,
+  email: 'carol@example.com',
+  first_name: 'Carol',
+  last_name: 'Danvers',
+}
+
+const MEMBERS_URL = `http://localhost/api/v1/organizations/${ORG_ID}/members`
+
+function baseHandlers() {
+  return [
+    http.get(MEMBERS_URL, () =>
+      HttpResponse.json({ items: [user1, nameless], total: 2, limit: 100, offset: 0 }),
+    ),
+    http.get('http://localhost/api/v1/auth/users', () =>
+      HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0 }),
+    ),
+  ]
+}
+
+function renderSection(globalPermissions: string[]) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const Wrapper = authWrapper(globalPermissions)
+  render(
+    <Wrapper>
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <MembersSection organizationId={ORG_ID} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Wrapper>,
+  )
+}
+
+const MANAGER = ['organizations:read', 'organizations:manage_members', 'users:read']
+
+describe('Organization MembersSection — renders', () => {
+  it('shows the email under the name, and a nameless member once', async () => {
+    server.use(...baseHandlers())
+    renderSection(['organizations:read'])
+
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    expect(screen.getByText('ada@example.com')).toBeInTheDocument()
+    expect(screen.getAllByText('bob@example.com')).toHaveLength(1)
+  })
+})
+
+describe('Organization MembersSection — RBAC gates', () => {
+  it('without users:read — no Add member button', async () => {
+    server.use(...baseHandlers())
+    renderSection(['organizations:read', 'organizations:manage_members'])
+
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /add member/i })).toBeNull()
+  })
+
+  it('with manage_members + users:read — Add member button present', async () => {
+    server.use(...baseHandlers())
+    renderSection(MANAGER)
+
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
+  })
+})
+
+describe('Organization MembersSection — add flow', () => {
+  it('searches on the server, hides members, and submits POST with user_id', async () => {
+    let captured: unknown = null
+    const searches: (string | null)[] = []
+
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', ({ request }) => {
+        const search = new URL(request.url).searchParams.get('search')
+        searches.push(search)
+        const items = search === 'a' ? [user1, user3] : []
+        return HttpResponse.json({ items, total: items.length, limit: 50, offset: 0 })
+      }),
+      ...baseHandlers(),
+      http.post(MEMBERS_URL, async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json(user3, { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderSection(MANAGER)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByRole('combobox', { name: 'User' }), 'a')
+
+    await user.click(
+      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    )
+    expect(searches).toContain('a')
+    expect(screen.queryByRole('option', { name: /ada@example\.com/ })).toBeNull()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => expect(captured).toEqual({ user_id: USER_ID_3 }))
+  })
+
+  it('clears the typed term when the dialog is reopened', async () => {
+    server.use(...baseHandlers())
+
+    const user = userEvent.setup()
+    renderSection(MANAGER)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.type(
+      within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }),
+      'car',
+    )
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' })).toHaveValue(
+      '',
+    )
+  })
+})

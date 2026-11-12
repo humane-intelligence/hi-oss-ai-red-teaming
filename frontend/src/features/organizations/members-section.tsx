@@ -4,17 +4,9 @@ import { useOrganizationMembers } from './queries'
 import { useAddOrganizationMember, useRemoveOrganizationMember } from './mutations'
 import { useUsers } from '@/features/users/queries'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { SearchSelect } from '@/components/shared/search-select'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { UserResponse } from '@/lib/api/types'
 
@@ -25,6 +17,15 @@ function displayName(user: {
 }) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ')
   return name || user.email
+}
+
+function optionLabel(user: {
+  first_name?: string | null
+  last_name?: string | null
+  email: string
+}) {
+  const name = displayName(user)
+  return name === user.email ? name : `${name} · ${user.email}`
 }
 
 function AddMemberDialog({
@@ -38,9 +39,15 @@ function AddMemberDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const users = useUsers({ limit: 100, offset: 0 })
+  const [search, setSearch] = useState('')
+  const users = useUsers(
+    { limit: 50, offset: 0, search: search.trim() || undefined },
+    { enabled: open },
+  )
   const add = useAddOrganizationMember(organizationId)
   const [userId, setUserId] = useState('')
+  // The modal stays mounted while closed; a fresh key drops the picker's typed term on reopen.
+  const [pickerKey, setPickerKey] = useState(0)
 
   const canSubmit = userId !== '' && !add.isPending
 
@@ -48,26 +55,27 @@ function AddMemberDialog({
   const taken = new Set(currentMemberIds)
   const candidates = (users.data?.items ?? []).filter((u) => !taken.has(u.id))
 
+  function reset() {
+    setSearch('')
+    setUserId('')
+    setPickerKey((k) => k + 1)
+  }
+
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={() => setUserId('')}>
+    <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={reset}>
       <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="member-user">User</Label>
-          <Select value={userId} onValueChange={setUserId}>
-            <SelectTrigger id="member-user">
-              <SelectValue placeholder="— select user —" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {candidates.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.email}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
+        <SearchSelect
+          key={pickerKey}
+          label="User"
+          htmlFor="member-user"
+          value={userId}
+          onChange={setUserId}
+          onSearchChange={setSearch}
+          isPending={users.isLoading}
+          isError={users.isError}
+          emptyLabel="No matching users who aren't already members."
+          options={candidates.map((u) => ({ value: u.id, label: optionLabel(u) }))}
+        />
         <p className="text-muted-foreground text-xs">
           A user belongs to one organization — assigning them here moves them out of any
           organization they were in before.
@@ -122,7 +130,9 @@ export function MembersSection({ organizationId }: { organizationId: string }) {
           <div key={m.id} className="bg-card flex items-center gap-3 rounded-md border px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="font-medium">{displayName(m)}</div>
-              <div className="text-muted-foreground text-sm">{m.email}</div>
+              {displayName(m) !== m.email && (
+                <div className="text-muted-foreground text-sm">{m.email}</div>
+              )}
             </div>
             {canManageMembers && (
               <Button
