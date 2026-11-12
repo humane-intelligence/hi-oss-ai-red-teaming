@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/form-field'
 import { useAnchoredListbox } from '@/components/shared/use-anchored-listbox'
@@ -26,6 +26,9 @@ export function SearchSelect({
   isError,
   error,
   emptyLabel = 'No matches.',
+  onLoadMore,
+  hasMore = false,
+  isLoadingMore = false,
 }: {
   label: string
   htmlFor: string
@@ -37,6 +40,10 @@ export function SearchSelect({
   isError: boolean
   error?: string
   emptyLabel?: string
+  // Opt-in paging: scrolling near the end of the list asks the caller for the next page.
+  onLoadMore?: () => void
+  hasMore?: boolean
+  isLoadingMore?: boolean
 }) {
   const [term, setTerm] = useState('')
   const [active, setActive] = useState(-1)
@@ -73,6 +80,13 @@ export function SearchSelect({
     setTerm(option.label)
     setOpen(false)
     setActive(-1)
+  }
+
+  const onListScroll = (event: UIEvent<HTMLUListElement>) => {
+    const el = event.currentTarget
+    // A couple of rows early, so the next page is usually in before the user reaches the end.
+    if (hasMore && !isLoadingMore && el.scrollHeight - el.scrollTop - el.clientHeight < 64)
+      onLoadMore?.()
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -130,6 +144,7 @@ export function SearchSelect({
           onChange={(event) => {
             skipSearch.current = false // real typing always searches (clears any leftover skip)
             setTerm(event.target.value)
+            if (listRef.current) listRef.current.scrollTop = 0 // a new term starts from its first page
             setOpen(true)
             setActive(-1)
             if (value) onChange('') // any edit drops the pick, so the box never shows one user while another is selected
@@ -143,6 +158,7 @@ export function SearchSelect({
           id={listId}
           role="listbox"
           style={{ position: 'fixed', top: rect.top + 4, left: rect.left, width: rect.width }}
+          onScroll={onListScroll}
           className="bg-card z-50 max-h-56 overflow-auto rounded-md border py-1 text-sm shadow-md"
         >
           {isPending ? (
@@ -160,36 +176,43 @@ export function SearchSelect({
               {emptyLabel}
             </li>
           ) : (
-            options.map((option, i) => (
-              <li
-                key={option.value}
-                id={`${listId}-${i}`}
-                role="option"
-                aria-selected={option.value === value}
-                aria-disabled={option.disabled || undefined}
-                className={cn(
-                  'flex items-center gap-2 px-3 py-1.5',
-                  option.disabled
-                    ? 'text-muted-foreground cursor-not-allowed'
-                    : i === active
-                      ? 'bg-accent text-accent-foreground cursor-pointer'
-                      : 'hover:bg-muted cursor-pointer',
-                )}
-                onMouseDown={(event) => {
-                  event.preventDefault() // fire before the input blur so the click isn't lost
-                  select(option)
-                }}
-                onMouseEnter={() => !option.disabled && setActive(i)}
-              >
-                <span className="min-w-0">{option.label}</span>
-                {option.hint && (
-                  <>
-                    {/* A real space, so the accessible name doesn't run the label into the hint. */}{' '}
-                    <span className="ml-auto shrink-0 text-xs">{option.hint}</span>
-                  </>
-                )}
-              </li>
-            ))
+            <>
+              {options.map((option, i) => (
+                <li
+                  key={option.value}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={option.value === value}
+                  aria-disabled={option.disabled || undefined}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-1.5',
+                    option.disabled
+                      ? 'text-muted-foreground cursor-not-allowed'
+                      : i === active
+                        ? 'bg-accent text-accent-foreground cursor-pointer'
+                        : 'hover:bg-muted cursor-pointer',
+                  )}
+                  onMouseDown={(event) => {
+                    event.preventDefault() // fire before the input blur so the click isn't lost
+                    select(option)
+                  }}
+                  onMouseEnter={() => !option.disabled && setActive(i)}
+                >
+                  <span className="min-w-0">{option.label}</span>
+                  {option.hint && (
+                    <>
+                      {/* A real space, so the accessible name doesn't run the label into the hint. */}{' '}
+                      <span className="ml-auto shrink-0 text-xs">{option.hint}</span>
+                    </>
+                  )}
+                </li>
+              ))}
+              {isLoadingMore && (
+                <li role="presentation" className="text-muted-foreground px-3 py-1.5">
+                  Loading more…
+                </li>
+              )}
+            </>
           )}
         </ul>
       )}

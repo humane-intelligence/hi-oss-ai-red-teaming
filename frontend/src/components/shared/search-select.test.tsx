@@ -197,6 +197,80 @@ describe('SearchSelect (typeahead combobox)', () => {
     expect(onChange).toHaveBeenCalledWith('')
   })
 
+  describe('paging', () => {
+    // jsdom has no layout: give the listbox a scroll geometry by hand.
+    function scrollList(scrollTop: number) {
+      const list = screen.getByRole('listbox')
+      Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true })
+      Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true })
+      Object.defineProperty(list, 'scrollTop', {
+        value: scrollTop,
+        configurable: true,
+        writable: true,
+      })
+      fireEvent.scroll(list)
+      return list
+    }
+
+    it('asks for the next page when the list is scrolled near the end', () => {
+      const onLoadMore = vi.fn()
+      setup({ onLoadMore, hasMore: true })
+      fireEvent.focus(screen.getByLabelText('Red-teamer'))
+      scrollList(500)
+      expect(onLoadMore).not.toHaveBeenCalled()
+      scrollList(780)
+      expect(onLoadMore).toHaveBeenCalledOnce()
+    })
+
+    it('does not ask when there is no next page or one is already loading', () => {
+      const onLoadMore = vi.fn()
+      const { rerender } = render(
+        <SearchSelect
+          label="Reviewer"
+          htmlFor="rv"
+          value=""
+          onChange={() => {}}
+          onSearchChange={() => {}}
+          options={OPTS}
+          isPending={false}
+          isError={false}
+          onLoadMore={onLoadMore}
+          hasMore={false}
+        />,
+      )
+      fireEvent.focus(screen.getByLabelText('Reviewer'))
+      scrollList(800)
+
+      rerender(
+        <SearchSelect
+          label="Reviewer"
+          htmlFor="rv"
+          value=""
+          onChange={() => {}}
+          onSearchChange={() => {}}
+          options={OPTS}
+          isPending={false}
+          isError={false}
+          onLoadMore={onLoadMore}
+          hasMore
+          isLoadingMore
+        />,
+      )
+      scrollList(800)
+      expect(onLoadMore).not.toHaveBeenCalled()
+      expect(within(screen.getByRole('listbox')).getByText('Loading more…')).toBeInTheDocument()
+    })
+
+    it('scrolls back to the top when the term changes', () => {
+      setup({ onLoadMore: vi.fn(), hasMore: true })
+      const input = screen.getByLabelText('Red-teamer')
+      fireEvent.focus(input)
+      const list = scrollList(300)
+      fireEvent.change(input, { target: { value: 'b' } })
+      expect(list.scrollTop).toBe(0)
+    })
+  })
+
   it('shows loading / error / empty states while open', () => {
     const { rerender } = render(
       <SearchSelect
