@@ -6,16 +6,9 @@ import { BulkInviteDialog } from './bulk-invite-dialog'
 import { RolesPicker } from '@/features/users/roles-picker'
 import { useUsers } from '@/features/users/queries'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { SearchSelect } from '@/components/shared/search-select'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { useObjectPermissions, usePermissions } from '@/lib/auth/use-permissions'
 import type { EvaluationGroupAccessLevel, ObjectMemberResponse } from '@/lib/api/types'
@@ -29,47 +22,64 @@ function displayName(user: {
   return name || user.email
 }
 
+function optionLabel(user: {
+  first_name?: string | null
+  last_name?: string | null
+  email: string
+}) {
+  const name = displayName(user)
+  return name === user.email ? name : `${name} · ${user.email}`
+}
+
 function AddMemberDialog({
   groupId,
+  currentMemberIds,
   open,
   onOpenChange,
 }: {
   groupId: string
+  currentMemberIds: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const users = useUsers({ limit: 100, offset: 0 })
+  const [search, setSearch] = useState('')
+  const users = useUsers(
+    { limit: 50, offset: 0, search: search.trim() || undefined },
+    { enabled: open },
+  )
   const add = useAddGroupMember(groupId)
   const [userId, setUserId] = useState('')
   const [roleIds, setRoleIds] = useState<string[]>([])
+  // The modal stays mounted while closed; a fresh key drops the picker's typed term on reopen.
+  const [pickerKey, setPickerKey] = useState(0)
 
   const canSubmit = userId !== '' && roleIds.length > 0 && !add.isPending
 
+  const taken = new Set(currentMemberIds)
+  const candidates = (users.data?.items ?? []).filter((u) => !taken.has(u.id))
+
   function reset() {
+    setSearch('')
     setUserId('')
     setRoleIds([])
+    setPickerKey((k) => k + 1)
   }
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={reset}>
       <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="member-user">User</Label>
-          <Select value={userId} onValueChange={setUserId}>
-            <SelectTrigger id="member-user">
-              <SelectValue placeholder="— select user —" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {(users.data?.items ?? []).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.email}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
+        <SearchSelect
+          key={pickerKey}
+          label="User"
+          htmlFor="member-user"
+          value={userId}
+          onChange={setUserId}
+          onSearchChange={setSearch}
+          isPending={users.isLoading}
+          isError={users.isError}
+          emptyLabel="No matching users who aren't already members."
+          options={candidates.map((u) => ({ value: u.id, label: optionLabel(u) }))}
+        />
         <div className="space-y-1.5">
           <Label>Roles</Label>
           <RolesPicker selected={roleIds} onChange={setRoleIds} objectAssignableOnly />
@@ -209,6 +219,9 @@ export function MembersSection({
           >
             <div className="min-w-0 flex-1">
               <div className="font-medium">{displayName(m.user)}</div>
+              {displayName(m.user) !== m.user.email && (
+                <div className="text-muted-foreground text-sm">{m.user.email}</div>
+              )}
               <div className="text-muted-foreground text-sm">
                 {m.roles.map((r) => r.display_name).join(', ')}
               </div>
@@ -267,7 +280,12 @@ export function MembersSection({
       )}
 
       {canAddExisting && (
-        <AddMemberDialog groupId={groupId} open={addOpen} onOpenChange={setAddOpen} />
+        <AddMemberDialog
+          groupId={groupId}
+          currentMemberIds={memberList.map((m) => m.user.id)}
+          open={addOpen}
+          onOpenChange={setAddOpen}
+        />
       )}
       <BulkInviteDialog groupId={groupId} open={inviteOpen} onOpenChange={setInviteOpen} />
       <EditMemberDialog

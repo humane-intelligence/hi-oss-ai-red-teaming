@@ -45,6 +45,16 @@ const user1 = {
   permissions: [],
 }
 
+const USER_ID_3 = 'usr-0003-0000-0000-000000000000'
+
+const user3 = {
+  ...user1,
+  id: USER_ID_3,
+  email: 'carol@example.com',
+  first_name: 'Carol',
+  last_name: 'Danvers',
+}
+
 const role1 = {
   id: ROLE_ID,
   name: 'red_teamer',
@@ -64,7 +74,7 @@ function baseHandlers() {
     http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/annotators`, () =>
       HttpResponse.json({ items: [annotator], total: 1, limit: 100, offset: 0 }),
     ),
-    // AddMemberDialog always mounts these queries
+    // AddMemberDialog queries (users only once it opens)
     http.get('http://localhost/api/v1/auth/users', () =>
       HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
     ),
@@ -98,6 +108,7 @@ describe('MembersSection — renders', () => {
     renderSection(['evaluation_groups:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    expect(screen.getByText('ada@example.com')).toBeInTheDocument()
     expect(screen.getByText('Red Teamer')).toBeInTheDocument()
   })
 
@@ -181,7 +192,7 @@ describe('MembersSection — add flow', () => {
     server.use(
       // override users/roles before baseHandlers so these take precedence (first-match wins)
       http.get('http://localhost/api/v1/auth/users', () =>
-        HttpResponse.json({ items: [user1], total: 1, limit: 100, offset: 0 }),
+        HttpResponse.json({ items: [user3], total: 1, limit: 50, offset: 0 }),
       ),
       http.get('http://localhost/api/v1/roles', () =>
         HttpResponse.json({ items: [role1], total: 1, limit: 100, offset: 0 }),
@@ -205,9 +216,10 @@ describe('MembersSection — add flow', () => {
 
     const dialog = screen.getByRole('dialog')
 
-    // Radix portals the listbox out of the dialog, so the option is queried from the document.
-    await user.click(within(dialog).getByRole('combobox'))
-    await user.click(await screen.findByRole('option', { name: 'ada@example.com' }))
+    await user.click(within(dialog).getByRole('combobox', { name: 'User' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    )
 
     // pick role checkbox
     await waitFor(() => expect(within(dialog).getByLabelText('Red Teamer')).toBeInTheDocument())
@@ -218,8 +230,98 @@ describe('MembersSection — add flow', () => {
     await waitFor(() => expect(captured).not.toBeNull())
 
     const body = captured as { user_id: string; role_ids: string[] }
-    expect(body.user_id).toBe(USER_ID)
+    expect(body.user_id).toBe(USER_ID_3)
     expect(body.role_ids).toContain(ROLE_ID)
+  })
+
+  it('sends the typed term as the server-side search', async () => {
+    const searches: (string | null)[] = []
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', ({ request }) => {
+        const search = new URL(request.url).searchParams.get('search')
+        searches.push(search)
+        const items = search === 'car' ? [user3] : []
+        return HttpResponse.json({ items, total: items.length, limit: 50, offset: 0 })
+      }),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+
+    await user.type(
+      within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }),
+      'car',
+    )
+
+    expect(
+      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    ).toBeInTheDocument()
+    expect(searches).toContain('car')
+  })
+
+  it('does not offer users who are already members', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', () =>
+        HttpResponse.json({ items: [user1, user3], total: 2, limit: 50, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }))
+
+    expect(
+      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /ada@example\.com/ })).toBeNull()
+  })
+
+  it('labels a user without a name by email alone', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', () =>
+        HttpResponse.json({
+          items: [{ ...user3, first_name: null, last_name: null }],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        }),
+      ),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }))
+
+    expect(await screen.findByRole('option', { name: 'carol@example.com' })).toBeInTheDocument()
+  })
+
+  it('clears the typed term when the dialog is reopened', async () => {
+    server.use(...baseHandlers())
+
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.type(
+      within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }),
+      'car',
+    )
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' })).toHaveValue(
+      '',
+    )
   })
 })
 
