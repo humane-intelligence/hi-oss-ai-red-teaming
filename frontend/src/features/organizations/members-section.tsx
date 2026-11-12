@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useOrganizationMembers } from './queries'
 import { useAddOrganizationMember, useRemoveOrganizationMember } from './mutations'
-import { useUsers } from '@/features/users/queries'
+import { useInfiniteUsers } from '@/features/users/queries'
 import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SearchSelect } from '@/components/shared/search-select'
@@ -13,18 +13,16 @@ import type { UserResponse } from '@/lib/api/types'
 
 function AddMemberDialog({
   organizationId,
-  currentMemberIds,
   open,
   onOpenChange,
 }: {
   organizationId: string
-  currentMemberIds: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const [search, setSearch] = useState('')
-  const users = useUsers(
-    { limit: 50, offset: 0, search: search.trim() || undefined, order_by: 'email' },
+  const users = useInfiniteUsers(
+    { limit: 50, search: search.trim() || undefined, order_by: 'email' },
     { enabled: open },
   )
   const add = useAddOrganizationMember(organizationId)
@@ -34,9 +32,18 @@ function AddMemberDialog({
 
   const canSubmit = userId !== '' && !add.isPending
 
-  // Already-assigned users can't be re-added; other-org users stay (assigning moves them).
-  const taken = new Set(currentMemberIds)
-  const candidates = (users.data?.items ?? []).filter((u) => !taken.has(u.id))
+  // Other-org users stay pickable: assigning moves them.
+  const options = (users.data?.pages ?? [])
+    .flatMap((page) => page.items)
+    .map((u) => {
+      const isMember = u.organization?.id === organizationId
+      return {
+        value: u.id,
+        label: [fullName(u), u.email].filter(Boolean).join(' · '),
+        disabled: isMember,
+        hint: isMember ? 'Already a member' : undefined,
+      }
+    })
 
   function reset() {
     setSearch('')
@@ -56,11 +63,12 @@ function AddMemberDialog({
           onSearchChange={setSearch}
           isPending={users.isLoading}
           isError={users.isError}
-          emptyLabel="No matching users who aren't already members."
-          options={candidates.map((u) => ({
-            value: u.id,
-            label: [fullName(u), u.email].filter(Boolean).join(' · '),
-          }))}
+          emptyLabel="No matching users."
+          options={options}
+          // Don't cancel a fetch in flight: a new term's first page, or the page already coming.
+          onLoadMore={() => void users.fetchNextPage({ cancelRefetch: false })}
+          hasMore={users.hasNextPage}
+          isLoadingMore={users.isFetchingNextPage}
         />
         <p className="text-muted-foreground text-xs">
           A user belongs to one organization — assigning them here moves them out of any
@@ -138,12 +146,7 @@ export function MembersSection({ organizationId }: { organizationId: string }) {
       </div>
 
       {canAddExisting && (
-        <AddMemberDialog
-          organizationId={organizationId}
-          currentMemberIds={memberList.map((m) => m.id)}
-          open={addOpen}
-          onOpenChange={setAddOpen}
-        />
+        <AddMemberDialog organizationId={organizationId} open={addOpen} onOpenChange={setAddOpen} />
       )}
       <ConfirmDialog
         open={removeTarget !== null}

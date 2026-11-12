@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -39,6 +39,31 @@ const user3 = {
   email: 'carol@example.com',
   first_name: 'Carol',
   last_name: 'Danvers',
+}
+
+const user4 = {
+  ...user1,
+  id: 'usr-0004-0000-0000-000000000000',
+  email: 'dave@example.com',
+  first_name: 'Dave',
+  last_name: 'Bowman',
+}
+
+// Ada as the users list returns her: already in this organization.
+const adaInOrg = { ...user1, organization: { id: ORG_ID, name: 'Acme' } }
+// Carol belongs to another organization — still pickable, assigning moves her.
+const carolElsewhere = {
+  ...user3,
+  organization: { id: 'org-0002-0000-0000-000000000000', name: 'Other' },
+}
+
+// jsdom has no layout: give the listbox the geometry of one scrolled to its end.
+function scrollListToEnd() {
+  const list = screen.getByRole('listbox')
+  Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true })
+  Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true })
+  Object.defineProperty(list, 'scrollTop', { value: 800, configurable: true })
+  fireEvent.scroll(list)
 }
 
 const MEMBERS_URL = `http://localhost/api/v1/organizations/${ORG_ID}/members`
@@ -100,7 +125,7 @@ describe('Organization MembersSection — RBAC gates', () => {
 })
 
 describe('Organization MembersSection — add flow', () => {
-  it('searches on the server, hides members, and submits POST with user_id', async () => {
+  it('searches on the server, disables members, and submits POST with user_id', async () => {
     let captured: unknown = null
     const searches: (string | null)[] = []
 
@@ -108,7 +133,7 @@ describe('Organization MembersSection — add flow', () => {
       http.get('http://localhost/api/v1/auth/users', ({ request }) => {
         const search = new URL(request.url).searchParams.get('search')
         searches.push(search)
-        const items = search === 'a' ? [user1, user3] : []
+        const items = search === 'a' ? [adaInOrg, carolElsewhere] : []
         return HttpResponse.json({ items, total: items.length, limit: 50, offset: 0 })
       }),
       ...baseHandlers(),
@@ -128,12 +153,44 @@ describe('Organization MembersSection — add flow', () => {
 
     const carol = await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' })
     expect(searches).toContain('a')
-    expect(screen.queryByRole('option', { name: /ada@example\.com/ })).toBeNull()
+    expect(carol).not.toHaveAttribute('aria-disabled')
+    expect(
+      screen.getByRole('option', { name: 'Ada Lovelace · ada@example.com Already a member' }),
+    ).toHaveAttribute('aria-disabled', 'true')
 
     await user.click(carol)
     await user.click(within(dialog).getByRole('button', { name: 'Add' }))
 
     await waitFor(() => expect(captured).toEqual({ user_id: USER_ID_3 }))
+  })
+
+  it('loads the next page when the list is scrolled to the end, and stops at the total', async () => {
+    const offsets: (string | null)[] = []
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset')
+        offsets.push(offset)
+        const items = offset === '0' ? [user3] : [user4]
+        return HttpResponse.json({ items, total: 2, limit: 50, offset: Number(offset) })
+      }),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(MANAGER)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }))
+    await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' })
+
+    scrollListToEnd()
+    expect(
+      await screen.findByRole('option', { name: 'Dave Bowman · dave@example.com' }),
+    ).toBeInTheDocument()
+
+    scrollListToEnd()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(offsets).toEqual(['0', '1'])
   })
 
   it('disables Add once the picked user is edited away', async () => {

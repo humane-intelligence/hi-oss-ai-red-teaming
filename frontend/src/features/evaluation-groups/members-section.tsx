@@ -41,12 +41,15 @@ function AddMemberDialog({
   const members = new Set(currentMemberIds)
   const options = (users.data?.pages ?? [])
     .flatMap((page) => page.items)
-    .map((u) => ({
-      value: u.id,
-      label: [fullName(u), u.email].filter(Boolean).join(' · '),
-      disabled: members.has(u.id),
-      hint: members.has(u.id) ? 'Already a member' : undefined,
-    }))
+    .map((u) => {
+      const isMember = members.has(u.id)
+      return {
+        value: u.id,
+        label: [fullName(u), u.email].filter(Boolean).join(' · '),
+        disabled: isMember,
+        hint: isMember ? 'Already a member' : undefined,
+      }
+    })
 
   function reset() {
     setSearch('')
