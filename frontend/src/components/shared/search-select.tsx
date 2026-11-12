@@ -4,7 +4,8 @@ import { FormField } from '@/components/shared/form-field'
 import { useAnchoredListbox } from '@/components/shared/use-anchored-listbox'
 import { cn } from '@/lib/utils'
 
-type Option = { value: string; label: string }
+// A `disabled` option stays visible (with its `hint` saying why) but can't be picked.
+type Option = { value: string; label: string; disabled?: boolean; hint?: string }
 
 // Typeahead combobox: type and the list auto-opens + live-filters (debounced → server);
 // click or ↑/↓+Enter to pick, Esc / outside-click to close. Shared by the export and member pickers.
@@ -53,7 +54,20 @@ export function SearchSelect({
     return () => clearTimeout(id)
   }, [term, onSearchChange])
 
+  useEffect(() => {
+    if (active >= 0)
+      document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' })
+  }, [active, listId])
+
+  const nextEnabled = (from: number, dir: 1 | -1) => {
+    for (let i = from + dir; i >= 0 && i < options.length; i += dir) {
+      if (!options[i]?.disabled) return i
+    }
+    return from
+  }
+
   const select = (option: Option) => {
+    if (option.disabled) return
     onChange(option.value)
     skipSearch.current = true
     setTerm(option.label)
@@ -73,11 +87,11 @@ export function SearchSelect({
     } else if (event.key === 'ArrowDown') {
       event.preventDefault()
       setOpen(true)
-      setActive((i) => Math.min(i + 1, options.length - 1))
+      setActive((i) => nextEnabled(i, 1))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setOpen(true) // open so aria-activedescendant points at a rendered option, not a phantom id
-      setActive((i) => Math.max(i - 1, 0))
+      setActive((i) => (i < 0 ? nextEnabled(-1, 1) : nextEnabled(i, -1)))
     } else if (event.key === 'Enter' && open) {
       event.preventDefault() // an open combobox must not submit the surrounding form
       if (active >= 0 && options[active]) select(options[active])
@@ -152,17 +166,28 @@ export function SearchSelect({
                 id={`${listId}-${i}`}
                 role="option"
                 aria-selected={option.value === value}
+                aria-disabled={option.disabled || undefined}
                 className={cn(
-                  'cursor-pointer px-3 py-1.5',
-                  i === active ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
+                  'flex items-center gap-2 px-3 py-1.5',
+                  option.disabled
+                    ? 'text-muted-foreground cursor-not-allowed'
+                    : i === active
+                      ? 'bg-accent text-accent-foreground cursor-pointer'
+                      : 'hover:bg-muted cursor-pointer',
                 )}
                 onMouseDown={(event) => {
                   event.preventDefault() // fire before the input blur so the click isn't lost
                   select(option)
                 }}
-                onMouseEnter={() => setActive(i)}
+                onMouseEnter={() => !option.disabled && setActive(i)}
               >
-                {option.label}
+                <span className="min-w-0">{option.label}</span>
+                {option.hint && (
+                  <>
+                    {/* A real space, so the accessible name doesn't run the label into the hint. */}{' '}
+                    <span className="ml-auto shrink-0 text-xs">{option.hint}</span>
+                  </>
+                )}
               </li>
             ))
           )}

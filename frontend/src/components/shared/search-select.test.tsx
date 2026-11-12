@@ -67,6 +67,51 @@ describe('SearchSelect (typeahead combobox)', () => {
     expect(onSearchChange).not.toHaveBeenCalledWith('bob@ex.com')
   })
 
+  it('shows a disabled option with its hint and ignores a click on it', async () => {
+    const { onChange } = setup({
+      options: [OPTS[0]!, { value: 'u2', label: 'bob@ex.com', disabled: true, hint: 'Member' }],
+    })
+    const u = userEvent.setup()
+    await u.click(screen.getByLabelText('Red-teamer'))
+    const bob = screen.getByRole('option', { name: 'bob@ex.com Member' })
+    expect(bob).toHaveAttribute('aria-disabled', 'true')
+    await u.click(bob)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('arrow keys skip disabled options', () => {
+    const { onChange } = setup({
+      options: [
+        { value: 'u1', label: 'a', disabled: true },
+        { value: 'u2', label: 'b' },
+        { value: 'u3', label: 'c', disabled: true },
+        { value: 'u4', label: 'd' },
+      ],
+    })
+    const input = screen.getByLabelText('Red-teamer')
+    fireEvent.focus(input)
+    fireEvent.keyDown(input, { key: 'ArrowDown' }) // → b, past a
+    fireEvent.keyDown(input, { key: 'ArrowDown' }) // → d, past c
+    fireEvent.keyDown(input, { key: 'ArrowDown' }) // stays on d
+    fireEvent.keyDown(input, { key: 'ArrowUp' }) // → b, past c
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onChange).toHaveBeenCalledWith('u2')
+  })
+
+  it('scrolls the highlighted option into view', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView')
+    setup()
+    const input = screen.getByLabelText('Red-teamer')
+    fireEvent.focus(input)
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(
+      screen.getByRole('option', { name: 'bob@ex.com' }),
+    )
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' })
+    scrollIntoView.mockRestore()
+  })
+
   it('prevents Enter from submitting the form while the list is open', () => {
     setup()
     const input = screen.getByLabelText('Red-teamer')
