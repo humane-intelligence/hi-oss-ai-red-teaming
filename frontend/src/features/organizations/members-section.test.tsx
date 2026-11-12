@@ -126,12 +126,11 @@ describe('Organization MembersSection — add flow', () => {
     const dialog = screen.getByRole('dialog')
     await user.type(within(dialog).getByRole('combobox', { name: 'User' }), 'a')
 
-    await user.click(
-      await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' }),
-    )
+    const carol = await screen.findByRole('option', { name: 'Carol Danvers · carol@example.com' })
     expect(searches).toContain('a')
     expect(screen.queryByRole('option', { name: /ada@example\.com/ })).toBeNull()
 
+    await user.click(carol)
     await user.click(within(dialog).getByRole('button', { name: 'Add' }))
 
     await waitFor(() => expect(captured).toEqual({ user_id: USER_ID_3 }))
