@@ -83,11 +83,38 @@ describe('ScenariosSection — RBAC gates', () => {
 
     await waitFor(() => expect(screen.getByText('Prompt injection')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add scenario/i })).toBeInTheDocument()
-    // The scenario row should contain action buttons (up/down/pencil/trash = 4 icon buttons)
-    const scenarioRow = screen.getByText('Prompt injection').closest('.rounded-md')
-    expect(scenarioRow).not.toBeNull()
-    const iconButtons = scenarioRow!.querySelectorAll('button[class*="size-icon"], button svg')
-    expect(iconButtons.length).toBeGreaterThan(0)
+    for (const name of [
+      'Move scenario up',
+      'Move scenario down',
+      'Edit scenario',
+      'Delete scenario',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+})
+
+describe('ScenariosSection — cards', () => {
+  it('numbers scenarios and tasks and labels the scenario details', async () => {
+    server.use(...baseHandlers())
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText('Basic injection')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Evaluation content/ })).toBeInTheDocument()
+    expect(screen.getByText('Scenario 1:')).toBeInTheDocument()
+    expect(screen.getByText('Task 1:')).toBeInTheDocument()
+    expect(screen.getByText('Date added')).toBeInTheDocument()
+    expect(screen.getByText('Required reviewers')).toBeInTheDocument()
+    expect(screen.getByText('Scenario description')).toBeInTheDocument()
+  })
+
+  it('keeps the reviewer count from those who cannot change the scenario', async () => {
+    server.use(...baseHandlers())
+    renderSection([])
+
+    expect(await screen.findByText('Prompt injection')).toBeInTheDocument()
+    expect(screen.queryByText('Required reviewers')).toBeNull()
+    expect(screen.queryByRole('button', { name: /add task/i })).toBeNull()
   })
 })
 
