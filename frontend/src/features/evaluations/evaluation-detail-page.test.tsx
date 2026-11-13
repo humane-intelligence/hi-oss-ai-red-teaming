@@ -155,6 +155,21 @@ describe('EvaluationDetailPage — summary', () => {
   })
 })
 
+describe('EvaluationDetailPage — settings row', () => {
+  it('groups models, tags and other details under Evaluation settings', async () => {
+    server.use(...baseHandlers())
+    renderPage(['evaluations:read', 'evaluations:update'])
+
+    const settings = within(await screen.findByRole('region', { name: 'Evaluation settings' }))
+    expect(settings.getByText(/^Models \(/)).toBeInTheDocument()
+    expect(settings.getByText(/allowed tags/i)).toBeInTheDocument()
+    expect(settings.getByText('Other details')).toBeInTheDocument()
+    expect(settings.getByText('Models masked')).toBeInTheDocument()
+    // "Date added" in the summary already says it.
+    expect(settings.queryByText('Created')).toBeNull()
+  })
+})
+
 describe('EvaluationDetailPage — the trail', () => {
   it('reads group / evaluation, with no section root and no second trail', async () => {
     server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak'))
