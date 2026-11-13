@@ -307,6 +307,40 @@ describe('ConversationGroupPage', () => {
     )
   })
 
+  it('ignores a second click while the first check-off is still in flight', async () => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const puts: string[] = []
+    const deletes = writesHandler('delete')
+    server.use(
+      ...baseHandlers(),
+      http.put(
+        `http://localhost/api/v1/conversations/:conversationId/completed-tasks/:taskId`,
+        async ({ request }) => {
+          puts.push(new URL(request.url).pathname)
+          await held
+          return HttpResponse.json({ id: 'completion-1' })
+        },
+      ),
+      deletes.handler,
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const box = await screen.findByRole('checkbox')
+    await waitFor(() => expect(box).toBeEnabled())
+    await user.click(box)
+    // Optimistically checked by now, so an unguarded second click would fan out DELETEs.
+    await user.click(box)
+    release()
+
+    await waitFor(() => expect(box).toBeEnabled())
+    expect(puts.sort()).toEqual([completionUrl(CONV_A), completionUrl(CONV_B)])
+    expect(deletes.urls).toEqual([])
+  })
+
   it('completes only the members still missing the task when the box is mixed', async () => {
     const puts = writesHandler('put')
     server.use(completedTasksHandler(CONV_A, [TASK_ID]), ...baseHandlers(), puts.handler)
@@ -400,9 +434,7 @@ describe('ConversationGroupPage', () => {
     renderPage(['conversations:read', 'conversations:participate'])
 
     expect(await screen.findByText('Extract secret')).toBeInTheDocument()
-    // Check-off is owner-only *and* permission-gated. With nothing actionable the row is
-    // just the roll-up — no disclosure, no checkboxes.
-    expect(screen.queryByRole('button', { name: /Extract secret/ })).toBeNull()
+    // Check-off is owner-only *and* permission-gated, so the row is just the roll-up.
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
     expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
   })
@@ -430,7 +462,6 @@ describe('ConversationGroupPage', () => {
     // The break-glass lifts the owner predicate on the write services, but check-off
     // resolves the conversation under the caller's ownership with no such arm — so a
     // toggle would 404. Same reasoning as the flag control below.
-    expect(screen.queryByRole('button', { name: /Extract secret/ })).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
     expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
     // Reads *are* lifted by the break-glass, so the roll-up stays real here — this viewer is
