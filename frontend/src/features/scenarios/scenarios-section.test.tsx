@@ -60,21 +60,22 @@ function baseHandlers() {
 }
 
 describe('ScenariosSection — RBAC gates', () => {
-  it('with evaluations:read only — no Add scenario, no icon action buttons per row', async () => {
+  it('with evaluations:read only — no scenario or task controls', async () => {
     server.use(...baseHandlers())
     renderSection(['evaluations:read'])
 
-    await waitFor(() => expect(screen.getByText('Prompt injection')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /add scenario/i })).toBeNull()
-    // No reorder chevron buttons (they have size="icon" and contain svg — unique to the row actions)
-    // The dialogs are mounted but closed; they don't render visible buttons with svg
-    // The scenario row action group (up/down/pencil/trash) is absent when canMutate=false
-    const allButtons = screen.queryAllByRole('button')
-    // None of the visible buttons should be the row icon buttons (they're inside a conditional block)
-    // Verify specifically by text: the row has no "Add scenario" button
-    allButtons.forEach((btn) => {
-      expect(btn.textContent).not.toMatch(/add scenario/i)
-    })
+    expect(await screen.findByText('Basic injection')).toBeInTheDocument()
+    for (const name of [
+      /add scenario/i,
+      /add task/i,
+      /move scenario/i,
+      /edit scenario/i,
+      /delete scenario/i,
+      /edit task/i,
+      /delete task/i,
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
   })
 
   it('with evaluations:update — Add scenario button visible, icon buttons in scenario rows', async () => {
@@ -83,11 +84,14 @@ describe('ScenariosSection — RBAC gates', () => {
 
     await waitFor(() => expect(screen.getByText('Prompt injection')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add scenario/i })).toBeInTheDocument()
+    expect(await screen.findByText('Basic injection')).toBeInTheDocument()
     for (const name of [
-      'Move scenario up',
-      'Move scenario down',
-      'Edit scenario',
-      'Delete scenario',
+      'Move scenario 1: Prompt injection up',
+      'Move scenario 1: Prompt injection down',
+      'Edit scenario 1: Prompt injection',
+      'Delete scenario 1: Prompt injection',
+      'Edit task 1: Basic injection',
+      'Delete task 1: Basic injection',
     ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
@@ -101,7 +105,9 @@ describe('ScenariosSection — cards', () => {
 
     expect(await screen.findByText('Basic injection')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /Evaluation content/ })).toBeInTheDocument()
-    expect(screen.getByText('Scenario 1:')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Scenario 1: Prompt injection' }),
+    ).toBeInTheDocument()
     expect(screen.getByText('Task 1:')).toBeInTheDocument()
     expect(screen.getByText('Date added')).toBeInTheDocument()
     expect(screen.getByText('Required reviewers')).toBeInTheDocument()
@@ -187,13 +193,7 @@ describe('ScenariosSection — tasks', () => {
 
     await waitFor(() => expect(screen.getByText('Basic injection')).toBeInTheDocument())
 
-    // click the edit (pencil) button next to the task
-    const taskRow = screen.getByText('Basic injection').closest('div[class]')
-    const buttons = taskRow?.parentElement?.querySelectorAll('button')
-    // first button is pencil (edit), second is trash (delete)
-    const pencilBtn = buttons?.[0]
-    expect(pencilBtn).not.toBeNull()
-    await user.click(pencilBtn!)
+    await user.click(screen.getByRole('button', { name: 'Edit task 1: Basic injection' }))
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Edit task')).toBeInTheDocument()
@@ -211,17 +211,18 @@ describe('ScenariosSection — tasks', () => {
     expect(body.name).toBe('Updated injection')
   })
 
-  it('Edit button hidden without evaluations:update', async () => {
-    server.use(...baseHandlers())
-    renderSection(['evaluations:read'])
+  it('shows the error instead of an empty task list when tasks fail to load', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({ title: 'Server error', status: 500 }, { status: 500 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(['evaluations:update'])
 
-    await waitFor(() => expect(screen.getByText('Basic injection')).toBeInTheDocument())
-
-    // no pencil button in the task row
-    const taskRow = screen.getByText('Basic injection').closest('div[class]')
-    const buttons = taskRow?.parentElement?.querySelectorAll('button')
-    // with read-only there should be no action buttons on tasks
-    expect(buttons?.length ?? 0).toBe(0)
+    expect(await screen.findByText(/something went wrong on the server/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no tasks yet/i)).toBeNull()
+    expect(screen.queryByText(/Tasks \(0\)/)).toBeNull()
   })
 
   it('deleting a task calls DELETE on the tasks endpoint', async () => {
@@ -240,12 +241,7 @@ describe('ScenariosSection — tasks', () => {
 
     await waitFor(() => expect(screen.getByText('Basic injection')).toBeInTheDocument())
 
-    // click the delete (trash) button next to the task — second button (after pencil/edit)
-    const taskRow = screen.getByText('Basic injection').closest('div[class]')
-    const taskButtons = taskRow?.parentElement?.querySelectorAll('button')
-    const trashBtn = taskButtons?.[1]
-    expect(trashBtn).not.toBeNull()
-    await user.click(trashBtn!)
+    await user.click(screen.getByRole('button', { name: 'Delete task 1: Basic injection' }))
 
     // confirm in the dialog
     await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument())

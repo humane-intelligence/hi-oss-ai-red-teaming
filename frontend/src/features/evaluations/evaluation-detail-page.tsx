@@ -42,6 +42,7 @@ import { tabPanelProps } from '@/components/ui/tab-panel'
 import { useTabParam } from '@/components/shared/use-tab-param'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { PageActions } from '@/components/shared/page-actions'
 import {
   usePermissions,
@@ -298,7 +299,12 @@ export function EvaluationDetailPage() {
                 >
                   Evaluation settings
                 </h2>
-                <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-3">
+                <div
+                  className={cn(
+                    'grid grid-cols-[minmax(0,1fr)] items-start gap-4',
+                    evaluation.tags_enabled ? 'lg:grid-cols-3' : 'lg:grid-cols-2',
+                  )}
+                >
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between gap-2">
