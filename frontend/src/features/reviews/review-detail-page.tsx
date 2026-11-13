@@ -74,6 +74,7 @@ type RowProps = {
   annotations: AnnotationResponse[]
   /** Absent when the caller lacks `annotations:create`. */
   onAnnotate?: () => void
+  showTags: boolean
 }
 
 function TranscriptRowView({
@@ -89,8 +90,8 @@ function TranscriptRowView({
   onDeleteNote,
   annotations,
   onAnnotate,
+  showTags,
 }: RowProps) {
-  const showTags = useConversationTagsEnabled()
   const { message: m, kind } = row
   return (
     <div
@@ -223,6 +224,7 @@ function JumpToFlagged({ ids }: { ids: string[] }) {
 }
 
 function ReviewDetailContent() {
+  const showTags = useConversationTagsEnabled()
   const { submissionId = '' } = useParams<{ submissionId: string }>()
   const location = useLocation()
   const navigate = useNavigate()
@@ -439,6 +441,7 @@ function ReviewDetailContent() {
                     onEditNote={canEditNote ? setEditNote : undefined}
                     onDeleteNote={canDeleteNote ? setDeleteNote : undefined}
                     annotations={annotationIndex.byMessage.get(row.message.id) ?? []}
+                    showTags={showTags}
                     onAnnotate={
                       canAnnotate && liveIds.has(row.message.id)
                         ? () => setAnnotateId(row.message.id)

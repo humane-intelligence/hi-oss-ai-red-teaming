@@ -97,9 +97,9 @@ export function ConversationDetailPage() {
     ? (evaluation.data?.models ?? []).find((m) => m.assignment_id === conv.evaluation_ai_model_id)
     : undefined
   const modelName = assignment?.name ?? undefined
-  // Tagging is a per-evaluation opt-out: with it off the backend rejects every tagged write, so no
-  // tag surface renders. Read as off until the evaluation resolves — revealing a control late beats
-  // offering one that would 400.
+  // Tagging is a per-evaluation opt-out under an instance-wide switch: with either off the backend
+  // rejects every tagged write, so no tag surface renders. Read as off until both resolve — revealing
+  // a control late beats offering one that would 400.
   const tagsEnabled = conversationTagsEnabled && evaluation.data?.tags_enabled === true
   // Only a restricted evaluation has a key whitelist to advertise; unrestricted stays free-form,
   // so the query is skipped there rather than fetching a list the authoring UI wouldn't use.
