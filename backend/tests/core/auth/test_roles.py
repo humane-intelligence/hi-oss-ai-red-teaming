@@ -119,7 +119,7 @@ def test_manage_admin_is_held_only_by_admin() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("role", [SystemRole.OWNER, SystemRole.RED_TEAMER])
-def test_owner_and_red_teamer_run_their_own_conversations(role: SystemRole) -> None:
+def test_owner_and_red_teamer_hold_conversation_crud(role: SystemRole) -> None:
     crud = {
         Permission.CONVERSATIONS_READ,
         Permission.CONVERSATIONS_CREATE,
