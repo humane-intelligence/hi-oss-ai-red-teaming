@@ -20,6 +20,7 @@ continue, over state its owner cannot reach once the console hides the tagging s
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -40,6 +41,8 @@ from app.core.helpers import sanitise_single_line
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+TagsOffReason = Literal["instance_disabled", "tagging_disabled"]
 
 
 async def list_tag_keys(session: AsyncSession, evaluation_id: UUID) -> list[EvaluationTagKey]:
@@ -114,13 +117,16 @@ async def load_tag_fold_policy(session: AsyncSession, evaluation_id: UUID) -> Ta
 
     For read paths that judge many rows against it — one resolve per export, not per row.
     """
-    enabled, restricted = await _tagging_policy(session, evaluation_id)
+    off_reason, restricted = await _tagging_policy(session, evaluation_id)
     allowed = await allowed_tag_keys(session, evaluation_id) if restricted else set()
-    return TagFoldPolicy(enabled=enabled, restricted=restricted, allowed=frozenset(allowed))
+    return TagFoldPolicy(enabled=off_reason is None, restricted=restricted, allowed=frozenset(allowed))
 
 
-async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[bool, bool]:
-    """The evaluation's effective ``(tags_enabled, tags_restricted)`` pair, the instance switch applied.
+async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[TagsOffReason | None, bool]:
+    """The evaluation's effective ``(off_reason, tags_restricted)`` pair, the instance switch applied.
+
+    ``off_reason`` is ``None`` while tagging is on, else which switch turned it off — the instance's
+    wins, since it is the one an evaluation owner cannot undo.
 
     Raises:
         NotFoundError: If no live evaluation has this id. Fail closed: every caller resolves a live,
@@ -137,7 +143,9 @@ async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[b
     if flags is None:
         raise NotFoundError("Evaluation not found.")
     enabled, restricted = flags
-    return bool(enabled) and get_settings().conversation_tags_enabled, bool(restricted)
+    if not get_settings().conversation_tags_enabled:
+        return "instance_disabled", bool(restricted)
+    return (None if enabled else "tagging_disabled"), bool(restricted)
 
 
 async def allowed_tags_only(session: AsyncSession, evaluation_id: UUID, tags: dict[str, str]) -> dict[str, str]:
@@ -156,14 +164,14 @@ async def allowed_tags_only(session: AsyncSession, evaluation_id: UUID, tags: di
     """
     if not tags:
         return {}
-    enabled, restricted = await _tagging_policy(session, evaluation_id)
-    if not enabled:
+    off_reason, restricted = await _tagging_policy(session, evaluation_id)
+    if off_reason is not None:
         # Observable, like `conversations.history.image_missing`: for an artefact whose value is
         # "what did the model see", a silent drop is a gap the transcript cannot explain later.
         logger.warning(
             "conversations.tags.dropped",
             evaluation_id=str(evaluation_id),
-            reason="tagging_disabled" if get_settings().conversation_tags_enabled else "instance_disabled",
+            reason=off_reason,
             dropped=sorted(tags),
         )
         return {}
@@ -196,10 +204,10 @@ async def assert_tags_allowed(session: AsyncSession, evaluation_id: UUID, tags: 
     """
     if not tags:
         return
-    enabled, restricted = await _tagging_policy(session, evaluation_id)
-    if not enabled:
-        if not get_settings().conversation_tags_enabled:
-            raise BadRequestError("Conversation tags are turned off on this instance.")
+    off_reason, restricted = await _tagging_policy(session, evaluation_id)
+    if off_reason == "instance_disabled":
+        raise BadRequestError("Conversation tags are turned off on this instance.")
+    if off_reason == "tagging_disabled":
         raise BadRequestError("Tagging is disabled for this evaluation.")
     if not restricted:
         return
