@@ -42,6 +42,7 @@ import { tabPanelProps } from '@/components/ui/tab-panel'
 import { useTabParam } from '@/components/shared/use-tab-param'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { PageActions } from '@/components/shared/page-actions'
 import {
   usePermissions,
@@ -282,125 +283,138 @@ export function EvaluationDetailPage() {
             />
           </header>
 
+          <ConversationsSection
+            evaluation={evaluation}
+            groupPermissions={group?.user_permissions}
+          />
+
           {tabItems.length > 1 && <Tabs tabs={tabItems} value={activeTab} onChange={setTab} />}
 
           {activeTab === 'overview' && (
-            <div
-              {...panel('overview')}
-              className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-3"
-            >
-              <div className="min-w-0 space-y-6 lg:col-span-2">
-                <ConversationsSection
-                  evaluation={evaluation}
-                  groupPermissions={group?.user_permissions}
-                />
-                <ScenariosSection evaluationId={evaluation.id} />
-              </div>
-
-              <aside className="min-w-0 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle>Models ({evaluation.models?.length ?? 0})</CardTitle>
-                      {canAssignModel && (
-                        <Button size="sm" variant="outline" onClick={() => setAssignOpen(true)}>
-                          <Plus className="size-4" /> Assign model
-                        </Button>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {(evaluation.models ?? []).map((model) => (
-                      <div
-                        key={model.assignment_id}
-                        className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate">{model.name ?? '— masked —'}</div>
-                          <div className="text-muted-foreground truncate text-xs">
-                            {[model.provider, model.provider_model_id].filter(Boolean).join(' · ')}
-                          </div>
-                        </div>
-                        {has('evaluations:update') && (
-                          <div className="flex shrink-0 items-center">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Edit model parameters"
-                              onClick={() =>
-                                setEditTarget({
-                                  id: model.assignment_id,
-                                  name: model.name ?? null,
-                                  inherited: model.effective_parameters ?? {},
-                                  paramsDisabled: model.advanced_params_disabled,
-                                })
-                              }
-                            >
-                              <SlidersHorizontal className="size-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Unassign model"
-                              disabled={unassign.isPending}
-                              onClick={() =>
-                                setUnassignTarget({
-                                  id: model.assignment_id,
-                                  name: model.name ?? 'this model',
-                                })
-                              }
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
+            <div {...panel('overview')} className="space-y-8">
+              <section aria-labelledby="evaluation-settings" className="space-y-3">
+                <h2
+                  id="evaluation-settings"
+                  className="font-display text-lg font-semibold tracking-tight"
+                >
+                  Evaluation settings
+                </h2>
+                <div
+                  className={cn(
+                    'grid grid-cols-[minmax(0,1fr)] items-start gap-4',
+                    conversationTagsEnabled && evaluation.tags_enabled
+                      ? 'lg:grid-cols-3'
+                      : 'lg:grid-cols-2',
+                  )}
+                >
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle as="h3">Models ({evaluation.models?.length ?? 0})</CardTitle>
+                        {canAssignModel && (
+                          <Button size="sm" variant="outline" onClick={() => setAssignOpen(true)}>
+                            <Plus className="size-4" /> Assign model
+                          </Button>
                         )}
                       </div>
-                    ))}
-                    {(evaluation.models?.length ?? 0) === 0 && (
-                      <p className="text-muted-foreground text-sm">
-                        No models yet. Assign one to start conversations.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {(evaluation.models ?? []).map((model) => (
+                        <div
+                          key={model.assignment_id}
+                          className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate">{model.name ?? '— masked —'}</div>
+                            <div className="text-muted-foreground truncate text-xs">
+                              {[model.provider, model.provider_model_id]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          </div>
+                          {has('evaluations:update') && (
+                            <div className="flex shrink-0 items-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Edit model parameters"
+                                onClick={() =>
+                                  setEditTarget({
+                                    id: model.assignment_id,
+                                    name: model.name ?? null,
+                                    inherited: model.effective_parameters ?? {},
+                                    paramsDisabled: model.advanced_params_disabled,
+                                  })
+                                }
+                              >
+                                <SlidersHorizontal className="size-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Unassign model"
+                                disabled={unassign.isPending}
+                                onClick={() =>
+                                  setUnassignTarget({
+                                    id: model.assignment_id,
+                                    name: model.name ?? 'this model',
+                                  })
+                                }
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {(evaluation.models?.length ?? 0) === 0 && (
+                        <p className="text-muted-foreground text-sm">
+                          No models yet. Assign one to start conversations.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
 
-                {conversationTagsEnabled && evaluation.tags_enabled && (
-                  <AllowedTagsCard
-                    evaluationId={evaluation.id}
-                    restricted={evaluation.tags_restricted}
-                    canManage={has('evaluations:update')}
-                  />
-                )}
+                  {conversationTagsEnabled && evaluation.tags_enabled && (
+                    <AllowedTagsCard
+                      evaluationId={evaluation.id}
+                      restricted={evaluation.tags_restricted}
+                      canManage={has('evaluations:update')}
+                    />
+                  )}
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Details</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <dl className="space-y-3">
-                      <Field label="Data license">
-                        <LicenseValue license={evaluation.effective_license} />
-                        {!evaluation.data_license_id && groupQuery.isSuccess && (
-                          <span className="text-muted-foreground ml-1.5 text-xs">
-                            {group?.data_license_id
-                              ? '(inherited from group)'
-                              : '(platform default)'}
-                          </span>
-                        )}
-                      </Field>
-                      <Field label="Models masked">
-                        {evaluation.mask_models_enabled ? 'Yes' : 'No'}
-                      </Field>
-                      <Field label="Created">
-                        {new Date(evaluation.created_at).toLocaleString()}
-                      </Field>
-                      <Field label="Updated">
-                        {new Date(evaluation.updated_at).toLocaleString()}
-                      </Field>
-                    </dl>
-                  </CardContent>
-                </Card>
-              </aside>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle as="h3">Other details</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <dl className="space-y-3">
+                        <Field label="Data license">
+                          <LicenseValue license={evaluation.effective_license} />
+                          {!evaluation.data_license_id && groupQuery.isSuccess && (
+                            <span className="text-muted-foreground ml-1.5 text-xs">
+                              {group?.data_license_id
+                                ? '(inherited from group)'
+                                : '(platform default)'}
+                            </span>
+                          )}
+                        </Field>
+                        <Field label="Models masked">
+                          {evaluation.mask_models_enabled ? 'Yes' : 'No'}
+                        </Field>
+                        <Field label="Updated">
+                          {new Date(evaluation.updated_at).toLocaleString(undefined, {
+                            dateStyle: 'long',
+                            timeStyle: 'short',
+                          })}
+                        </Field>
+                      </dl>
+                    </CardContent>
+                  </Card>
+                </div>
+              </section>
+
+              <ScenariosSection evaluationId={evaluation.id} />
             </div>
           )}
 

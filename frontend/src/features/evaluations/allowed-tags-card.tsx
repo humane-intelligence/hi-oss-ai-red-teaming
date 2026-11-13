@@ -64,10 +64,10 @@ export function AllowedTagsCard({
       <CardHeader>
         {/* Countless until the query settles: "(0)" beside "Loading allowed keys…" reads as a loaded
             empty set, which is a different state and the one an admin would act on. */}
-        <CardTitle className="flex items-center gap-1">
-          Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}
+        <div className="flex items-center gap-1">
+          <CardTitle as="h3">Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}</CardTitle>
           <InfoHint text={TAGS_HINT} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {canManage ? (

@@ -60,21 +60,23 @@ function baseHandlers() {
 }
 
 describe('ScenariosSection — RBAC gates', () => {
-  it('with evaluations:read only — no Add scenario, no icon action buttons per row', async () => {
+  it('with evaluations:read only — no scenario or task controls', async () => {
     server.use(...baseHandlers())
     renderSection(['evaluations:read'])
 
-    await waitFor(() => expect(screen.getByText('Prompt injection')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /add scenario/i })).toBeNull()
-    // No reorder chevron buttons (they have size="icon" and contain svg — unique to the row actions)
-    // The dialogs are mounted but closed; they don't render visible buttons with svg
-    // The scenario row action group (up/down/pencil/trash) is absent when canMutate=false
-    const allButtons = screen.queryAllByRole('button')
-    // None of the visible buttons should be the row icon buttons (they're inside a conditional block)
-    // Verify specifically by text: the row has no "Add scenario" button
-    allButtons.forEach((btn) => {
-      expect(btn.textContent).not.toMatch(/add scenario/i)
-    })
+    expect(await screen.findByText('Basic injection')).toBeInTheDocument()
+    for (const name of [
+      /add scenario/i,
+      /add task/i,
+      /move scenario/i,
+      /edit scenario/i,
+      /delete scenario/i,
+      /edit task/i,
+      /delete task/i,
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
+    expect(screen.queryByText('Required reviewers')).toBeNull()
   })
 
   it('with evaluations:update — Add scenario button visible, icon buttons in scenario rows', async () => {
@@ -83,11 +85,93 @@ describe('ScenariosSection — RBAC gates', () => {
 
     await waitFor(() => expect(screen.getByText('Prompt injection')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add scenario/i })).toBeInTheDocument()
-    // The scenario row should contain action buttons (up/down/pencil/trash = 4 icon buttons)
-    const scenarioRow = screen.getByText('Prompt injection').closest('.rounded-md')
-    expect(scenarioRow).not.toBeNull()
-    const iconButtons = scenarioRow!.querySelectorAll('button[class*="size-icon"], button svg')
-    expect(iconButtons.length).toBeGreaterThan(0)
+    expect(await screen.findByText('Basic injection')).toBeInTheDocument()
+    for (const name of [
+      'Move scenario 1: Prompt injection up',
+      'Move scenario 1: Prompt injection down',
+      'Edit scenario 1: Prompt injection',
+      'Delete scenario 1: Prompt injection',
+      'Edit task 1: Basic injection',
+      'Delete task 1: Basic injection',
+      'Add task to scenario 1: Prompt injection',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+})
+
+describe('ScenariosSection — cards', () => {
+  it('numbers scenarios and tasks and labels the scenario details', async () => {
+    server.use(...baseHandlers())
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText('Basic injection')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Evaluation content/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Scenario 1: Prompt injection' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Task 1:')).toBeInTheDocument()
+    expect(screen.getByText('Date added')).toBeInTheDocument()
+    expect(screen.getByText('Required reviewers')).toBeInTheDocument()
+    expect(screen.getByText('Scenario description')).toBeInTheDocument()
+  })
+
+  it('keeps scenario, task and control order across several scenarios', async () => {
+    const second: ScenarioResponse = {
+      ...scenario,
+      id: 'scen-0002-0000-0000-000000000000',
+      name: 'Jailbreak',
+      position: 2,
+    }
+    const tasksOf = (scenarioId: string, names: string[]) =>
+      names.map((name, i) => ({
+        ...task,
+        id: `${scenarioId}-t${i}`,
+        scenario_id: scenarioId,
+        name,
+      }))
+    server.use(
+      // Out of position order, so the test sees the sort.
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [second, scenario], total: 2, limit: 100, offset: 0 }),
+      ),
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({
+          items: tasksOf(SCEN_ID, ['Basic injection', 'Nested injection']),
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      http.get(`http://localhost/api/v1/scenarios/${second.id}/tasks`, () =>
+        HttpResponse.json({
+          items: tasksOf(second.id, ['Roleplay', 'Encoding']),
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+    )
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText('Encoding')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Scenario 1: Prompt injection',
+      'Scenario 2: Jailbreak',
+    ])
+    expect(
+      screen
+        .getAllByRole('button', { name: /^Edit task/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual([
+      'Edit task 1: Basic injection',
+      'Edit task 2: Nested injection',
+      'Edit task 1: Roleplay',
+      'Edit task 2: Encoding',
+    ])
+    expect(
+      screen.getAllByRole('button', { name: /^Add task/ }).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Add task to scenario 1: Prompt injection', 'Add task to scenario 2: Jailbreak'])
   })
 })
 
@@ -160,13 +244,7 @@ describe('ScenariosSection — tasks', () => {
 
     await waitFor(() => expect(screen.getByText('Basic injection')).toBeInTheDocument())
 
-    // click the edit (pencil) button next to the task
-    const taskRow = screen.getByText('Basic injection').closest('div[class]')
-    const buttons = taskRow?.parentElement?.querySelectorAll('button')
-    // first button is pencil (edit), second is trash (delete)
-    const pencilBtn = buttons?.[0]
-    expect(pencilBtn).not.toBeNull()
-    await user.click(pencilBtn!)
+    await user.click(screen.getByRole('button', { name: 'Edit task 1: Basic injection' }))
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Edit task')).toBeInTheDocument()
@@ -184,17 +262,66 @@ describe('ScenariosSection — tasks', () => {
     expect(body.name).toBe('Updated injection')
   })
 
-  it('Edit button hidden without evaluations:update', async () => {
-    server.use(...baseHandlers())
+  it('shows the error instead of an empty task list when tasks fail to load', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({ title: 'Server error', status: 500 }, { status: 500 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText(/something went wrong on the server/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no tasks yet/i)).toBeNull()
+    expect(screen.queryByText(/Tasks \(0\)/)).toBeNull()
+  })
+
+  it('renders no task list for a scenario without tasks', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText(/no tasks yet\. add tasks/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('list')).toHaveLength(1)
+  })
+
+  it('renders no scenario list for an evaluation without scenarios', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+    )
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText(/no scenarios yet\. add a scenario/i)).toBeInTheDocument()
+    expect(screen.queryByRole('list')).toBeNull()
+  })
+
+  it('offers no call to add tasks to those who cannot', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
     renderSection(['evaluations:read'])
 
-    await waitFor(() => expect(screen.getByText('Basic injection')).toBeInTheDocument())
+    expect(await screen.findByText(/^No tasks yet\.$/)).toBeInTheDocument()
+  })
 
-    // no pencil button in the task row
-    const taskRow = screen.getByText('Basic injection').closest('div[class]')
-    const buttons = taskRow?.parentElement?.querySelectorAll('button')
-    // with read-only there should be no action buttons on tasks
-    expect(buttons?.length ?? 0).toBe(0)
+  it('offers no call to add a scenario to those who cannot', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+    )
+    renderSection(['evaluations:read'])
+
+    expect(await screen.findByText(/^No scenarios yet\.$/)).toBeInTheDocument()
   })
 
   it('deleting a task calls DELETE on the tasks endpoint', async () => {
@@ -213,12 +340,7 @@ describe('ScenariosSection — tasks', () => {
 
     await waitFor(() => expect(screen.getByText('Basic injection')).toBeInTheDocument())
 
-    // click the delete (trash) button next to the task — second button (after pencil/edit)
-    const taskRow = screen.getByText('Basic injection').closest('div[class]')
-    const taskButtons = taskRow?.parentElement?.querySelectorAll('button')
-    const trashBtn = taskButtons?.[1]
-    expect(trashBtn).not.toBeNull()
-    await user.click(trashBtn!)
+    await user.click(screen.getByRole('button', { name: 'Delete task 1: Basic injection' }))
 
     // confirm in the dialog
     await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument())

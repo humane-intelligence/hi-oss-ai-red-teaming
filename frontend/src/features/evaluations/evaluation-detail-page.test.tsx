@@ -101,6 +101,7 @@ function renderPage(permissions: string[]) {
       </QueryClientProvider>
     </Wrapper>,
   )
+  return qc
 }
 
 describe('EvaluationDetailPage — group link', () => {
@@ -152,6 +153,32 @@ describe('EvaluationDetailPage — summary', () => {
 
     await screen.findAllByRole('link', { name: 'Spring jailbreak' })
     expect(within(summary()).queryByText('Complete by')).toBeNull()
+  })
+})
+
+describe('EvaluationDetailPage — settings row', () => {
+  it('groups models, tags and other details under Evaluation settings', async () => {
+    server.use(...baseHandlers())
+    renderPage(['evaluations:read', 'evaluations:update'])
+
+    const settings = within(await screen.findByRole('region', { name: 'Evaluation settings' }))
+    expect(settings.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Models (0)',
+      expect.stringMatching(/^Allowed tags/),
+      'Other details',
+    ])
+    expect(settings.getByText('Models masked')).toBeInTheDocument()
+    // "Date added" in the summary already says it.
+    expect(settings.queryByText('Created')).toBeNull()
+    // Same long date as the summary and scenario cards; the time stays, it matters for an edit.
+    expect(
+      settings.getByText(
+        new Date(baseEvaluation.updated_at).toLocaleString(undefined, {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        }),
+      ),
+    ).toBeInTheDocument()
   })
 })
 
@@ -583,7 +610,7 @@ describe('EvaluationDetailPage — metrics dashboard', () => {
       ...baseHandlers(),
     )
     const user = userEvent.setup()
-    renderPage(['evaluations:read', 'evaluation_groups:read'])
+    renderPage(['evaluations:read', 'evaluation_groups:read', 'conversations:read'])
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
@@ -608,6 +635,8 @@ describe('EvaluationDetailPage — metrics dashboard', () => {
     expect(screen.getByText('5 prompts')).toBeInTheDocument()
     expect(screen.queryByText(/~0 tokens/)).toBeNull()
     expect(screen.getByText('Exploits by model')).toBeInTheDocument()
+    // The conversations sit above the tabs, so a tab switch keeps them in view.
+    expect(screen.getByRole('heading', { name: /^Conversations/ })).toBeInTheDocument()
     // Each assignment labels a row in both distributions, so each label is expected twice.
     expect(screen.getAllByText('Model A')).toHaveLength(2)
     expect(screen.getByText('Tokens')).toBeInTheDocument()
@@ -688,12 +717,18 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     )
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
     expect(tagKeyCalls).toBe(0)
+    // The two remaining cards take the row between them instead of leaving a gap.
+    const settings = screen.getByRole('region', { name: 'Evaluation settings' })
+    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-2')
+    expect(settings.lastElementChild).not.toHaveClass('lg:grid-cols-3')
   })
 
   it('hides the card when the instance turns tags off', async () => {
+    let served = false
     server.use(
-      http.get('http://localhost/api/v1/platform-settings/public', () =>
-        HttpResponse.json({
+      http.get('http://localhost/api/v1/platform-settings/public', () => {
+        served = true
+        return HttpResponse.json({
           signup_enabled: true,
           password_policy: {
             min_length: 10,
@@ -702,16 +737,17 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
             require_symbol: false,
           },
           conversation_tags_enabled: false,
-        }),
-      ),
+        })
+      }),
       ...baseHandlers(),
     )
-    renderPage(['evaluations:read', 'evaluations:update'])
+    const qc = renderPage(['evaluations:read', 'evaluations:update'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
-    )
+    // The switch reads as off until the settings arrive, so wait for them or this passes vacuously.
+    await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
+    const settings = screen.getByRole('region', { name: 'Evaluation settings' })
+    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-2')
   })
 })
 

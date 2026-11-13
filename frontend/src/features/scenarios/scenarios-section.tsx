@@ -1,19 +1,27 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEvaluationScenarios, useScenarioTasks } from './queries'
 import { useDeleteScenario, useDeleteTask, useReorderScenarios } from './mutations'
 import { ScenarioFormDialog } from './scenario-form-dialog'
 import { TaskFormDialog } from './task-form-dialog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Field } from '@/components/shared/field'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { humanizeError } from '@/lib/api/problem'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { ScenarioResponse, TaskResponse } from '@/lib/api/types'
 
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString(undefined, { dateStyle: 'long' })
+
 function TasksSubsection({
   scenario,
+  scenarioNumber,
   canMutate,
 }: {
   scenario: ScenarioResponse
+  scenarioNumber: number
   canMutate: boolean
 }) {
   const list = useScenarioTasks(scenario.id)
@@ -25,64 +33,70 @@ function TasksSubsection({
   const tasks = list.data?.items ?? []
 
   return (
-    <div className="mt-2 ml-5 space-y-1 border-l pl-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-muted-foreground text-xs font-medium">Tasks ({tasks.length})</span>
-        {canMutate && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2 text-xs"
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus className="size-3" /> Add task
-          </Button>
-        )}
-      </div>
-
-      {tasks.map((t) => (
-        <div key={t.id} className="flex items-start gap-2 rounded px-2 py-1 text-sm">
-          <div className="min-w-0 flex-1">
-            <span className="font-medium">{t.name}</span>
-            {t.description && (
-              <p className="text-muted-foreground truncate text-xs">{t.description}</p>
-            )}
-          </div>
-          {canMutate && (
-            <div className="flex shrink-0 gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                aria-label="Edit task"
-                onClick={() => {
-                  setEditing(t)
-                  setFormOpen(true)
-                }}
-              >
-                <Pencil className="size-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                aria-label="Delete task"
-                onClick={() => setDeleteTarget(t)}
-              >
-                <Trash2 className="size-3" />
-              </Button>
-            </div>
-          )}
-        </div>
-      ))}
-
-      {!list.isPending && tasks.length === 0 && (
-        <p className="text-muted-foreground text-xs">
-          No tasks yet. Add tasks to spell out what this scenario asks red-teamers to attempt.
+    <div className="space-y-2">
+      <p className="text-muted-foreground text-xs font-medium tracking-wide">
+        Tasks{list.isSuccess && ` (${tasks.length})`}
+      </p>
+      {list.isError && <p className="text-destructive text-sm">{humanizeError(list.error)}</p>}
+      {list.isSuccess && tasks.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          No tasks yet.
+          {canMutate && ' Add tasks to spell out what this scenario asks red-teamers to attempt.'}
         </p>
+      )}
+      {tasks.length > 0 && (
+        <ul role="list" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {tasks.map((t, i) => (
+            <li key={t.id} className="bg-background rounded-md border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 text-sm break-words">
+                  <span className="font-medium">Task {i + 1}:</span> {t.name}
+                </p>
+                {canMutate && (
+                  <div className="-mt-1 -mr-1 flex shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Edit task ${i + 1}: ${t.name}`}
+                      onClick={() => {
+                        setEditing(t)
+                        setFormOpen(true)
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Delete task ${i + 1}: ${t.name}`}
+                      onClick={() => setDeleteTarget(t)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {t.description && (
+                <p className="text-muted-foreground mt-2 text-sm break-words whitespace-pre-line">
+                  {t.description}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canMutate && (
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`Add task to scenario ${scenarioNumber}: ${scenario.name}`}
+          onClick={() => {
+            setEditing(null)
+            setFormOpen(true)
+          }}
+        >
+          <Plus className="size-4" /> Add task
+        </Button>
       )}
 
       {canMutate && (
@@ -130,6 +144,7 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<ScenarioResponse | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ScenarioResponse | null>(null)
+  const headingId = useId()
 
   const scenarios = [...(list.data?.items ?? [])].sort((a, b) => a.position - b.position)
 
@@ -146,88 +161,102 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Scenarios ({scenarios.length})</h2>
-        {canMutate && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus className="size-4" /> Add scenario
-          </Button>
-        )}
-      </div>
+    <section aria-labelledby={headingId} className="space-y-3">
+      <h2 id={headingId} className="font-display text-lg font-semibold tracking-tight">
+        Evaluation content — scenarios and tasks
+      </h2>
 
-      {list.isError && <p className="text-destructive">Error: {(list.error as Error).message}</p>}
+      {list.isError && <p className="text-destructive">{humanizeError(list.error)}</p>}
 
-      <div className="space-y-2">
-        {scenarios.map((s, i) => (
-          <div key={s.id} className="bg-card rounded-md border px-3 py-2">
-            {/* Wraps: the trailing controls are all `shrink-0` and together overflowed the row. */}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-muted-foreground w-5 text-xs">{s.position}</span>
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">{s.name}</div>
-                <div className="text-muted-foreground truncate text-sm">{s.description}</div>
-              </div>
-              <span className="text-muted-foreground shrink-0 text-xs">
-                {s.required_reviews} reviewer(s)
-              </span>
-              {canMutate && (
-                <div className="flex shrink-0 gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Move scenario up"
-                    disabled={i === 0 || reorder.isPending}
-                    onClick={() => move(i, -1)}
-                  >
-                    <ChevronUp className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Move scenario down"
-                    disabled={i === scenarios.length - 1 || reorder.isPending}
-                    onClick={() => move(i, 1)}
-                  >
-                    <ChevronDown className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Edit scenario"
-                    onClick={() => {
-                      setEditing(s)
-                      setFormOpen(true)
-                    }}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete scenario"
-                    onClick={() => setDeleteTarget(s)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <TasksSubsection scenario={s} canMutate={canMutate} />
-          </div>
-        ))}
-        {!list.isPending && scenarios.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            No scenarios yet. Add a scenario to give red-teamers a challenge to probe.
-          </p>
-        )}
-      </div>
+      {scenarios.length > 0 && (
+        <ul role="list" className="space-y-4">
+          {scenarios.map((s, i) => (
+            <li key={s.id}>
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <CardTitle as="h3" className="min-w-0 break-words">
+                      <span className="text-muted-foreground">Scenario {i + 1}:</span> {s.name}
+                    </CardTitle>
+                    {canMutate && (
+                      <div className="-mt-1.5 flex shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Move scenario ${i + 1}: ${s.name} up`}
+                          disabled={i === 0 || reorder.isPending}
+                          onClick={() => move(i, -1)}
+                        >
+                          <ChevronUp className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Move scenario ${i + 1}: ${s.name} down`}
+                          disabled={i === scenarios.length - 1 || reorder.isPending}
+                          onClick={() => move(i, 1)}
+                        >
+                          <ChevronDown className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Edit scenario ${i + 1}: ${s.name}`}
+                          onClick={() => {
+                            setEditing(s)
+                            setFormOpen(true)
+                          }}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete scenario ${i + 1}: ${s.name}`}
+                          onClick={() => setDeleteTarget(s)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <dl className="grid gap-4 sm:grid-cols-3">
+                    <Field label="Date added">{formatDate(s.created_at)}</Field>
+                    {/* Reviewer consensus is set up by whoever runs the evaluation, not a red teamer's concern. */}
+                    {canMutate && <Field label="Required reviewers">{s.required_reviews}</Field>}
+                    {s.description && (
+                      <Field label="Scenario description" className="sm:col-span-3">
+                        <span className="whitespace-pre-line">{s.description}</span>
+                      </Field>
+                    )}
+                  </dl>
+                  <TasksSubsection scenario={s} scenarioNumber={i + 1} canMutate={canMutate} />
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+      {list.isSuccess && scenarios.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          No scenarios yet.
+          {canMutate && ' Add a scenario to give red-teamers a challenge to probe.'}
+        </p>
+      )}
+
+      {canMutate && (
+        <Button
+          size="sm"
+          onClick={() => {
+            setEditing(null)
+            setFormOpen(true)
+          }}
+        >
+          <Plus className="size-4" /> Add scenario
+        </Button>
+      )}
 
       <ScenarioFormDialog
         evaluationId={evaluationId}
@@ -254,6 +283,6 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
           deleteTarget && del.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) })
         }
       />
-    </div>
+    </section>
   )
 }
