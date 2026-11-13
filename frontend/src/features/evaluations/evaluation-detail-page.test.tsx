@@ -161,9 +161,11 @@ describe('EvaluationDetailPage — settings row', () => {
     renderPage(['evaluations:read', 'evaluations:update'])
 
     const settings = within(await screen.findByRole('region', { name: 'Evaluation settings' }))
-    expect(settings.getByText(/^Models \(/)).toBeInTheDocument()
-    expect(settings.getByText(/allowed tags/i)).toBeInTheDocument()
-    expect(settings.getByText('Other details')).toBeInTheDocument()
+    expect(settings.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Models (0)',
+      expect.stringMatching(/^Allowed tags/),
+      'Other details',
+    ])
     expect(settings.getByText('Models masked')).toBeInTheDocument()
     // "Date added" in the summary already says it.
     expect(settings.queryByText('Created')).toBeNull()
@@ -705,6 +707,10 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     )
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
     expect(tagKeyCalls).toBe(0)
+    // The two remaining cards take the row between them instead of leaving a gap.
+    const settings = screen.getByRole('region', { name: 'Evaluation settings' })
+    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-2')
+    expect(settings.lastElementChild).not.toHaveClass('lg:grid-cols-3')
   })
 
   it('hides the card when the instance turns tags off', async () => {

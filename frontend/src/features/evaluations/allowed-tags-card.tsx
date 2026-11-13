@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -64,10 +64,12 @@ export function AllowedTagsCard({
       <CardHeader>
         {/* Countless until the query settles: "(0)" beside "Loading allowed keys…" reads as a loaded
             empty set, which is a different state and the one an admin would act on. */}
-        <CardTitle className="flex items-center gap-1">
-          Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}
+        <div className="flex items-center gap-1">
+          <h3 className="leading-none font-semibold tracking-tight">
+            Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}
+          </h3>
           <InfoHint text={TAGS_HINT} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {canManage ? (
