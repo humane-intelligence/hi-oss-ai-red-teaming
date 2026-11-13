@@ -57,9 +57,10 @@ async def _evaluation(
     return evaluation
 
 
-@pytest.mark.integration
 class TestInstanceSwitch:
     """`CONVERSATION_TAGS_ENABLED=false` reads as tagging off on every evaluation, whatever its flag says."""
+
+    pytestmark = pytest.mark.integration
 
     @pytest.fixture(autouse=True)
     def _tags_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
