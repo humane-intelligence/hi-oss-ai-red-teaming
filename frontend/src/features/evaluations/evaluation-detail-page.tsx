@@ -282,6 +282,11 @@ export function EvaluationDetailPage() {
             />
           </header>
 
+          <ConversationsSection
+            evaluation={evaluation}
+            groupPermissions={group?.user_permissions}
+          />
+
           {tabItems.length > 1 && <Tabs tabs={tabItems} value={activeTab} onChange={setTab} />}
 
           {activeTab === 'overview' && (
@@ -290,10 +295,6 @@ export function EvaluationDetailPage() {
               className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-3"
             >
               <div className="min-w-0 space-y-6 lg:col-span-2">
-                <ConversationsSection
-                  evaluation={evaluation}
-                  groupPermissions={group?.user_permissions}
-                />
                 <ScenariosSection evaluationId={evaluation.id} />
               </div>
 

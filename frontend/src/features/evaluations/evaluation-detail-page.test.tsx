@@ -583,7 +583,7 @@ describe('EvaluationDetailPage — metrics dashboard', () => {
       ...baseHandlers(),
     )
     const user = userEvent.setup()
-    renderPage(['evaluations:read', 'evaluation_groups:read'])
+    renderPage(['evaluations:read', 'evaluation_groups:read', 'conversations:read'])
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
@@ -608,6 +608,8 @@ describe('EvaluationDetailPage — metrics dashboard', () => {
     expect(screen.getByText('5 prompts')).toBeInTheDocument()
     expect(screen.queryByText(/~0 tokens/)).toBeNull()
     expect(screen.getByText('Exploits by model')).toBeInTheDocument()
+    // The conversations sit above the tabs, so a tab switch keeps them in view.
+    expect(screen.getByRole('heading', { name: /^Conversations/ })).toBeInTheDocument()
     // Each assignment labels a row in both distributions, so each label is expected twice.
     expect(screen.getAllByText('Model A')).toHaveLength(2)
     expect(screen.getByText('Tokens')).toBeInTheDocument()
