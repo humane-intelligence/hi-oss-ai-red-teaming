@@ -48,7 +48,10 @@ export function ConversationsSection({
   const { has: allows } = useEffectivePermissions(groupPermissions)
   const canRead = allows('conversations:read')
   const groupsQuery = useConversationGroups(evaluation.id, { groupPermissions })
-  const groups = groupsQuery.data?.pages.flatMap((p) => p.items) ?? []
+  // Offset pages shift when another member adds a group between fetches; drop the repeat.
+  const groups = [
+    ...new Map(groupsQuery.data?.pages.flatMap((p) => p.items).map((g) => [g.id, g])).values(),
+  ]
   const scenarios = useEvaluationScenarios(evaluation.id).data?.items ?? []
   const models = evaluation.models ?? []
   const canRename = allows('conversations:update')
@@ -70,7 +73,7 @@ export function ConversationsSection({
     <div className="space-y-3">
       <h2 className="font-display text-lg font-semibold tracking-tight">
         Latest conversations
-        {groupsQuery.isSuccess && ` (${groupsQuery.data.pages[0]?.total ?? 0})`}
+        {groupsQuery.isSuccess && ` (${groupsQuery.data.pages.at(-1)?.total ?? 0})`}
       </h2>
 
       {models.length === 0 && (
@@ -299,7 +302,7 @@ function GroupCard({
           )}
         </div>
       </div>
-      <dl className="grid gap-x-6 gap-y-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-x-6 gap-y-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
         <Field label="Conversation ID">
           <span className="inline-flex items-center gap-1">
             <code className="font-mono" title={group.id}>
@@ -307,6 +310,9 @@ function GroupCard({
             </code>
             <CopyIdButton id={group.id} />
           </span>
+        </Field>
+        <Field label="Started">
+          <time dateTime={group.created_at}>{new Date(group.created_at).toLocaleString()}</time>
         </Field>
         <Field label="Scenario">{scenarioName ?? '—'}</Field>
         <Field label="Number of turns">{turns > 0 ? turns : 'No messages'}</Field>

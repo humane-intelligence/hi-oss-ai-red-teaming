@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -285,12 +285,11 @@ describe('ConversationsSection — groups', () => {
     }
     server.use(groupsHandler([talked, singleGroup]))
     const user = userEvent.setup()
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     renderSection()
 
     const card = (await screen.findByText('GPT-4o vs Claude')).closest('li')!
     expect(within(card).getByTitle(GROUP_MULTI)).toHaveTextContent(GROUP_MULTI.slice(0, 8))
+    expect(within(card).getByText('Started')).toBeInTheDocument()
     expect(within(card).getByText('Prompt injection')).toBeInTheDocument()
     expect(within(card).getByText('3')).toBeInTheDocument()
     expect(within(card).getByText('Models')).toBeInTheDocument()
@@ -300,7 +299,8 @@ describe('ConversationsSection — groups', () => {
     expect(within(single).getByText('Model')).toBeInTheDocument()
 
     await user.click(within(card).getByRole('button', { name: 'Copy conversation ID' }))
-    expect(writeText).toHaveBeenCalledWith(GROUP_MULTI)
+    // user-event installs its own clipboard stub per setup, so nothing leaks past this test.
+    expect(await navigator.clipboard.readText()).toBe(GROUP_MULTI)
   })
 
   it('loads ten groups at a time, counting all of them in the heading', async () => {
@@ -321,6 +321,37 @@ describe('ConversationsSection — groups', () => {
 
     expect(await screen.findByText('Probe 12')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+  })
+
+  it('refetches every loaded page after a delete, without gaps or repeats', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...singleGroup,
+      id: `grp-${String(i).padStart(4, '0')}-0000-0000-000000000000`,
+      name: `Probe ${i + 1}`,
+    }))
+    const first = many[0]!
+    server.use(
+      groupsHandler(many),
+      http.delete(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${first.id}`,
+        () => {
+          many.shift()
+          return new HttpResponse(null, { status: 204 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderSection()
+
+    await user.click(await screen.findByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Probe 12')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Delete conversation: Probe 1' }))
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    await waitFor(() => expect(screen.queryByText('Probe 1')).toBeNull())
+    expect(screen.getByRole('heading', { name: 'Latest conversations (11)' })).toBeInTheDocument()
+    for (let i = 2; i <= 12; i++) expect(screen.getAllByText(`Probe ${i}`)).toHaveLength(1)
   })
 
   it('shows the empty state when there are no groups', async () => {
