@@ -356,6 +356,7 @@ export function EvaluationGroupDetailPage() {
                 <MembersSection
                   groupId={group.id}
                   accessLevel={group.access_level}
+                  organizationId={group.organization_id}
                   userPermissions={group.user_permissions ?? []}
                 />
               </div>

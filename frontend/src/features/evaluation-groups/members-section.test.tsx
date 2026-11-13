@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { MembersSection } from './members-section'
+import type { EvaluationGroupAccessLevel } from '@/lib/api/types'
 
 const GROUP_ID = 'grp-0001-0000-0000-000000000000'
 const USER_ID = 'usr-0001-0000-0000-000000000000'
@@ -101,7 +102,11 @@ function baseHandlers() {
   ]
 }
 
-function renderSection(groupPermissions: string[], globalPermissions: string[] = []) {
+function renderSection(
+  groupPermissions: string[],
+  globalPermissions: string[] = [],
+  access: { accessLevel?: EvaluationGroupAccessLevel; organizationId?: string | null } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const Wrapper = authWrapper(globalPermissions)
   render(
@@ -110,7 +115,8 @@ function renderSection(groupPermissions: string[], globalPermissions: string[] =
         <MemoryRouter>
           <MembersSection
             groupId={GROUP_ID}
-            accessLevel="public"
+            accessLevel={access.accessLevel ?? 'public'}
+            organizationId={access.organizationId ?? null}
             userPermissions={groupPermissions}
           />
         </MemoryRouter>
@@ -118,6 +124,49 @@ function renderSection(groupPermissions: string[], globalPermissions: string[] =
     </Wrapper>,
   )
 }
+
+describe('MembersSection — eligible to join', () => {
+  const ORG_ID = 'org-0001-0000-0000-000000000000'
+  const orgHandler = http.get(`http://localhost/api/v1/organizations/${ORG_ID}`, () =>
+    HttpResponse.json({ id: ORG_ID, name: 'Andless' }),
+  )
+
+  it('names the owning organization of an organization-access group', async () => {
+    server.use(orgHandler, ...baseHandlers())
+    renderSection(['evaluation_groups:read'], ['organizations:read'], {
+      accessLevel: 'organization',
+      organizationId: ORG_ID,
+    })
+
+    const section = await screen.findByRole('region', { name: /eligible to join on their own/i })
+    expect(await within(section).findByText('Andless')).toBeInTheDocument()
+  })
+
+  it('still says an organization can join when its name cannot be read', async () => {
+    server.use(orgHandler, ...baseHandlers())
+    renderSection(['evaluation_groups:read'], [], {
+      accessLevel: 'organization',
+      organizationId: ORG_ID,
+    })
+
+    const section = await screen.findByRole('region', { name: /eligible to join on their own/i })
+    expect(within(section).getByText('The owning organization')).toBeInTheDocument()
+  })
+
+  it.each(['public', 'invitation_only'] as const)(
+    'has no such section for a %s group',
+    async (level) => {
+      server.use(orgHandler, ...baseHandlers())
+      renderSection(['evaluation_groups:read'], ['organizations:read'], {
+        accessLevel: level,
+        organizationId: ORG_ID,
+      })
+
+      await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+      expect(screen.queryByRole('region', { name: /eligible to join/i })).toBeNull()
+    },
+  )
+})
 
 describe('MembersSection — renders', () => {
   it('renders members with name and role label', async () => {
@@ -129,24 +178,21 @@ describe('MembersSection — renders', () => {
     expect(screen.getByText('Red Teamer')).toBeInTheDocument()
   })
 
-  it('renders annotator display name when the caller can manage members', async () => {
-    server.use(...baseHandlers())
-    // The annotator list is manage-members-gated; a manager sees it.
+  it('no longer lists annotators below the members', async () => {
+    // The count is on the page's stat tile and the role shows in the list; the block is gone.
+    let annotatorCalls = 0
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/annotators`, () => {
+        annotatorCalls += 1
+        return HttpResponse.json({ items: [annotator], total: 1, limit: 100, offset: 0 })
+      }),
+      ...baseHandlers(),
+    )
     renderSection(['evaluation_groups:manage'])
-
-    // first_name='Bob', last_name=null → displayName returns 'Bob'
-    await waitFor(() => expect(screen.getByText('Bob')).toBeInTheDocument())
-  })
-
-  it('hides the Annotators section for a member who cannot manage members', async () => {
-    // The annotator endpoint is manage-members-gated server-side, so a plain
-    // member must neither see the section nor fire the request (which would 403).
-    server.use(...baseHandlers())
-    renderSection(['evaluation_groups:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.queryByText('Annotators')).toBeNull()
-    expect(screen.queryByText('Bob')).toBeNull()
+    expect(annotatorCalls).toBe(0)
   })
 })
 

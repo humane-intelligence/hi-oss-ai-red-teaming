@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Mail, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useGroupMembers, useGroupAnnotators } from './queries'
+import { useGroupMembers } from './queries'
 import { useAddGroupMember, useRemoveGroupMember, useUpdateGroupMember } from './mutations'
 import { BulkInviteDialog } from './bulk-invite-dialog'
 import { RolesPicker } from '@/features/users/roles-picker'
 import { useInfiniteUsers } from '@/features/users/queries'
+import { useOrganization } from '@/features/organizations/queries'
 import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SearchSelect } from '@/components/shared/search-select'
@@ -149,13 +150,38 @@ function EditMemberDialog({
   )
 }
 
+// Members of the owning organization can join an organization-access group themselves; without
+// this the page gave no hint of it. Public groups are open to everyone, invitation-only to nobody.
+function EligibleToJoin({ organizationId }: { organizationId: string }) {
+  const { has } = usePermissions()
+  const org = useOrganization(organizationId, {
+    enabled: has('organizations:read'),
+    suppressErrorToast: true,
+  })
+  return (
+    <section aria-labelledby="eligible-to-join" className="space-y-2">
+      <h3 id="eligible-to-join" className="font-semibold">
+        Eligible to join on their own (1)
+      </h3>
+      <div className="bg-card rounded-md border px-3 py-2">
+        <div className="font-medium">{org.data?.name ?? 'The owning organization'}</div>
+        <div className="text-muted-foreground text-sm">
+          Organization — its members can join this group themselves
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function MembersSection({
   groupId,
   accessLevel,
+  organizationId,
   userPermissions,
 }: {
   groupId: string
   accessLevel: EvaluationGroupAccessLevel
+  organizationId: string | null | undefined
   userPermissions: readonly string[]
 }) {
   const members = useGroupMembers(groupId)
@@ -169,9 +195,6 @@ export function MembersSection({
     'evaluation_groups:manage',
     'evaluation_groups:manage_members',
   ])
-  // The annotator list is manage-members-gated server-side; only fetch it when the
-  // caller can manage, so a plain member doesn't 403 (and toast) on it.
-  const annotators = useGroupAnnotators(groupId, { enabled: canManageMembers })
   // "Add existing user" additionally needs the global user picker (`/auth/users`,
   // gated on `users:read`); invite-by-email doesn't.
   const canAddExisting = canManageMembers && hasGlobal('users:read')
@@ -181,7 +204,6 @@ export function MembersSection({
   const [editTarget, setEditTarget] = useState<ObjectMemberResponse | null>(null)
 
   const memberList = members.data?.items ?? []
-  const annotatorList = annotators.data?.items ?? []
 
   return (
     <div className="space-y-3">
@@ -249,28 +271,8 @@ export function MembersSection({
         )}
       </div>
 
-      {canManageMembers && (
-        <div className="space-y-2">
-          <h3 className="text-muted-foreground text-sm font-medium">Annotators</h3>
-          <p className="text-muted-foreground text-xs">
-            {accessLevel === 'public'
-              ? 'Reviewers assignable to flags here — every platform annotator, not just this group’s members.'
-              : 'Members holding the annotator role — assignable as reviewers for flags here.'}
-          </p>
-          {annotators.isError && (
-            <p className="text-muted-foreground text-sm">
-              You don’t have access to the annotator list.
-            </p>
-          )}
-          {annotatorList.length === 0 && !annotators.isPending && !annotators.isError && (
-            <p className="text-muted-foreground text-sm">No annotators.</p>
-          )}
-          {annotatorList.map((a) => (
-            <div key={a.id} className="text-sm">
-              {displayName(a)}
-            </div>
-          ))}
-        </div>
+      {accessLevel === 'organization' && organizationId && (
+        <EligibleToJoin organizationId={organizationId} />
       )}
 
       {canAddExisting && (
