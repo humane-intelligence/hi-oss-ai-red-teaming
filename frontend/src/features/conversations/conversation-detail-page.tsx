@@ -196,8 +196,8 @@ export function ConversationDetailPage() {
   )
   const flagList = flags.data?.items ?? []
   // Warming a model is a write (`conversations:update` on the warmup route), so it is gated like
-  // one: the in-group `owner` role that `read_any` surfaces this transcript to holds no
-  // `conversations:update`, and probing anyway reports the 403 as the model being unavailable.
+  // one: `read_any` surfaces this transcript to a group owner who is not its author, and writing to
+  // another member's conversation is refused whatever the caller's permissions.
   // `canWrite` is ownership-shaped where the route is permission-shaped — restrictive-but-correct
   // only while messaging itself stays owner-scoped. Lift that, and this needs the permission too.
   const warmup = useWarmupGate(
