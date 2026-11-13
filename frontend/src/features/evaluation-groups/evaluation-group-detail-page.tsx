@@ -309,7 +309,7 @@ export function EvaluationGroupDetailPage() {
 
             <div className={cn('grid grid-cols-2 gap-3', canManageMembers && 'sm:grid-cols-3')}>
               <StatTile label="Evaluations" value={children.length} />
-              <StatTile label="Members" value={members.data?.items.length ?? 0} />
+              <StatTile label="Members" value={members.data?.total ?? 0} />
               {canManageMembers && (
                 <StatTile label="Annotators" value={annotators.data?.items.length ?? 0} />
               )}
