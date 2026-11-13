@@ -17,9 +17,11 @@ const formatDate = (value: string) =>
 
 function TasksSubsection({
   scenario,
+  scenarioNumber,
   canMutate,
 }: {
   scenario: ScenarioResponse
+  scenarioNumber: number
   canMutate: boolean
 }) {
   const list = useScenarioTasks(scenario.id)
@@ -87,6 +89,7 @@ function TasksSubsection({
             <Button
               size="sm"
               variant="outline"
+              aria-label={`Add task to scenario ${scenarioNumber}: ${scenario.name}`}
               onClick={() => {
                 setEditing(null)
                 setFormOpen(true)
@@ -230,7 +233,7 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
                     </Field>
                   )}
                 </dl>
-                <TasksSubsection scenario={s} canMutate={canMutate} />
+                <TasksSubsection scenario={s} scenarioNumber={i + 1} canMutate={canMutate} />
               </CardContent>
             </Card>
           </li>

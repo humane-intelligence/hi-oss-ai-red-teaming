@@ -92,6 +92,7 @@ describe('ScenariosSection — RBAC gates', () => {
       'Delete scenario 1: Prompt injection',
       'Edit task 1: Basic injection',
       'Delete task 1: Basic injection',
+      'Add task to scenario 1: Prompt injection',
     ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
