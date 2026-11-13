@@ -193,6 +193,25 @@ describe('Organization MembersSection — add flow', () => {
     expect(offsets).toEqual(['0', '1'])
   })
 
+  it('does not request users until the dialog opens', async () => {
+    let requests = 0
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', () => {
+        requests += 1
+        return HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0 })
+      }),
+      ...baseHandlers(),
+    )
+
+    const user = userEvent.setup()
+    renderSection(MANAGER)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    expect(requests).toBe(0)
+
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    await waitFor(() => expect(requests).toBe(1))
+  })
+
   it('disables Add once the picked user is edited away', async () => {
     server.use(
       http.get('http://localhost/api/v1/auth/users', () =>
