@@ -47,11 +47,10 @@ function usePublicPlatformSettings() {
   })
 }
 
-// Off while pending (a tag control revealed late beats one that 400s), on if the read fails — the
-// same fail-open as the rest of this subset.
+// Off until the read succeeds, failure included: shown tags claim context the model got, and on an
+// instance with tags off that claim would be false.
 export function useConversationTagsEnabled(): boolean {
-  const { data, isError } = usePublicPlatformSettings()
-  return data?.conversation_tags_enabled ?? isError
+  return usePublicPlatformSettings().data?.conversation_tags_enabled ?? false
 }
 
 export function useSignupEnabled(): boolean {

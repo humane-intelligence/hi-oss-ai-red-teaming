@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { delay, http, HttpResponse } from 'msw'
 import { renderHook, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useIsFetching } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
 import { useConversationTagsEnabled } from './queries'
 
@@ -29,10 +29,21 @@ describe('useConversationTagsEnabled', () => {
     await waitFor(() => expect(result.current).toBe(true))
   })
 
-  it('fails open when the read fails', async () => {
-    server.use(http.get(PUBLIC_URL, () => new HttpResponse(null, { status: 500 })))
-    const { result } = renderHook(() => useConversationTagsEnabled(), { wrapper })
+  it('fails closed when the read fails', async () => {
+    let served = false
+    server.use(
+      http.get(PUBLIC_URL, () => {
+        served = true
+        return new HttpResponse(null, { status: 500 })
+      }),
+    )
+    const { result } = renderHook(
+      () => ({ enabled: useConversationTagsEnabled(), fetching: useIsFetching() }),
+      { wrapper },
+    )
 
-    await waitFor(() => expect(result.current).toBe(true))
+    // Pending also reads as off, so wait for the failed read to settle before asserting.
+    await waitFor(() => expect(served && result.current.fetching === 0).toBe(true))
+    expect(result.current.enabled).toBe(false)
   })
 })
