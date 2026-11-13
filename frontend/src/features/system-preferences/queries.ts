@@ -47,6 +47,13 @@ function usePublicPlatformSettings() {
   })
 }
 
+// Off while pending (a tag control revealed late beats one that 400s), on if the read fails — the
+// same fail-open as the rest of this subset.
+export function useConversationTagsEnabled(): boolean {
+  const { data, isError } = usePublicPlatformSettings()
+  return data?.conversation_tags_enabled ?? isError
+}
+
 export function useSignupEnabled(): boolean {
   return usePublicPlatformSettings().data?.signup_enabled ?? true
 }

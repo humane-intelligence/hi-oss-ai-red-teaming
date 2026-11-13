@@ -35,6 +35,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { InfoHint } from '@/components/shared/info-hint'
 import { TAGS_HINT } from './tag-hint'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 const schema = z.object({
   title: z.string().min(1, 'Required').max(255),
@@ -127,6 +128,7 @@ export function EvaluationFormPage() {
   const evaluationGroupId = useWatch({ control, name: 'evaluation_group_id' })
   const maskModels = useWatch({ control, name: 'mask_models_enabled' })
   const tagsEnabled = useWatch({ control, name: 'tags_enabled' })
+  const conversationTagsEnabled = useConversationTagsEnabled()
   // Subscribed here because its first use sits below this component's early returns.
   const evaluationLicenseId = useWatch({ control, name: 'data_license_id' })
   const licenseParentGroup = useEvaluationGroup(evaluationGroupId)
@@ -392,29 +394,31 @@ export function EvaluationFormPage() {
                 Mask assigned model identities on reads
               </FieldLabel>
             </Field>
-            <Field orientation="horizontal">
-              <Checkbox
-                id="tags_enabled"
-                aria-describedby={tagsDescriptionId}
-                checked={tagsEnabled}
-                onCheckedChange={(next) =>
-                  setValue('tags_enabled', next === true, { shouldDirty: true })
-                }
-              />
-              <FieldContent>
-                {/* Beside the label, not inside it: a button in a label would toggle the box. */}
-                <div className="flex items-center gap-1">
-                  <FieldLabel htmlFor="tags_enabled" className="font-normal">
-                    Custom tags
-                  </FieldLabel>
-                  <InfoHint text={TAGS_HINT} />
-                </div>
-                <FieldDescription id={tagsDescriptionId}>
-                  Checking this box allows custom tags to be added to conversations in this
-                  evaluation.
-                </FieldDescription>
-              </FieldContent>
-            </Field>
+            {conversationTagsEnabled && (
+              <Field orientation="horizontal">
+                <Checkbox
+                  id="tags_enabled"
+                  aria-describedby={tagsDescriptionId}
+                  checked={tagsEnabled}
+                  onCheckedChange={(next) =>
+                    setValue('tags_enabled', next === true, { shouldDirty: true })
+                  }
+                />
+                <FieldContent>
+                  {/* Beside the label, not inside it: a button in a label would toggle the box. */}
+                  <div className="flex items-center gap-1">
+                    <FieldLabel htmlFor="tags_enabled" className="font-normal">
+                      Custom tags
+                    </FieldLabel>
+                    <InfoHint text={TAGS_HINT} />
+                  </div>
+                  <FieldDescription id={tagsDescriptionId}>
+                    Checking this box allows custom tags to be added to conversations in this
+                    evaluation.
+                  </FieldDescription>
+                </FieldContent>
+              </Field>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => navigate(-1)}>
                 Cancel

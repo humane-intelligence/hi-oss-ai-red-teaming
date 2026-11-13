@@ -49,6 +49,7 @@ import {
   useObjectPermissions,
   useEffectivePermissions,
 } from '@/lib/auth/use-permissions'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 // Every tab this page can address, whatever the caller's authority — see `useTabParam`.
 const TAB_VOCABULARY = ['overview', 'metrics', 'exports']
@@ -63,6 +64,7 @@ export function EvaluationDetailPage() {
   const canAssignModel = hasAll(['evaluations:update', 'models:read'])
   const lookup = useUserLookup()
   const query = useEvaluation(id ?? '')
+  const conversationTagsEnabled = useConversationTagsEnabled()
   const evaluation = query.data
   const groupId = evaluation?.evaluation_group_id ?? ''
   const groupQuery = useEvaluationGroup(groupId)
@@ -353,7 +355,7 @@ export function EvaluationDetailPage() {
                   </CardContent>
                 </Card>
 
-                {evaluation.tags_enabled && (
+                {conversationTagsEnabled && evaluation.tags_enabled && (
                   <AllowedTagsCard
                     evaluationId={evaluation.id}
                     restricted={evaluation.tags_restricted}

@@ -42,6 +42,7 @@ import type {
   ConversationResponse,
   EvaluationResponse,
 } from '@/lib/api/types'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 export function ConversationGroupPage() {
   const { id, groupId } = useParams<{ id: string; groupId: string }>()
@@ -53,6 +54,7 @@ export function ConversationGroupPage() {
   const authority = useGroupAuthority(evalId, 'conversations:read')
   const { allows, canManage, groupPermissions } = authority
   const evaluation = useEvaluation(evalId)
+  const conversationTagsEnabled = useConversationTagsEnabled()
   const groupQuery = useConversationGroup(evalId, gid, { groupPermissions })
   const del = useDeleteConversationGroup(evalId)
 
@@ -153,7 +155,7 @@ export function ConversationGroupPage() {
     assignmentFor(assignmentId)?.warmup_enabled ?? false
   const webAccess = (assignmentId: string) => assignmentFor(assignmentId)?.web_access ?? false
 
-  const tagsEnabled = evaluation.data?.tags_enabled === true
+  const tagsEnabled = conversationTagsEnabled && evaluation.data?.tags_enabled === true
   // Only a restricted evaluation has a key whitelist to advertise in the composers.
   const tagsRestricted = tagsEnabled && evaluation.data?.tags_restricted === true
   const tagKeys = useEvaluationTagKeys(tagsRestricted ? evalId : '')

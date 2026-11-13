@@ -44,6 +44,7 @@ import { REVERSIBLE_DELETE_NOTE } from '@/lib/restore/restore'
 import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { StatusPill } from '@/components/shared/status-pill'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 export function ConversationDetailPage() {
   const { id, conversationId } = useParams<{ id: string; conversationId: string }>()
@@ -59,6 +60,7 @@ export function ConversationDetailPage() {
   const authority = useGroupAuthority(evalId, 'conversations:read')
   const { allows, canManage, groupPermissions } = authority
   const evaluation = useEvaluation(evalId)
+  const conversationTagsEnabled = useConversationTagsEnabled()
   const conversation = useConversation(evalId, convId, { groupPermissions })
   const messages = useMessages(evalId, convId, { groupPermissions })
   const stream = useConversationStream(evalId, convId)
@@ -97,7 +99,7 @@ export function ConversationDetailPage() {
   // Tagging is a per-evaluation opt-out: with it off the backend rejects every tagged write, so no
   // tag surface renders. Read as off until the evaluation resolves — revealing a control late beats
   // offering one that would 400.
-  const tagsEnabled = evaluation.data?.tags_enabled === true
+  const tagsEnabled = conversationTagsEnabled && evaluation.data?.tags_enabled === true
   // Only a restricted evaluation has a key whitelist to advertise; unrestricted stays free-form,
   // so the query is skipped there rather than fetching a list the authoring UI wouldn't use.
   const tagsRestricted = tagsEnabled && evaluation.data?.tags_restricted === true

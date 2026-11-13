@@ -593,6 +593,30 @@ describe('ConversationDetailPage — tags', () => {
     expect(screen.queryByTestId('conversation-tags')).toBeNull()
   })
 
+  it('offers no tag editor when the instance turns tags off', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({
+          signup_enabled: true,
+          password_policy: {
+            min_length: 10,
+            require_uppercase: false,
+            require_digit: false,
+            require_symbol: false,
+          },
+          conversation_tags_enabled: false,
+        }),
+      ),
+      ...baseHandlers(conversationTombstonedScenario),
+    )
+    renderWithPerms(['conversations:read', 'conversations:update'])
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /add tags|edit tags/i })).toBeNull()
+  })
+
   it('adds a tag and PATCHes the whole map', async () => {
     let captured: unknown = null
     server.use(
