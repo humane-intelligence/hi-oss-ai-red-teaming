@@ -5,6 +5,7 @@ import { useEvaluation } from '@/features/evaluations/queries'
 import { useEvaluationScenarios } from '@/features/scenarios/queries'
 import { useGroupAuthority } from './use-group-authority'
 import { AuthorityError } from './authority-error'
+import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { useCreateConversationGroup } from './mutations'
@@ -135,6 +136,15 @@ export function GroupCreatePage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      {evaluation.data && (
+        <GroupIdentity
+          groupId={evaluation.data.evaluation_group_id}
+          path={[
+            { label: evaluation.data.title, to: `/evaluations/${evalId}` },
+            { label: 'New conversation' },
+          ]}
+        />
+      )}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"

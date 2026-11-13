@@ -126,18 +126,18 @@ describe('EvaluationFormPage — the trail on the edit path', () => {
     )
     renderEdit()
 
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(await within(identity).findByRole('link', { name: 'Host group' })).toBeInTheDocument()
 
-    // Here the path trail earns its place: it carries the evaluation being edited, which neither
-    // the identity line above nor the "Edit evaluation" title beside it says.
-    const path = await screen.findByRole('navigation', { name: 'Breadcrumb' })
+    // One line carries the whole way down, including the evaluation being edited, which the
+    // "Edit evaluation" title beside it does not name.
     expect(
-      await within(path).findByRole('link', { name: 'Prompt injection sweep' }),
+      await within(identity).findByRole('link', { name: 'Prompt injection sweep' }),
     ).toHaveAttribute('href', `/evaluations/${EVAL_ID}`)
     // The page you are on is the leaf, and a leaf does not link.
-    expect(within(path).getByText('Edit')).toBeInTheDocument()
-    expect(within(path).queryByRole('link', { name: 'Edit' })).toBeNull()
+    expect(within(identity).getByText('Edit')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
+    expect(within(identity).queryByRole('link', { name: 'Edit' })).toBeNull()
   })
 })
 
@@ -423,15 +423,13 @@ describe('EvaluationFormPage — create object-gating', () => {
     renderCreate()
 
     // The identity line is what names the parent group now.
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(await within(identity).findByRole('link', { name: 'Host group' })).toHaveAttribute(
       'href',
       `/evaluation-groups/${GROUP_ID}`,
     )
-    expect(within(identity).getByRole('link', { name: 'Evaluation Groups' })).toBeInTheDocument()
-
-    // No path trail on the create flow: it would carry the group the line above ends with, and
-    // "New", which is the page title.
+    expect(within(identity).getByText('New evaluation')).toBeInTheDocument()
+    expect(within(identity).queryByRole('link', { name: 'Evaluation Groups' })).toBeNull()
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'New evaluation' })).toBeInTheDocument()
   })

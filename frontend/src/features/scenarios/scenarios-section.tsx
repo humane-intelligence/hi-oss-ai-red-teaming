@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, MessageSquarePlus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEvaluationScenarios, useScenarioTasks } from './queries'
 import { useDeleteScenario, useDeleteTask, useReorderScenarios } from './mutations'
 import { ScenarioFormDialog } from './scenario-form-dialog'
@@ -121,13 +121,7 @@ function TasksSubsection({
   )
 }
 
-export function ScenariosSection({
-  evaluationId,
-  onStartConversation,
-}: {
-  evaluationId: string
-  onStartConversation?: (scenarioId: string) => void
-}) {
+export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
   const list = useEvaluationScenarios(evaluationId)
   const del = useDeleteScenario(evaluationId)
   const reorder = useReorderScenarios(evaluationId)
@@ -183,17 +177,6 @@ export function ScenariosSection({
               <span className="text-muted-foreground shrink-0 text-xs">
                 {s.required_reviews} reviewer(s)
               </span>
-              {onStartConversation && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => onStartConversation(s.id)}
-                  title="Start a conversation with this scenario"
-                >
-                  <MessageSquarePlus className="size-4" /> Start
-                </Button>
-              )}
               {canMutate && (
                 <div className="flex shrink-0 gap-1">
                   <Button

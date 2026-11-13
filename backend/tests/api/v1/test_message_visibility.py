@@ -9,7 +9,8 @@ pinned here as well — they carry no message content, but they share the `read_
 
 Each case varies one axis — role, ownership, or group access level — so removing any predicate they rest on
 (the route gate, the `user_id` owner check, its `conversations:read_any` widening,
-`group_visible_to`) fails at least one test.
+`group_visible_to`) fails at least one test. The write side of that owner scope is pinned here too,
+route by route, since `read_any` widens reads only.
 """
 
 from uuid import UUID
@@ -19,12 +20,16 @@ import pytest
 from fastapi import status
 from httpx import AsyncClient
 from httpx import Response
+from sqlalchemy import func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.models import AiModel
 from app.core.annotations.models import FlaggedMessage
 from app.core.annotations.models import MessageFlag
+from app.core.annotations.models import TaskCompletion
 from app.core.auth.models import Role
 from app.core.auth.models import User
 from app.core.auth.object_roles.registry import ObjectType
@@ -42,6 +47,7 @@ from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import Scenario
+from app.core.evaluations.models import Task
 from app.core.reviews.models import Review
 from tests.api.v1.conftest import bearer
 from tests.api.v1.conftest import caller_with
@@ -320,10 +326,10 @@ async def test_in_group_red_teamer_starts_a_conversation_without_the_global_perm
 
     The JWT carries global roles only, so before the object-aware gate a user added to a group
     as `red_teamer` was refused with "Caller lacks the 'conversations:create' permission" —
-    the global `owner` role does not grant it. The in-group role does.
+    the global `viewer` role does not grant it. The in-group role does.
     """
     red_teamer_role = system_roles[SystemRole.RED_TEAMER.value]
-    caller = await _caller(db_session, system_roles[SystemRole.OWNER.value], email="mv-ig-create@example.com")
+    caller = await _caller(db_session, system_roles[SystemRole.VIEWER.value], email="mv-ig-create@example.com")
     evaluation = await _evaluation_for(db_session)
     await _grant_in_group(db_session, evaluation.evaluation_group_id, caller.id, red_teamer_role)
     assignment = await _assignment(db_session, evaluation.id)
@@ -385,7 +391,7 @@ async def test_non_member_without_the_global_permission_cannot_start_a_conversat
     auth_db_client: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
 ) -> None:
     """The object-aware gate widens the source of the permission, never drops the requirement."""
-    caller = await _caller(db_session, system_roles[SystemRole.OWNER.value], email="mv-ig-denied@example.com")
+    caller = await _caller(db_session, system_roles[SystemRole.VIEWER.value], email="mv-ig-denied@example.com")
     evaluation = await _evaluation_for(db_session)
     assignment = await _assignment(db_session, evaluation.id)
     scenario = Scenario(name="s", description="d", evaluation_id=evaluation.id, position=0)
@@ -413,7 +419,7 @@ async def test_non_member_without_the_global_permission_gets_404_on_an_invisible
     since a caller holding `conversations:create` globally short-circuits the gate
     (`require_object_or_global`) and never reaches the lookup at all.
     """
-    caller = await _caller(db_session, system_roles[SystemRole.OWNER.value], email="mv-ig-hidden@example.com")
+    caller = await _caller(db_session, system_roles[SystemRole.VIEWER.value], email="mv-ig-hidden@example.com")
     evaluation = await _evaluation_for(db_session, access_level=EvaluationGroupAccessLevel.INVITATION_ONLY)
     assignment = await _assignment(db_session, evaluation.id)
     scenario = Scenario(name="s", description="d", evaluation_id=evaluation.id, position=0)
@@ -698,3 +704,82 @@ async def test_submission_transcript_returns_the_whole_conversation_not_only_fla
     assert [message["content"] for message in transcript.json()["items"]] == ["msg 0", "msg 1", "msg 2"]
     # The detail surface *is* narrowed to the selection — the split the requirement's wording misses.
     assert [message["content"] for message in detail.json()["submission"]["messages"]] == ["msg 1"]
+
+
+_OWNER_WRITES = {
+    "conversation_patch": ("PATCH", "{conv_url}", {"title": "hijacked"}),
+    "conversation_delete": ("DELETE", "{conv_url}", None),
+    "group_patch": ("PATCH", "{group_url}", {"name": "hijacked"}),
+    "group_delete": ("DELETE", "{group_url}", None),
+    "send": ("POST", "{conv_url}/messages", {"content": "hijacked"}),
+    "regenerate": ("POST", "{conv_url}/messages/{message_id}/regenerate", None),
+    "continue": ("POST", "{conv_url}/messages/{message_id}/continue", None),
+    "completion_put": ("PUT", "/api/v1/conversations/{conv_id}/completed-tasks/{free_task_id}", None),
+    "completion_delete": ("DELETE", "/api/v1/conversations/{conv_id}/completed-tasks/{done_task_id}", None),
+}
+
+
+@pytest.mark.parametrize("route", list(_OWNER_WRITES))
+async def test_owner_role_write_to_another_members_conversation_is_404(
+    route: str, auth_db_client: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    """The real `owner` role, held globally and in the group, still writes only to its own rows.
+
+    Owners hold the conversation write set so they can run their own conversations; every write
+    route then rests on the service's owner predicate alone, which this pins route by route.
+    """
+    owner_role = system_roles[SystemRole.OWNER.value]
+    author = await _caller(db_session, system_roles[SystemRole.RED_TEAMER.value], email=f"ow-{route}-a@example.com")
+    owner = await _caller(db_session, owner_role, email=f"ow-{route}-o@example.com")
+    evaluation = await _evaluation_for(db_session)
+    await _grant_in_group(db_session, evaluation.evaluation_group_id, owner.id, owner_role)
+    conversation = await _conversation_owned_by(db_session, owner_id=author.id, evaluation=evaluation)
+    [message] = await _seed_messages(db_session, conversation.id, 1)
+    free_task = Task(name="free", description="d", scenario_id=conversation.scenario_id)
+    done_task = Task(name="done", description="d", scenario_id=conversation.scenario_id)
+    db_session.add_all([free_task, done_task])
+    await db_session.flush()
+    checked = await auth_db_client.put(
+        f"/api/v1/conversations/{conversation.id}/completed-tasks/{done_task.id}", headers=bearer(author)
+    )
+    assert checked.status_code == status.HTTP_200_OK
+
+    async def snapshot() -> tuple[object, ...]:
+        await db_session.refresh(conversation)
+        group = await db_session.get(ConversationGroup, conversation.conversation_group_id)
+        assert group is not None
+        await db_session.refresh(group)
+        turns = await db_session.scalar(
+            select(func.count()).select_from(Turn).where(col(Turn.conversation_id) == conversation.id)
+        )
+        completions = await db_session.scalar(
+            select(func.count())
+            .select_from(TaskCompletion)
+            .where(col(TaskCompletion.conversation_id) == conversation.id, col(TaskCompletion.deleted_at).is_(None))
+        )
+        messages = await db_session.scalar(
+            select(func.count())
+            .select_from(Message)
+            .join(Turn, col(Turn.id) == col(Message.turn_id))
+            .where(col(Turn.conversation_id) == conversation.id)
+        )
+        return conversation.title, conversation.deleted_at, group.name, group.deleted_at, turns, messages, completions
+
+    before = await snapshot()
+    method, url, body = _OWNER_WRITES[route]
+    response = await auth_db_client.request(
+        method,
+        url.format(
+            conv_url=f"/api/v1/evaluations/{evaluation.id}/conversations/{conversation.id}",
+            group_url=f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{conversation.conversation_group_id}",
+            conv_id=conversation.id,
+            message_id=message.id,
+            free_task_id=free_task.id,
+            done_task_id=done_task.id,
+        ),
+        json=body,
+        headers=bearer(owner),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert await snapshot() == before

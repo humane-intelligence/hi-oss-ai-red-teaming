@@ -1,9 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Ban as BanIcon, Flag, Pencil, Tag, Trash2 } from 'lucide-react'
-import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
-import { useGroupTrail } from '@/features/evaluation-groups/use-group-trail'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { useGroupAuthority } from './use-group-authority'
 import { AuthorityError } from './authority-error'
@@ -204,8 +202,8 @@ export function ConversationDetailPage() {
   )
   const flagList = flags.data?.items ?? []
   // Warming a model is a write (`conversations:update` on the warmup route), so it is gated like
-  // one: the in-group `owner` role that `read_any` surfaces this transcript to holds no
-  // `conversations:update`, and probing anyway reports the 403 as the model being unavailable.
+  // one: `read_any` surfaces this transcript to a group owner who is not its author, and writing to
+  // another member's conversation is refused whatever the caller's permissions.
   // `canWrite` is ownership-shaped where the route is permission-shaped — restrictive-but-correct
   // only while messaging itself stays owner-scoped. Lift that, and this needs the permission too.
   const warmup = useWarmupGate(
@@ -225,7 +223,6 @@ export function ConversationDetailPage() {
   }, [sorted.length, stream.streaming?.assistantText, stream.streaming?.userText])
 
   const evalTitle = evaluation.data?.title
-  const { groupTitle } = useGroupTrail(evaluation.data?.evaluation_group_id ?? '')
   const hasRail = Boolean(conv) || flagList.length > 0
 
   const selectMode = selected.length > 0
@@ -382,17 +379,9 @@ export function ConversationDetailPage() {
       )}
       {conv && (
         <>
-          {evaluation.data && <GroupIdentity groupId={evaluation.data.evaluation_group_id} />}
-          <Breadcrumbs
-            items={[
-              ...(groupTitle && evaluation.data
-                ? [
-                    {
-                      label: groupTitle,
-                      to: `/evaluation-groups/${evaluation.data.evaluation_group_id}`,
-                    },
-                  ]
-                : []),
+          <GroupIdentity
+            groupId={evaluation.data?.evaluation_group_id ?? ''}
+            path={[
               { label: evalTitle ?? 'Evaluation', to: `/evaluations/${evalId}` },
               ...(group.data
                 ? [

@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api/client'
 import { unwrap } from '@/lib/api/fetcher'
 
@@ -60,18 +60,33 @@ export function useScenario(evaluationId: string, scenarioId: string | null | un
   })
 }
 
+const scenarioTasksQuery = (scenarioId: string) => ({
+  queryKey: ['scenario-tasks', scenarioId],
+  enabled: scenarioId !== '',
+  queryFn: async () =>
+    unwrap(
+      await apiClient.GET('/api/v1/scenarios/{scenario_id}/tasks', {
+        params: {
+          path: { scenario_id: scenarioId },
+          query: { limit: 100, offset: 0 },
+        },
+      }),
+    ),
+})
+
 export function useScenarioTasks(scenarioId: string) {
-  return useQuery({
-    queryKey: ['scenario-tasks', scenarioId],
-    enabled: scenarioId !== '',
-    queryFn: async () =>
-      unwrap(
-        await apiClient.GET('/api/v1/scenarios/{scenario_id}/tasks', {
-          params: {
-            path: { scenario_id: scenarioId },
-            query: { limit: 100, offset: 0 },
-          },
-        }),
-      ),
+  return useQuery(scenarioTasksQuery(scenarioId))
+}
+
+// The same per-scenario queries the scenario cards run, so counting adds no request of its own.
+// `undefined` until every scenario has answered, and when no id list is given: a partial sum, or a zero
+// for a list that has not loaded, would read as a real total.
+export function useTaskCount(scenarioIds: string[] | undefined): number | undefined {
+  return useQueries({
+    queries: (scenarioIds ?? []).map(scenarioTasksQuery),
+    combine: (results) =>
+      scenarioIds && results.every((r) => r.data)
+        ? results.reduce((n, r) => n + (r.data?.total ?? 0), 0)
+        : undefined,
   })
 }

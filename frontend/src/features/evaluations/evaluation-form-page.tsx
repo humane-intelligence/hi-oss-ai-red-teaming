@@ -22,7 +22,6 @@ import { humanizeError } from '@/lib/api/problem'
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
-import { useGroupTrail } from '@/features/evaluation-groups/use-group-trail'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
 import { FormField } from '@/components/shared/form-field'
@@ -80,9 +79,6 @@ export function EvaluationFormPage() {
   // Editing an evaluation is also a page inside a group — it just learns the group from the
   // evaluation rather than from the route.
   const trailGroupId = isEdit ? (existing.data?.evaluation_group_id ?? '') : groupId
-  // The same resolution the identity line uses, rather than a third fetch of the same group: taking
-  // the title from anywhere else lets an untitled group be named above and dropped below.
-  const { groupTitle: trailGroupTitle } = useGroupTrail(trailGroupId)
   const groupPerms = useObjectPermissions(presetGroup.data?.user_permissions)
   const canCreateHere = !fromGroup || groupPerms.has('evaluations:create')
 
@@ -282,23 +278,19 @@ export function EvaluationFormPage() {
         title={isEdit ? 'Edit evaluation' : 'New evaluation'}
         breadcrumbs={
           trailGroupId ? (
-            <div className="space-y-1">
-              <GroupIdentity groupId={trailGroupId} />
-              {/* Only once it carries something neither the identity above nor the page title beside
-                  it already says — the evaluation being edited. On the create path it would carry
-                  the group and "New", both already on screen. */}
-              {isEdit && existing.data && (
-                <Breadcrumbs
-                  items={[
-                    ...(trailGroupTitle
-                      ? [{ label: trailGroupTitle, to: `/evaluation-groups/${trailGroupId}` }]
-                      : []),
-                    { label: existing.data.title, to: `/evaluations/${id}` },
-                    { label: 'Edit' },
-                  ]}
-                />
-              )}
-            </div>
+            <GroupIdentity
+              groupId={trailGroupId}
+              path={
+                isEdit
+                  ? [
+                      ...(existing.data
+                        ? [{ label: existing.data.title, to: `/evaluations/${id}` }]
+                        : []),
+                      { label: 'Edit' },
+                    ]
+                  : [{ label: 'New evaluation' }]
+              }
+            />
           ) : (
             <Breadcrumbs
               items={[

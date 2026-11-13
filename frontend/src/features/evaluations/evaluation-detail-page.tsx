@@ -22,13 +22,12 @@ import { EvaluationMetricsPanel } from './metrics-section'
 import { AssignModelDialog } from './assign-model-dialog'
 import { AllowedTagsCard } from './allowed-tags-card'
 import { ScenariosSection } from '@/features/scenarios/scenarios-section'
-import { useEvaluationScenarios } from '@/features/scenarios/queries'
+import { useEvaluationScenarios, useTaskCount } from '@/features/scenarios/queries'
 import { ConversationsSection } from '@/features/conversations/conversations-section'
-import { useConversationGroups } from '@/features/conversations/queries'
+import { StartConversationDialog } from '@/features/conversations/start-conversation-dialog'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { groupAcceptsEvaluations } from '@/features/evaluation-groups/lifecycle'
-import { useUserLookup } from '@/features/users/queries'
 import { LicenseValue } from '@/features/licenses/license-value'
 import { humanizeError } from '@/lib/api/problem'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
@@ -51,6 +50,9 @@ import {
 } from '@/lib/auth/use-permissions'
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString(undefined, { dateStyle: 'long' })
+
 // Every tab this page can address, whatever the caller's authority — see `useTabParam`.
 const TAB_VOCABULARY = ['overview', 'metrics', 'exports']
 
@@ -62,7 +64,6 @@ export function EvaluationDetailPage() {
   // Assigning a model needs the catalog (models:read) to pick one; editing an
   // existing assignment's params needs only evaluations:update.
   const canAssignModel = hasAll(['evaluations:update', 'models:read'])
-  const lookup = useUserLookup()
   const query = useEvaluation(id ?? '')
   const conversationTagsEnabled = useConversationTagsEnabled()
   const evaluation = query.data
@@ -81,15 +82,20 @@ export function EvaluationDetailPage() {
   )
   const metrics = useEvaluationMetrics(id ?? '', { enabled: canViewMetrics })
   const scenarios = useEvaluationScenarios(id ?? '')
-  // Same authority the section uses, so the count tile doesn't read 0 for a caller whose
-  // conversation access comes from an in-group role.
-  const conversationGroups = useConversationGroups(id ?? '', {
-    groupPermissions: group?.user_permissions,
-  })
-  const conversationCount = (conversationGroups.data?.items ?? []).reduce(
-    (n, g) => n + (g.conversations?.length ?? 0),
-    0,
+  const scenarioItems = scenarios.data?.items ?? []
+  // Past the list's one page the sum would cover only part of the scenarios the tile beside it counts.
+  const allScenariosListed = scenarios.data && scenarios.data.items.length >= scenarios.data.total
+  const taskCount = useTaskCount(
+    allScenariosListed ? scenarios.data?.items.map((s) => s.id) : undefined,
   )
+  // A reason only for what is known to be missing: a scenario list still loading, or one that
+  // failed to load, is not an evaluation without scenarios.
+  const startBlocked =
+    (evaluation?.models?.length ?? 0) === 0
+      ? 'Assign a model first'
+      : scenarios.data?.items.length === 0
+        ? 'Add a scenario first'
+        : undefined
   const approve = useApproveEvaluation(id ?? '')
   const reject = useRejectEvaluation(id ?? '')
   const unassign = useUnassignModel(id ?? '')
@@ -99,6 +105,7 @@ export function EvaluationDetailPage() {
   const [includeChildren, setIncludeChildren] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
   // Export gates on the parent group's in-group owner / admin authority — the same
   // rule the server enforces (`assert_export_authority` → `evaluation_groups:export`,
   // `:manage` break-glass). Authority arrives with the async group fetch, so the
@@ -151,102 +158,40 @@ export function EvaluationDetailPage() {
 
       {evaluation && (
         <>
-          {/* Identity only: a path trail here would carry the group, which the line above ends
-              with, and the evaluation, which is the heading below. */}
-          <GroupIdentity groupId={groupId} />
+          <GroupIdentity groupId={groupId} path={[{ label: evaluation.title }]} />
 
           <header className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 space-y-2">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="font-display text-2xl font-semibold tracking-tight">
-                    {evaluation.title}
-                  </h1>
-                  <EvaluationStatusBadge status={evaluation.status} />
-                </div>
-                <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 font-mono text-xs">
-                  <Link
-                    to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
-                    className="hover:text-foreground underline-offset-2 hover:underline"
-                  >
-                    {group?.title ?? evaluation.evaluation_group_id}
-                  </Link>
-                  <span aria-hidden>·</span>
-                  <span>by {lookup(evaluation.created_by_id)}</span>
-                </p>
-                {evaluation.description && (
-                  <p className="text-muted-foreground max-w-2xl">{evaluation.description}</p>
-                )}
-              </div>
-              <PageActions
-                primary={
-                  <>
-                    {conversationPerms.has('conversations:create') && (
-                      <Button
-                        size="sm"
-                        disabled={(evaluation.models?.length ?? 0) === 0}
-                        title={
-                          (evaluation.models?.length ?? 0) === 0
-                            ? 'Assign a model first'
-                            : undefined
-                        }
-                        onClick={() =>
-                          navigate(`/evaluations/${evaluation.id}/conversation-groups/new`)
-                        }
-                      >
-                        <MessageSquarePlus /> Start a conversation
-                      </Button>
-                    )}
-                    {has('evaluations:approve') && evaluation.status === 'under_review' && (
-                      <>
-                        <Button
-                          size="sm"
-                          disabled={approve.isPending}
-                          onClick={() => approve.mutate()}
-                        >
-                          Approve
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => setRejectOpen(true)}>
-                          Reject
-                        </Button>
-                      </>
-                    )}
-                  </>
-                }
-                secondary={[
-                  {
-                    key: 'duplicate',
-                    label: 'Duplicate',
-                    icon: Copy,
-                    onSelect: () => {
-                      setIncludeChildren(false)
-                      setDuplicateOpen(true)
-                    },
-                    disabled: duplicate.isPending,
-                    // Duplicate makes a new evaluation, so it gates on the global create
-                    // capability, not this evaluation's per-group authority (the backend still
-                    // enforces write access on the source). The copy lands in this group, so it
-                    // also needs the group to accept evaluations (approved/published, the backend
-                    // 409s otherwise); like Exports, the gate resolves with the async group fetch.
-                    when: has('evaluations:create') && groupAcceptsEvaluations(group?.status),
-                  },
-                  {
-                    key: 'edit',
-                    label: 'Edit',
-                    icon: Pencil,
-                    onSelect: () => navigate(`/evaluations/${evaluation.id}/edit`),
-                    when: has('evaluations:update'),
-                  },
-                  {
-                    key: 'export',
-                    label: 'Export',
-                    icon: Download,
-                    onSelect: () => setExportOpen(true),
-                    when: canExport,
-                  },
-                ]}
-              />
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-2xl font-semibold tracking-tight">
+                {evaluation.title}
+              </h1>
+              <EvaluationStatusBadge status={evaluation.status} />
             </div>
+
+            <Card>
+              <CardContent className="pt-6">
+                <dl className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Evaluation group">
+                    <Link
+                      to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
+                      className="underline underline-offset-2"
+                    >
+                      {group ? (group.title ?? 'Untitled draft') : '…'}
+                    </Link>
+                  </Field>
+                  <Field label="Date added">{formatDate(evaluation.created_at)}</Field>
+                  {/* Evaluations carry no deadline of their own; the group's end date is it. */}
+                  {group?.end_date && (
+                    <Field label="Complete by">{formatDate(`${group.end_date}T00:00:00`)}</Field>
+                  )}
+                  {evaluation.description && (
+                    <Field label="Evaluation description" className="sm:col-span-3">
+                      <span className="whitespace-pre-line">{evaluation.description}</span>
+                    </Field>
+                  )}
+                </dl>
+              </CardContent>
+            </Card>
 
             {evaluation.rejection_reason && (
               <div className="border-destructive/40 bg-destructive/10 rounded-md border px-4 py-3 text-sm">
@@ -255,11 +200,86 @@ export function EvaluationDetailPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <StatTile label="Models" value={evaluation.models?.length ?? 0} />
-              <StatTile label="Scenarios" value={scenarios.data?.items.length ?? 0} />
-              <StatTile label="Conversations" value={conversationCount} />
-            </div>
+            {/* What the evaluation asks for, for whoever runs it; a red teamer sees their own
+                conversations below instead. Same authority as Exports. */}
+            {canExport && (
+              <div className="grid grid-cols-3 gap-3">
+                <StatTile label="Models to test" value={evaluation.models?.length ?? 0} />
+                <StatTile label="Scenarios to test" value={scenarios.data?.total ?? '—'} />
+                <StatTile label="Tasks to complete" value={taskCount ?? '—'} />
+              </div>
+            )}
+
+            <PageActions
+              primary={
+                <>
+                  {conversationPerms.has('conversations:create') && (
+                    <Button
+                      size="sm"
+                      disabled={startBlocked !== undefined || !scenarios.data}
+                      title={startBlocked}
+                      onClick={() => {
+                        // One scenario leaves nothing to choose, so the dialog would be a dead click.
+                        const only = scenarioItems.length === 1 ? scenarioItems[0] : undefined
+                        if (only)
+                          navigate(
+                            `/evaluations/${evaluation.id}/conversation-groups/new?scenario=${only.id}`,
+                          )
+                        else setStartOpen(true)
+                      }}
+                    >
+                      <MessageSquarePlus /> Start a conversation
+                    </Button>
+                  )}
+                  {has('evaluations:approve') && evaluation.status === 'under_review' && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={approve.isPending}
+                        onClick={() => approve.mutate()}
+                      >
+                        Approve
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setRejectOpen(true)}>
+                        Reject
+                      </Button>
+                    </>
+                  )}
+                </>
+              }
+              secondary={[
+                {
+                  key: 'duplicate',
+                  label: 'Duplicate',
+                  icon: Copy,
+                  onSelect: () => {
+                    setIncludeChildren(false)
+                    setDuplicateOpen(true)
+                  },
+                  disabled: duplicate.isPending,
+                  // Duplicate makes a new evaluation, so it gates on the global create
+                  // capability, not this evaluation's per-group authority (the backend still
+                  // enforces write access on the source). The copy lands in this group, so it
+                  // also needs the group to accept evaluations (approved/published, the backend
+                  // 409s otherwise); like Exports, the gate resolves with the async group fetch.
+                  when: has('evaluations:create') && groupAcceptsEvaluations(group?.status),
+                },
+                {
+                  key: 'edit',
+                  label: 'Edit',
+                  icon: Pencil,
+                  onSelect: () => navigate(`/evaluations/${evaluation.id}/edit`),
+                  when: has('evaluations:update'),
+                },
+                {
+                  key: 'export',
+                  label: 'Export',
+                  icon: Download,
+                  onSelect: () => setExportOpen(true),
+                  when: canExport,
+                },
+              ]}
+            />
           </header>
 
           {tabItems.length > 1 && <Tabs tabs={tabItems} value={activeTab} onChange={setTab} />}
@@ -274,18 +294,7 @@ export function EvaluationDetailPage() {
                   evaluation={evaluation}
                   groupPermissions={group?.user_permissions}
                 />
-                <ScenariosSection
-                  evaluationId={evaluation.id}
-                  onStartConversation={
-                    conversationPerms.has('conversations:create') &&
-                    (evaluation.models?.length ?? 0) > 0
-                      ? (scenarioId) =>
-                          navigate(
-                            `/evaluations/${evaluation.id}/conversation-groups/new?scenario=${scenarioId}`,
-                          )
-                      : undefined
-                  }
-                />
+                <ScenariosSection evaluationId={evaluation.id} />
               </div>
 
               <aside className="min-w-0 space-y-6">
@@ -501,6 +510,13 @@ export function EvaluationDetailPage() {
               advancedParamsDisabled={editTarget?.paramsDisabled}
             />
           )}
+
+          <StartConversationDialog
+            evaluationId={evaluation.id}
+            scenarios={scenarioItems}
+            open={startOpen}
+            onOpenChange={setStartOpen}
+          />
 
           <ExportDialog
             open={exportOpen}

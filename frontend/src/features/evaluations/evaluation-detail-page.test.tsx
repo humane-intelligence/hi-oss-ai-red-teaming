@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { EvaluationDetailPage } from './evaluation-detail-page'
@@ -39,6 +39,7 @@ const GROUP_ID = baseEvaluation.evaluation_group_id
 function baseHandlers(
   evaluation: EvaluationResponse = baseEvaluation,
   groupTitle = 'Spring jailbreak',
+  groupOverrides: Record<string, unknown> = {},
 ) {
   return [
     http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () => HttpResponse.json(evaluation)),
@@ -71,9 +72,14 @@ function baseHandlers(
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
         evaluations: [],
+        ...groupOverrides,
       }),
     ),
   ]
+}
+
+function NewConversation() {
+  return <div>NEW CONVERSATION {useLocation().search}</div>
 }
 
 function renderPage(permissions: string[]) {
@@ -86,6 +92,7 @@ function renderPage(permissions: string[]) {
           <Routes>
             <Route path="/evaluations/:id" element={<EvaluationDetailPage />} />
             <Route path="/evaluations/:id/edit" element={<div>EDIT PAGE</div>} />
+            <Route path="/evaluations/:id/conversation-groups/new" element={<NewConversation />} />
             <Route path="/evaluations" element={<div>Evaluations list</div>} />
             <Route path="/evaluation-groups" element={<div>Evaluation groups list</div>} />
             <Route path="/evaluation-groups/:id" element={<div>Group detail</div>} />
@@ -111,20 +118,56 @@ describe('EvaluationDetailPage — group link', () => {
   })
 })
 
-describe('EvaluationDetailPage — the two navigations', () => {
-  it('says where the page sits once, and says it in the identity line', async () => {
+describe('EvaluationDetailPage — summary', () => {
+  const summary = () => screen.getByText('Evaluation group').closest('dl') as HTMLElement
+
+  it('labels the group, the dates and the description, and drops the author', async () => {
+    server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak', { end_date: '2026-12-02' }))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('Complete by')).toBeInTheDocument()
+    const dl = within(summary())
+    expect(dl.getByRole('link', { name: 'Spring jailbreak' })).toHaveAttribute(
+      'href',
+      `/evaluation-groups/${GROUP_ID}`,
+    )
+    // Built from calendar parts, not by parsing the same strings the page parses: a date-only
+    // value read as UTC would land on the previous day west of Greenwich.
+    const long = (d: Date) => d.toLocaleDateString(undefined, { dateStyle: 'long' })
+    expect(dl.getByText('Date added').nextElementSibling).toHaveTextContent(
+      long(new Date(baseEvaluation.created_at)),
+    )
+    expect(dl.getByText('Complete by').nextElementSibling).toHaveTextContent(
+      long(new Date(2026, 11, 2)),
+    )
+    expect(dl.getByText('Evaluation description').nextElementSibling).toHaveTextContent(
+      'A test evaluation',
+    )
+    expect(screen.queryByText(/^by /)).toBeNull()
+  })
+
+  it('leaves out the deadline when the group has none', async () => {
+    server.use(...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await screen.findAllByRole('link', { name: 'Spring jailbreak' })
+    expect(within(summary()).queryByText('Complete by')).toBeNull()
+  })
+})
+
+describe('EvaluationDetailPage — the trail', () => {
+  it('reads group / evaluation, with no section root and no second trail', async () => {
     server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak'))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
-    expect(within(identity).getByRole('link', { name: 'Evaluation Groups' })).toBeInTheDocument()
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(
       await within(identity).findByRole('link', { name: /spring jailbreak/i }),
     ).toBeInTheDocument()
+    // The page itself is the leaf, and a leaf does not link.
+    expect(within(identity).getByText('Test evaluation')).toHaveAttribute('aria-current', 'page')
+    expect(within(identity).queryByRole('link', { name: 'Evaluation Groups' })).toBeNull()
 
-    // No second trail: it could only carry the group this line ends with and the evaluation the
-    // heading below states, so it printed both twice. (The meta line under the heading still links
-    // the group beside its author — pre-existing, and the only remaining repeat.)
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: 'Test evaluation' })).toBeInTheDocument()
     expect(within(identity).getAllByRole('link', { name: /spring jailbreak/i })).toHaveLength(1)
@@ -704,6 +747,106 @@ describe('EvaluationDetailPage — in-group authority', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Exports' })).toBeInTheDocument())
   })
 
+  // Two scenarios with 2 and 3 tasks, ahead of the empty lists in baseHandlers().
+  const scenario = (sid: string) => ({
+    id: sid,
+    evaluation_id: EVAL_ID,
+    name: sid,
+    description: '',
+    position: 1,
+    required_reviews: 1,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  })
+  const content = [
+    http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+      HttpResponse.json({
+        items: [scenario('s1'), scenario('s2')],
+        total: 2,
+        limit: 100,
+        offset: 0,
+      }),
+    ),
+    http.get('http://localhost/api/v1/scenarios/s1/tasks', () =>
+      HttpResponse.json({ items: [], total: 2, limit: 100, offset: 0 }),
+    ),
+    http.get('http://localhost/api/v1/scenarios/s2/tasks', () =>
+      HttpResponse.json({ items: [], total: 3, limit: 100, offset: 0 }),
+    ),
+  ]
+  const tile = (label: string) => screen.getByText(label).nextElementSibling
+  const withModel: EvaluationResponse = {
+    ...baseEvaluation,
+    models: [
+      {
+        assignment_id: 'assign-0001',
+        name: 'gpt-4o',
+        warmup_enabled: false,
+        advanced_params_disabled: false,
+        web_access: false,
+        input_modalities: ['text'],
+      },
+    ],
+  }
+  const canStart = groupWith(['conversations:read', 'conversations:create'])
+  const startButton = () => screen.findByRole('button', { name: /start a conversation/i })
+
+  it('shows what the evaluation asks for to whoever holds export authority', async () => {
+    server.use(groupWith(['evaluation_groups:export']), ...content, ...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(() => expect(tile('Tasks to complete')).toHaveTextContent('5'))
+    expect(tile('Scenarios to test')).toHaveTextContent('2')
+    expect(tile('Models to test')).toHaveTextContent(String(baseEvaluation.models?.length ?? 0))
+  })
+
+  it('claims no task total when the scenarios run past one page', async () => {
+    server.use(
+      groupWith(['evaluation_groups:export']),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({
+          items: [scenario('s1'), scenario('s2')],
+          total: 101,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      ...content,
+      ...baseHandlers(),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(() => expect(tile('Scenarios to test')).toHaveTextContent('101'))
+    expect(tile('Tasks to complete')).toHaveTextContent('—')
+  })
+
+  it('claims no totals and no missing scenario when the scenario list fails to load', async () => {
+    server.use(
+      groupWith(['evaluation_groups:export', 'conversations:create']),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ title: 'boom', status: 500 }, { status: 500 }),
+      ),
+      ...baseHandlers(withModel),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(() => expect(tile('Models to test')).toHaveTextContent('1'))
+    expect(tile('Scenarios to test')).toHaveTextContent('—')
+    expect(tile('Tasks to complete')).toHaveTextContent('—')
+    const start = await startButton()
+    expect(start).toBeDisabled()
+    expect(start).not.toHaveAttribute('title')
+  })
+
+  it('shows no stat tiles to a member without that authority', async () => {
+    server.use(groupWith(['conversations:create']), ...content, ...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await screen.findAllByRole('link', { name: 'Spring jailbreak' })
+    expect(screen.queryByText('Models to test')).toBeNull()
+    expect(screen.queryByText('Tasks to complete')).toBeNull()
+  })
+
   it('does not offer the Exports tab on in-group evaluation_groups:update alone', async () => {
     // Export authority is deliberately its own permission: editing a group must not confer the
     // bundle of every member's transcripts, flags and reviews.
@@ -716,29 +859,118 @@ describe('EvaluationDetailPage — in-group authority', () => {
     expect(screen.queryByRole('tab', { name: 'Exports' })).toBeNull()
   })
 
-  it('offers New conversation when only the in-group role grants conversations:create', async () => {
-    server.use(groupWith(['conversations:read', 'conversations:create']), ...baseHandlers())
+  it('offers one way to start a conversation, on in-group authority alone', async () => {
+    server.use(canStart, ...content, ...baseHandlers(withModel))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
-    )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /new conversation/i })).toBeInTheDocument(),
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    expect(screen.queryByRole('button', { name: /new conversation/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^start$/i })).toBeNull()
+  })
+
+  it('says what is missing before a conversation can start', async () => {
+    server.use(canStart, ...content, ...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+    const noModel = await startButton()
+    expect(noModel).toBeDisabled()
+    expect(noModel).toHaveAttribute('title', 'Assign a model first')
+  })
+
+  it('says a scenario is missing when the evaluation has models but none', async () => {
+    server.use(canStart, ...baseHandlers(withModel))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+    await waitFor(async () =>
+      expect(await startButton()).toHaveAttribute('title', 'Add a scenario first'),
     )
   })
 
-  it('offers the header Start a conversation on the same in-group authority', async () => {
-    // Three entry points lead to the same create flow (header CTA, section button, scenario
-    // Start); one of them disagreeing on the source of authority is how the last bug survived.
-    server.use(groupWith(['conversations:read', 'conversations:create']), ...baseHandlers())
+  it('asks for the scenario first, then hands it to the new conversation page', async () => {
+    const user = userEvent.setup()
+    server.use(canStart, ...content, ...baseHandlers(withModel))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Continue' })).toBeDisabled()
+    await user.click(within(dialog).getByRole('combobox', { name: 'Scenario' }))
+    await user.click(await screen.findByRole('option', { name: 's2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText('NEW CONVERSATION ?scenario=s2')).toBeInTheDocument()
+  })
+
+  it("previews the picked scenario's tasks, or says it has none or why they did not load", async () => {
+    const user = userEvent.setup()
+    server.use(
+      canStart,
+      http.get('http://localhost/api/v1/scenarios/s1/tasks', () =>
+        HttpResponse.json({
+          items: [{ id: 't1', scenario_id: 's1', name: 'Extract the system prompt' }],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      http.get('http://localhost/api/v1/scenarios/s2/tasks', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...content,
+      ...baseHandlers(withModel),
     )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /start a conversation/i })).toBeInTheDocument(),
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+    const dialog = await screen.findByRole('dialog')
+    const pick = async (name: string) => {
+      await user.click(within(dialog).getByRole('combobox', { name: 'Scenario' }))
+      await user.click(await screen.findByRole('option', { name }))
+    }
+
+    await pick('s1')
+    expect(await within(dialog).findByText('Extract the system prompt')).toBeInTheDocument()
+    await pick('s2')
+    expect(await within(dialog).findByText('No tasks in this scenario.')).toBeInTheDocument()
+  })
+
+  it('says why the task preview is missing when the tasks fail to load', async () => {
+    const user = userEvent.setup()
+    server.use(
+      canStart,
+      http.get('http://localhost/api/v1/scenarios/s1/tasks', () =>
+        HttpResponse.json({ title: 'Tasks unavailable', status: 500 }, { status: 500 }),
+      ),
+      ...content,
+      ...baseHandlers(withModel),
     )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('combobox', { name: 'Scenario' }))
+    await user.click(await screen.findByRole('option', { name: 's1' }))
+
+    expect(await within(dialog).findByText(/went wrong on the server/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText('No tasks in this scenario.')).toBeNull()
+  })
+
+  it('skips the dialog when there is only one scenario to pick', async () => {
+    const user = userEvent.setup()
+    server.use(
+      canStart,
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [scenario('s1')], total: 1, limit: 100, offset: 0 }),
+      ),
+      ...content,
+      ...baseHandlers(withModel),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+
+    expect(await screen.findByText('NEW CONVERSATION ?scenario=s1')).toBeInTheDocument()
   })
 })

@@ -3,15 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  ChevronDown,
-  ChevronRight,
-  Columns2,
-  MessageSquare,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight, Columns2, MessageSquare, Pencil, Trash2 } from 'lucide-react'
 import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissions'
 import { useAuth } from '@/lib/auth/auth-context'
 import { applyApiError } from '@/lib/api/form'
@@ -45,7 +37,6 @@ export function ConversationsSection({
   // grant no conversation permissions still gets the affordances here.
   groupPermissions?: readonly string[]
 }) {
-  const navigate = useNavigate()
   const { user } = useAuth()
   // The break-glass lift on group PATCH/DELETE is read off the JWT server-side, so it is the
   // global set that decides it — not the group union.
@@ -55,9 +46,9 @@ export function ConversationsSection({
   const groupsQuery = useConversationGroups(evaluation.id, { groupPermissions })
   const groups = groupsQuery.data?.items ?? []
   const models = evaluation.models ?? []
-  const canCreate = allows('conversations:create')
   const canRename = allows('conversations:update')
   const canDelete = allows('conversations:delete')
+  const canStart = allows('conversations:create')
   const total = groups.length
 
   const [renameTarget, setRenameTarget] = useState<ConversationGroupResponse | null>(null)
@@ -73,21 +64,7 @@ export function ConversationsSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display min-w-0 text-lg font-semibold tracking-tight">
-          Conversations ({total})
-        </h2>
-        {canCreate && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={models.length === 0}
-            onClick={() => navigate(`/evaluations/${evaluation.id}/conversation-groups/new`)}
-          >
-            <Plus className="size-4" /> New conversation
-          </Button>
-        )}
-      </div>
+      <h2 className="font-display text-lg font-semibold tracking-tight">Conversations ({total})</h2>
 
       {models.length === 0 && (
         <p className="text-muted-foreground text-sm">Assign a model to start conversations.</p>
@@ -114,7 +91,10 @@ export function ConversationsSection({
         })}
         {!groupsQuery.isPending && groups.length === 0 && (
           <p className="text-muted-foreground text-sm">
-            No conversations yet. Start one to probe a model against this evaluation.
+            No conversations yet.
+            {canStart &&
+              models.length > 0 &&
+              ' Use Start a conversation above to probe a model against this evaluation.'}
           </p>
         )}
       </div>

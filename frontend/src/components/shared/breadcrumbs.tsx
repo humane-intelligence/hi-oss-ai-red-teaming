@@ -11,12 +11,16 @@ export function Breadcrumbs({
   items,
   label = 'Breadcrumb',
   nowrap = false,
+  pinFirst = true,
 }: {
   items: Crumb[]
   label?: string
   // For a trail in fixed-height chrome: wrapping there changes the chrome's height instead of the
   // trail's, so the caller clips rather than wraps.
   nowrap?: boolean
+  // Under `nowrap` the first crumb keeps its width when it is a short section root. A trail that
+  // opens with an entity name turns this off, or that name starves the crumbs after it.
+  pinFirst?: boolean
 }) {
   const { pathname } = useLocation()
   // `aria-current="page"` marks the crumb that *is* this page — not simply the last one. A leaf that
@@ -42,9 +46,23 @@ export function Breadcrumbs({
             )}
             {/* Under `nowrap` the entries shrink and end in an ellipsis rather than being cut
                 mid-word: a clipped name reads as a rendering fault, an ellipsis reads as a name that
-                continues. The section root keeps its full width — it is short, and it is the anchor a
-                reader scans for — so only the entity names give way. */}
-            <li className={cn(nowrap && (i === 0 ? 'shrink-0' : 'min-w-0'))}>
+                continues. A section root keeps its full width — it is short, and it is the anchor a
+                reader scans for. Without one (`pinFirst` off) the leaf is held instead, up to a
+                share of the line: it is the crumb that says where you are, and equal shrinking
+                left it at two letters. */}
+            <li
+              className={cn(
+                nowrap &&
+                  (pinFirst
+                    ? i === 0
+                      ? 'shrink-0'
+                      : 'min-w-0'
+                    : i === items.length - 1
+                      ? 'max-w-[40%] shrink-0'
+                      : 'min-w-0'),
+              )}
+              title={nowrap ? c.label : undefined}
+            >
               {c.to ? (
                 <Link
                   to={c.to}

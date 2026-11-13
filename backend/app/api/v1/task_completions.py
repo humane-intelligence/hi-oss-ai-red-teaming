@@ -2,9 +2,9 @@
 
 Completions are owner-scoped progress markers: a red-teamer checks off a
 scenario's tasks within a conversation they own. Mutations gate on
-`conversations:update` (held by `red_teamer` + `admin`) and are owner-only; reads
-gate on `conversations:read`, with the `evaluation_groups:manage` break-glass
-lifting the owner/visibility scope. A completion is always per conversation and
+`conversations:update` and are owner-only; reads gate on `conversations:read`,
+with the `evaluation_groups:manage` break-glass lifting the owner/visibility
+scope. A completion is always per conversation and
 per task, written through the conversation routes; the group route is a read-only
 "K/N conversations" roll-up over those same rows.
 

@@ -94,31 +94,32 @@ Two heavy runtime dependencies, treated differently:
   opened from the parent's detail page. Pick by ownership, not by size.
 - **Navigation.** List → detail → nested edit. Detail/form pages carry a breadcrumb trail and a
   one-step ghost "Back" button; lists don't. Outside an evaluation group that trail is a single
-  `Section / leaf` `<Breadcrumbs>` in the page body — the two-trail split below applies only inside
+  `Section / leaf` `<Breadcrumbs>` in the page body — the group trail below applies only inside
   a group. Resolve ids to names in the UI (`useUserLookup`, `useEvaluationLookup`) —
   never show a raw UUID.
-- **Two trails inside an evaluation group.** Pages under a group carry an *identity* line
-  (`Evaluation Groups / [Organization /] Group`, `<GroupIdentity>` from
-  `features/evaluation-groups/group-trail.tsx`) and a *path* breadcrumb that opens with the group
-  and ends at the current page — the split GitHub uses for `org / repo` and the file path. The
-  identity line portals into the app header (`NavTrailSlotContext`) rather than sitting on the page,
-  so it stays in one place across the subtree; the path breadcrumb stays in the page body. **The
-  header copy renders from `lg` up, and below that the same line renders in the page instead** — the
-  two are complementary, never both on screen. The handover is at `lg` rather than `md` because
-  narrower than that the header has no width to give it: measured at 768px the organization and
-  group each came out 0px wide, so the bar would announce a section root and nothing else.
-  Rendered without the shell (every page test) there is no slot and the identity line renders in
-  place at every width.
-  One written exception: on the conversation pages the path trail opens with the group even though
-  the identity line ends with it — that repetition is the approved GitHub split (`org / repo` in the
-  bar, then the path starting at the repo), not drift.
-  The path is rendered only where it carries a segment that is not already on the page: on the
-  evaluation detail and create pages it would name just the group (which the identity line already names,
-  and the group link in the meta line carries below `lg`) and the page itself (the heading), so
-  there is none.
-  On the group's own page the identity line **is** the `<h1>` (`<GroupIdentityHeading>`), so the name
-  is not printed twice. The organization appears only when the group has one and the lookup can name
-  it. Everywhere else a single `Section / leaf` breadcrumb is the whole hierarchy.
+- **One trail inside an evaluation group.** Pages under a group carry a single line,
+  `<GroupIdentity>` from `features/evaluation-groups/group-trail.tsx`, in one of two shapes:
+  - **Group-level pages** (the group's own page, its edit form): the *identity* —
+    `Evaluation Groups / [Organization /] Group`. On the group's own page it **is** the `<h1>`
+    (`<GroupIdentityHeading>`), so the name is not printed twice. The organization appears only when
+    the group has one and the lookup can name it.
+  - **Pages below the group** (evaluation detail / create / edit, conversation pages, new
+    conversation): pass `path`, and the line reads
+    `Group / Evaluation [/ Conversation group] [/ Conversation]` down to
+    the current page — no section root and no organization, which is an owner of the group and not
+    a level of this hierarchy. The leaf is the page and does not link. There is no second
+    breadcrumb in the page body on these pages.
+
+  Either way the line portals into the app header (`NavTrailSlotContext`) rather than sitting on the
+  page, so it stays in one place across the subtree. **The header copy renders from `lg` up, and
+  below that the same line renders in the page instead** — the two are complementary, never both on
+  screen. The handover is at `lg` rather than `md` because narrower than that the header has no
+  width to give it: measured at 768px the organization and group each came out 0px wide. In the
+  header a section root keeps its full width and the names after it shrink to an ellipsis; a `path`
+  trail has no root (`pinFirst={false}`), so there the leaf is held (up to 40% of the line) and
+  the names before it give way. Rendered without the shell (every page test) there is no slot
+  and the line renders in place at every width.
+  Everywhere else a single `Section / leaf` breadcrumb is the whole hierarchy.
 - **Loading / empty / error.** `DataTable` covers all three for lists (skeleton / `emptyLabel`
   +optional `emptyHint` + `emptyAction` / inline error). Detail pages use `DetailSkeleton` while
   pending and `humanizeError` for the inline error. Empty states say what the thing is and how to
