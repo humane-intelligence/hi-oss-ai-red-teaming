@@ -39,27 +39,28 @@ function AddMemberDialog({
   const canSubmit = userId !== '' && roleIds.length > 0 && !add.isPending
 
   const members = new Set(currentMemberIds)
-  const options = (users.data?.pages ?? [])
-    .flatMap((page) => page.items)
-    .map((u) => {
-      const isMember = members.has(u.id)
-      return {
-        value: u.id,
-        label: [fullName(u), u.email].filter(Boolean).join(' · '),
-        disabled: isMember,
-        hint: isMember ? 'Already a member' : undefined,
-      }
-    })
+  const options = (users.data ?? []).map((u) => {
+    const isMember = members.has(u.id)
+    return {
+      value: u.id,
+      label: [fullName(u), u.email].filter(Boolean).join(' · '),
+      disabled: isMember,
+      hint: isMember ? 'Already a member' : undefined,
+    }
+  })
 
-  function reset() {
+  // Reset on close, not via `onOpen`: that runs after the first open render, which would
+  // refetch the previous term once more.
+  function close() {
     setSearch('')
     setUserId('')
     setRoleIds([])
     setPickerKey((k) => k + 1)
+    onOpenChange(false)
   }
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={reset}>
+    <Modal open={open} onOpenChange={close} title="Add member">
       <div className="space-y-3">
         <SearchSelect
           key={pickerKey}
@@ -84,17 +85,12 @@ function AddMemberDialog({
         </div>
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={add.isPending}>
+        <Button variant="outline" onClick={close} disabled={add.isPending}>
           Cancel
         </Button>
         <Button
           disabled={!canSubmit}
-          onClick={() =>
-            add.mutate(
-              { user_id: userId, role_ids: roleIds },
-              { onSuccess: () => onOpenChange(false) },
-            )
-          }
+          onClick={() => add.mutate({ user_id: userId, role_ids: roleIds }, { onSuccess: close })}
         >
           {add.isPending ? 'Adding…' : 'Add'}
         </Button>

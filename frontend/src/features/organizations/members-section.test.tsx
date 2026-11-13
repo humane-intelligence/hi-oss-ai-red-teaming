@@ -218,8 +218,15 @@ describe('Organization MembersSection — add flow', () => {
     expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled()
   })
 
-  it('clears the typed term when the dialog is reopened', async () => {
-    server.use(...baseHandlers())
+  it('clears the typed term when the dialog is reopened, without fetching it again', async () => {
+    const searches: (string | null)[] = []
+    server.use(
+      http.get('http://localhost/api/v1/auth/users', ({ request }) => {
+        searches.push(new URL(request.url).searchParams.get('search'))
+        return HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0 })
+      }),
+      ...baseHandlers(),
+    )
 
     const user = userEvent.setup()
     renderSection(MANAGER)
@@ -230,11 +237,15 @@ describe('Organization MembersSection — add flow', () => {
       within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' }),
       'car',
     )
+    await waitFor(() => expect(searches).toContain('car'))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+    const beforeReopen = searches.length
 
     await user.click(screen.getByRole('button', { name: /add member/i }))
     expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'User' })).toHaveValue(
       '',
     )
+    await waitFor(() => expect(searches.slice(beforeReopen)).toContain(null))
+    expect(searches.slice(beforeReopen)).not.toContain('car')
   })
 })

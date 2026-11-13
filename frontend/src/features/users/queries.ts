@@ -95,6 +95,10 @@ export function useInfiniteUsers(
       // An empty page ends the list too: a total that shrank mid-scroll can't re-request one offset forever.
       return last.items.length > 0 && next < last.total ? next : undefined
     },
+    // Offset pages can repeat a user created or renamed mid-scroll; list each once.
+    select: (data) => [
+      ...new Map(data.pages.flatMap((page) => page.items).map((u) => [u.id, u])).values(),
+    ],
     placeholderData: keepPreviousData,
   })
 }

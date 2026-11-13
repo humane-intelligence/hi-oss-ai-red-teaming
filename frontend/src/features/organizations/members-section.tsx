@@ -33,26 +33,27 @@ function AddMemberDialog({
   const canSubmit = userId !== '' && !add.isPending
 
   // Other-org users stay pickable: assigning moves them.
-  const options = (users.data?.pages ?? [])
-    .flatMap((page) => page.items)
-    .map((u) => {
-      const isMember = u.organization?.id === organizationId
-      return {
-        value: u.id,
-        label: [fullName(u), u.email].filter(Boolean).join(' · '),
-        disabled: isMember,
-        hint: isMember ? 'Already a member' : undefined,
-      }
-    })
+  const options = (users.data ?? []).map((u) => {
+    const isMember = u.organization?.id === organizationId
+    return {
+      value: u.id,
+      label: [fullName(u), u.email].filter(Boolean).join(' · '),
+      disabled: isMember,
+      hint: isMember ? 'Already a member' : undefined,
+    }
+  })
 
-  function reset() {
+  // Reset on close, not via `onOpen`: that runs after the first open render, which would
+  // refetch the previous term once more.
+  function close() {
     setSearch('')
     setUserId('')
     setPickerKey((k) => k + 1)
+    onOpenChange(false)
   }
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={reset}>
+    <Modal open={open} onOpenChange={close} title="Add member">
       <div className="space-y-3">
         <SearchSelect
           key={pickerKey}
@@ -77,12 +78,12 @@ function AddMemberDialog({
         </p>
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={add.isPending}>
+        <Button variant="outline" onClick={close} disabled={add.isPending}>
           Cancel
         </Button>
         <Button
           disabled={!canSubmit}
-          onClick={() => add.mutate({ user_id: userId }, { onSuccess: () => onOpenChange(false) })}
+          onClick={() => add.mutate({ user_id: userId }, { onSuccess: close })}
         >
           {add.isPending ? 'Adding…' : 'Add'}
         </Button>
