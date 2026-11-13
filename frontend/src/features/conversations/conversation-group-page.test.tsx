@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '@/test/msw/server'
+import { queryClient } from '@/lib/query'
 import { AUTH_USER_ID, authWrapper } from '@/lib/auth/auth.testutils'
 import { parentGroupHandler } from './test-fixtures'
 import { ConversationGroupPage } from './conversation-group-page'
@@ -187,8 +188,8 @@ function renderPage(
     'conversations:update',
     'conversations:delete',
   ],
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
 ) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const Wrapper = authWrapper(perms)
   render(
     <Wrapper>
@@ -380,7 +381,8 @@ describe('ConversationGroupPage', () => {
       ),
     )
     const user = userEvent.setup()
-    renderPage()
+    // The app client, so its global `MutationCache.onError` toasts any write that doesn't opt out.
+    renderPage(undefined, queryClient)
 
     const box = await screen.findByRole('checkbox')
     await waitFor(() => expect(box).toBeEnabled())
@@ -390,6 +392,7 @@ describe('ConversationGroupPage', () => {
     expect(box).not.toBeChecked()
     expect(toastError).toHaveBeenCalledTimes(1)
     toastError.mockRestore()
+    queryClient.clear()
   })
 
   it('keeps the rail read-only for a caller without conversations:update', async () => {
