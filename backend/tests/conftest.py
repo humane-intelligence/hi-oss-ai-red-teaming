@@ -65,6 +65,8 @@ os.environ.update(
         "SENTRY_DSN": "",
         # Same for a local allowlist: it would refuse the example.com logins the auth tests use.
         "OIDC_ALLOWED_DOMAINS": "",
+        # Same for the tags switch: litellm's `load_dotenv()` would let a local `false` flip the tag tests.
+        "CONVERSATION_TAGS_ENABLED": "true",
     },
 )
 
