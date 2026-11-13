@@ -294,29 +294,36 @@ export function ConversationGroupPage() {
                     e.preventDefault()
                     broadcast()
                   }}
-                  className="bg-background sticky bottom-0 flex gap-2 py-2"
+                  className="bg-background sticky bottom-0 space-y-1 py-2"
                 >
-                  <Textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        broadcast()
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          broadcast()
+                        }
+                      }}
+                      aria-label="Message all models"
+                      aria-describedby="broadcast-hint"
+                      placeholder={
+                        anyWarming
+                          ? 'Waiting for every model to warm up…'
+                          : 'Type here to message all models in this conversation.'
                       }
-                    }}
-                    aria-label="Message all models"
-                    placeholder={
-                      anyWarming
-                        ? 'Waiting for every model to warm up…'
-                        : 'Message all models… (Enter to send, Shift+Enter for newline)'
-                    }
-                    rows={2}
-                    className="min-h-0"
-                  />
-                  <Button type="submit" disabled={!input.trim() || anyWarming}>
-                    Send to all
-                  </Button>
+                      rows={2}
+                      className="min-h-0"
+                    />
+                    <Button type="submit" disabled={!input.trim() || anyWarming}>
+                      Send to all
+                    </Button>
+                  </div>
+                  {/* Under the box, not in the placeholder: the box is two lines tall and clips it. */}
+                  <p id="broadcast-hint" className="text-muted-foreground text-xs">
+                    Press return to send. Use shift + return for line breaks.
+                  </p>
                 </form>
               )}
             </div>

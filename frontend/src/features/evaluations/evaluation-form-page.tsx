@@ -32,6 +32,8 @@ import { PlainSelect } from '@/components/ui/plain-select'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { InfoHint } from '@/components/shared/info-hint'
+import { TAGS_HINT } from './tag-hint'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
 
 const schema = z.object({
@@ -132,6 +134,7 @@ export function EvaluationFormPage() {
   // the catalog here adds no request — it is what names the sentinel among the options.
   const licenseCatalog = useLicenses()
   const licenseNoteId = `${useId()}-license-note`
+  const tagsDescriptionId = `${useId()}-tags-description`
 
   // Gate a preselected-group create before rendering the form; the cross-group picker
   // path (no group yet) stays backend-enforced on submit. A failed group load is an
@@ -392,19 +395,23 @@ export function EvaluationFormPage() {
             <Field orientation="horizontal">
               <Checkbox
                 id="tags_enabled"
+                aria-describedby={tagsDescriptionId}
                 checked={tagsEnabled}
                 onCheckedChange={(next) =>
                   setValue('tags_enabled', next === true, { shouldDirty: true })
                 }
               />
               <FieldContent>
-                <FieldLabel htmlFor="tags_enabled" className="font-normal">
-                  Allow tags on this evaluation’s conversations
-                </FieldLabel>
-                <FieldDescription>
-                  Off hides every tagging control; tags already saved stay on the record, read-only,
-                  and stop being sent to the model. Which keys are allowed is set later, on the
-                  evaluation’s Allowed tags card.
+                {/* Beside the label, not inside it: a button in a label would toggle the box. */}
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="tags_enabled" className="font-normal">
+                    Custom tags
+                  </FieldLabel>
+                  <InfoHint text={TAGS_HINT} />
+                </div>
+                <FieldDescription id={tagsDescriptionId}>
+                  Checking this box allows custom tags to be added to conversations in this
+                  evaluation.
                 </FieldDescription>
               </FieldContent>
             </Field>

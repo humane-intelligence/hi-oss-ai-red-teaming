@@ -59,7 +59,8 @@ export function InfoHint({ text, label }: { text: string; label?: string }) {
         // from how much room happens to sit between the trigger and the edge — anchoring to the
         // trigger's inline-start squeezed the panel to ~175px next to a right-hand aside.
         // Symmetric: `flip-block` moves the panel, not the margin, so a top-only gap dies on flip.
-        className="bg-card text-foreground border-border m-0 my-1 max-h-[min(24rem,60vh)] max-w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-md border p-3 text-sm break-words shadow-lg [position-anchor:var(--hint-anchor)] [position-area:block-end_span-all] [position-try-fallbacks:flip-block]"
+        // The panel stays a DOM child of its host, so a `CardTitle` would otherwise make it bold.
+        className="bg-card text-foreground border-border m-0 my-1 max-h-[min(24rem,60vh)] max-w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-md border p-3 text-sm font-normal tracking-normal break-words shadow-lg [position-anchor:var(--hint-anchor)] [position-area:block-end_span-all] [position-try-fallbacks:flip-block]"
       >
         {text}
       </div>

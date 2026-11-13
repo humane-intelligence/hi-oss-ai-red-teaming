@@ -337,8 +337,9 @@ export function ConversationDetailPage() {
                   ? 'Waiting for the model to warm up…'
                   : evaluation.isPending
                     ? 'Loading…'
-                    : 'Message the model… (Enter to send, Shift+Enter for newline)'
+                    : 'Type here to message the model.'
               }
+              hint="Press return to send. Use shift + return for line breaks."
               autoFocusKey={conv?.id}
             />
           </div>

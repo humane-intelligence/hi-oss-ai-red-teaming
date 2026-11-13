@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { EvaluationFormPage } from './evaluation-form-page'
+import { TAGS_HINT } from './tag-hint'
 import { licenseStub, noLicenseStub } from '@/features/licenses/test-fixtures'
 
 const GROUP_ID = 'grp-eval-0000-0000-000000000000'
@@ -547,6 +548,24 @@ function captureUpdate(onBody: (body: Record<string, unknown>) => void) {
 }
 
 const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement
+
+describe('EvaluationFormPage — custom tags', () => {
+  it('describes the checkbox, and the hint beside it does not toggle it', async () => {
+    server.use(...handlers(['evaluations:create']))
+    const user = userEvent.setup()
+    renderCreate()
+
+    const box = await screen.findByRole('checkbox', { name: 'Custom tags' })
+    expect(box).toHaveAccessibleDescription(
+      'Checking this box allows custom tags to be added to conversations in this evaluation.',
+    )
+    const before = box.getAttribute('aria-checked')
+
+    await user.click(screen.getByRole('button', { name: TAGS_HINT }))
+
+    expect(box).toHaveAttribute('aria-checked', before)
+  })
+})
 
 describe('EvaluationFormPage — cover image', () => {
   it('uploads the picked image as public and creates with its key', async () => {
