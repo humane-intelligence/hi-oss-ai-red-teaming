@@ -344,6 +344,11 @@ ROLE_SPECS: dict[SystemRole, RoleSpec] = {
                 Permission.LICENSES_CREATE,
                 Permission.LICENSES_UPDATE,
                 Permission.LICENSES_DELETE,
+                # Runs its own conversations from the evaluation page; update/delete stay
+                # owner-scoped (`read_any` below lifts reads only).
+                Permission.CONVERSATIONS_CREATE,
+                Permission.CONVERSATIONS_UPDATE,
+                Permission.CONVERSATIONS_DELETE,
                 Permission.CONVERSATIONS_PARTICIPATE,
                 # Reads the transcripts of the groups it owns: the route gate plus the
                 # object-scope lift that widens the owner predicate past its own rows.

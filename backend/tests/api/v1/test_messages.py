@@ -98,8 +98,11 @@ async def _conversation(  # noqa: PLR0913 — one keyword per cascade layer the 
     assignment_params: dict[str, object] | None = None,
     conversation_params: dict[str, object] | None = None,
     advanced_params_disabled: bool = False,
+    group_owner: bool = True,
 ) -> Conversation:
-    group = await persist_evaluation_group(db, access_level=EvaluationGroupAccessLevel.PUBLIC, created_by_id=user.id)
+    group = await persist_evaluation_group(
+        db, access_level=EvaluationGroupAccessLevel.PUBLIC, created_by_id=user.id if group_owner else None
+    )
     evaluation = Evaluation(
         title="E", description="d", evaluation_group_id=group.id, created_by_id=user.id, mask_models_enabled=mask
     )
@@ -676,7 +679,8 @@ async def test_send_midstream_error_becomes_error_event(
 
 async def test_send_without_permission_returns_403(async_client_with_db: AsyncClient, db_session: AsyncSession) -> None:
     user = await _user(db_session, ["conversations:read"])
-    conversation = await _conversation(db_session, user)
+    # The group's in-group `owner` role grants `conversations:update`, so the caller must not hold it.
+    conversation = await _conversation(db_session, user, group_owner=False)
 
     with as_user(user):
         response = await async_client_with_db.post(_url(conversation), json={"content": "hi"})

@@ -80,7 +80,7 @@ An **object-scoped** permission: held in-group, it widens the *owner* predicate 
 - it is **reads only** — update and delete stay owner-scoped for every holder;
 - it is **not** passed on the `deleted=true` branch, where it would be inert: a tombstone listing is scoped by *who deleted the row*, not by who owns it.
 
-The `owner` system role holds it (plus plain `conversations:read`); `red_teamer` deliberately does not.
+The `owner` system role holds it, plus the owner-scoped `conversations:read` / `create` / `update` / `delete`, so it can run its own conversations from the evaluation page; `red_teamer` deliberately does not hold `read_any`.
 
 `can_manage` (i.e. `evaluation_groups:manage` in the JWT) is break-glass — it raises owner + visibility. But **parent liveness** (Evaluation and EvaluationGroup `deleted_at IS NULL`) is enforced ALWAYS, even for a manager: a soft-deleted parent hides the conversation from everyone.
 
@@ -117,7 +117,7 @@ There are two sets: **nested** under an evaluation and **flat** cross-evaluation
 
 Both lists accept `?deleted=true` for the caller's tombstones inside `RESTORE_WINDOW_DAYS` — see [Restore](restore-soft-deleted-items.md). Restoring the last member revives a group the delete pruned; a conversation the model-unassign cascade tombstoned is **not** restorable (its assignment is gone, so it could no longer run).
 
-The permissions `conversations:read|create|update|delete` are held by `red_teamer` + `admin`. The persistence write-path (`POST .../messages` + `/regenerate`/`/continue`, see [Message persistence (write-path)](message-persistence-write-path.md)) is gated by **`conversations:update`** — it's a write to a specific conversation. A separate `conversations:participate` gates ONLY the stateless sandbox ([Endpoint POST chat-stream](endpoint-post-chat-stream.md)), not CRUD or the write-path.
+The permissions `conversations:read|create|update|delete` are held by `red_teamer`, `owner` and `admin`. The persistence write-path (`POST .../messages` + `/regenerate`/`/continue`, see [Message persistence (write-path)](message-persistence-write-path.md)) is gated by **`conversations:update`** — it's a write to a specific conversation. A separate `conversations:participate` gates ONLY the stateless sandbox ([Endpoint POST chat-stream](endpoint-post-chat-stream.md)), not CRUD or the write-path.
 
 ### List filters and ordering
 

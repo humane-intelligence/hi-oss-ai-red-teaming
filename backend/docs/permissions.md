@@ -60,9 +60,9 @@ Columns are roles. ✓ = granted globally (carried in the JWT); ○ = conferred 
 | `evaluation_groups:manage` | ✓ |  |  |  |  |
 | **conversations** | | | | | |
 | `conversations:read` | ✓ | ✓ | ✓ |  |  |
-| `conversations:create` | ✓ |  | ✓ |  |  |
-| `conversations:update` | ✓ |  | ✓ |  |  |
-| `conversations:delete` | ✓ |  | ✓ |  |  |
+| `conversations:create` | ✓ | ✓ | ✓ |  |  |
+| `conversations:update` | ✓ | ✓ | ✓ |  |  |
+| `conversations:delete` | ✓ | ✓ | ✓ |  |  |
 | `conversations:read_any` | ○ | ✓ |  |  |  |
 | `conversations:participate` | ✓ | ✓ | ✓ |  |  |
 | **flags** | | | | | |

@@ -320,10 +320,10 @@ async def test_in_group_red_teamer_starts_a_conversation_without_the_global_perm
 
     The JWT carries global roles only, so before the object-aware gate a user added to a group
     as `red_teamer` was refused with "Caller lacks the 'conversations:create' permission" —
-    the global `owner` role does not grant it. The in-group role does.
+    the global `viewer` role does not grant it. The in-group role does.
     """
     red_teamer_role = system_roles[SystemRole.RED_TEAMER.value]
-    caller = await _caller(db_session, system_roles[SystemRole.OWNER.value], email="mv-ig-create@example.com")
+    caller = await _caller(db_session, system_roles[SystemRole.VIEWER.value], email="mv-ig-create@example.com")
     evaluation = await _evaluation_for(db_session)
     await _grant_in_group(db_session, evaluation.evaluation_group_id, caller.id, red_teamer_role)
     assignment = await _assignment(db_session, evaluation.id)
@@ -385,7 +385,7 @@ async def test_non_member_without_the_global_permission_cannot_start_a_conversat
     auth_db_client: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
 ) -> None:
     """The object-aware gate widens the source of the permission, never drops the requirement."""
-    caller = await _caller(db_session, system_roles[SystemRole.OWNER.value], email="mv-ig-denied@example.com")
+    caller = await _caller(db_session, system_roles[SystemRole.VIEWER.value], email="mv-ig-denied@example.com")
     evaluation = await _evaluation_for(db_session)
     assignment = await _assignment(db_session, evaluation.id)
     scenario = Scenario(name="s", description="d", evaluation_id=evaluation.id, position=0)
@@ -413,7 +413,7 @@ async def test_non_member_without_the_global_permission_gets_404_on_an_invisible
     since a caller holding `conversations:create` globally short-circuits the gate
     (`require_object_or_global`) and never reaches the lookup at all.
     """
-    caller = await _caller(db_session, system_roles[SystemRole.OWNER.value], email="mv-ig-hidden@example.com")
+    caller = await _caller(db_session, system_roles[SystemRole.VIEWER.value], email="mv-ig-hidden@example.com")
     evaluation = await _evaluation_for(db_session, access_level=EvaluationGroupAccessLevel.INVITATION_ONLY)
     assignment = await _assignment(db_session, evaluation.id)
     scenario = Scenario(name="s", description="d", evaluation_id=evaluation.id, position=0)

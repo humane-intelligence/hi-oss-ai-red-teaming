@@ -118,6 +118,19 @@ def test_manage_admin_is_held_only_by_admin() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("role", [SystemRole.OWNER, SystemRole.RED_TEAMER])
+def test_owner_and_red_teamer_run_their_own_conversations(role: SystemRole) -> None:
+    crud = {
+        Permission.CONVERSATIONS_READ,
+        Permission.CONVERSATIONS_CREATE,
+        Permission.CONVERSATIONS_UPDATE,
+        Permission.CONVERSATIONS_DELETE,
+        Permission.CONVERSATIONS_PARTICIPATE,
+    }
+    assert crud <= ROLE_PERMISSIONS[role]
+
+
+@pytest.mark.unit
 def test_organizations_read_is_held_by_every_role() -> None:
     # Org read is broadly held — any role can list/view organizations.
     for role in SystemRole:

@@ -5726,9 +5726,12 @@ export interface components {
          *       "updated_at": "2026-02-02T09:30:00Z",
          *       "user_permissions": [
          *         "annotations:read",
+         *         "conversations:create",
+         *         "conversations:delete",
          *         "conversations:participate",
          *         "conversations:read",
          *         "conversations:read_any",
+         *         "conversations:update",
          *         "evaluation_groups:create",
          *         "evaluation_groups:export",
          *         "evaluation_groups:manage_members",

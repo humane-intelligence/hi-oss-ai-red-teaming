@@ -44,7 +44,7 @@ Reads **never 404**: an unreachable conversation yields an empty list, an unreac
 
 ## Permissions — reuse `conversations:*`
 
-No new permission. Writes gate on `conversations:update`, reads on `conversations:read` — held by `red_teamer` and `admin`; `owner` / `annotator` / `viewer` hold neither, so they can't use these routes. The read break-glass is `evaluation_groups:manage` (admin). See [RBAC - global roles](rbac-global-roles.md).
+No new permission. Writes gate on `conversations:update`, reads on `conversations:read` — held by `red_teamer`, `owner` and `admin`; `annotator` / `viewer` hold neither, so they can't use these routes. The read break-glass is `evaluation_groups:manage` (admin). See [RBAC - global roles](rbac-global-roles.md).
 
 ## Related
 
