@@ -79,7 +79,7 @@ export function useScenarioTasks(scenarioId: string) {
 }
 
 // The same per-scenario queries the scenario cards run, so counting adds no request of its own.
-// `undefined` until every scenario has answered, and for no ids at all: a partial sum, or a zero
+// `undefined` until every scenario has answered, and when no id list is given: a partial sum, or a zero
 // for a list that has not loaded, would read as a real total.
 export function useTaskCount(scenarioIds: string[] | undefined): number | undefined {
   return useQueries({

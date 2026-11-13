@@ -70,8 +70,16 @@ export function StartConversationDialog({
             {scenario.description && (
               <p className="text-muted-foreground whitespace-pre-line">{scenario.description}</p>
             )}
-            {tasks.isPending && <p className="text-muted-foreground">Loading tasks…</p>}
-            {tasks.isError && <p className="text-destructive">{humanizeError(tasks.error)}</p>}
+            {tasks.isPending && (
+              <p role="status" className="text-muted-foreground">
+                Loading tasks…
+              </p>
+            )}
+            {tasks.isError && (
+              <p role="alert" className="text-destructive">
+                {humanizeError(tasks.error)}
+              </p>
+            )}
             {tasks.isSuccess &&
               (tasks.data.items.length === 0 ? (
                 <p className="text-muted-foreground">No tasks in this scenario.</p>

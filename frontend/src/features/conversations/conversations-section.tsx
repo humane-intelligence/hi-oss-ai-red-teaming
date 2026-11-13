@@ -93,6 +93,7 @@ export function ConversationsSection({
           <p className="text-muted-foreground text-sm">
             No conversations yet.
             {canStart &&
+              models.length > 0 &&
               ' Use Start a conversation above to probe a model against this evaluation.'}
           </p>
         )}

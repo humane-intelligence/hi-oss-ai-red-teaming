@@ -260,8 +260,11 @@ describe('ConversationsSection — groups', () => {
     server.use(groupsHandler([]))
     renderSection(['conversations:read'])
 
-    await waitFor(() => expect(screen.getByText(/no conversations yet/i)).toBeInTheDocument())
-    expect(screen.queryByText(/start a conversation/i)).toBeNull()
+    await waitFor(() =>
+      expect(screen.getByText(/no conversations yet/i)).toHaveTextContent(
+        /^No conversations yet\.$/,
+      ),
+    )
   })
 })
 
