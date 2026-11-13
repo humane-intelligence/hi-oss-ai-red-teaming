@@ -9,7 +9,8 @@ pinned here as well — they carry no message content, but they share the `read_
 
 Each case varies one axis — role, ownership, or group access level — so removing any predicate they rest on
 (the route gate, the `user_id` owner check, its `conversations:read_any` widening,
-`group_visible_to`) fails at least one test.
+`group_visible_to`) fails at least one test. The write side of that owner scope is pinned here too,
+route by route, since `read_any` widens reads only.
 """
 
 from uuid import UUID
@@ -719,7 +720,7 @@ _OWNER_WRITES = {
 
 
 @pytest.mark.parametrize("route", list(_OWNER_WRITES))
-async def test_the_owner_role_writes_to_no_member_conversation(
+async def test_owner_role_write_to_another_members_conversation_is_404(
     route: str, auth_db_client: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
 ) -> None:
     """The real `owner` role, held globally and in the group, still writes only to its own rows.
@@ -741,7 +742,7 @@ async def test_the_owner_role_writes_to_no_member_conversation(
     checked = await auth_db_client.put(
         f"/api/v1/conversations/{conversation.id}/completed-tasks/{done_task.id}", headers=bearer(author)
     )
-    assert checked.status_code < 300
+    assert checked.status_code == status.HTTP_200_OK
 
     async def snapshot() -> tuple[object, ...]:
         await db_session.refresh(conversation)
@@ -756,7 +757,13 @@ async def test_the_owner_role_writes_to_no_member_conversation(
             .select_from(TaskCompletion)
             .where(col(TaskCompletion.conversation_id) == conversation.id, col(TaskCompletion.deleted_at).is_(None))
         )
-        return conversation.title, conversation.deleted_at, group.name, group.deleted_at, turns, completions
+        messages = await db_session.scalar(
+            select(func.count())
+            .select_from(Message)
+            .join(Turn, col(Turn.id) == col(Message.turn_id))
+            .where(col(Turn.conversation_id) == conversation.id)
+        )
+        return conversation.title, conversation.deleted_at, group.name, group.deleted_at, turns, messages, completions
 
     before = await snapshot()
     method, url, body = _OWNER_WRITES[route]
