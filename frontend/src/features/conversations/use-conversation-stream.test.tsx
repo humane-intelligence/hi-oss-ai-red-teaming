@@ -51,6 +51,19 @@ describe('useConversationStream.send', () => {
     expect(bodies[0]).not.toHaveProperty('image_keys')
   })
 
+  it('marks the group stale once the reply lands, so its page sees the new turn count', async () => {
+    mockSend()
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(['conversation-group', 'g1'], { id: 'g1' })
+    const { result } = renderHook(() => useConversationStream('e1', 'c1'), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    })
+    await act(async () => {
+      await result.current.send('hello')
+    })
+    expect(qc.getQueryState(['conversation-group', 'g1'])?.isInvalidated).toBe(true)
+  })
+
   it('returns false and toasts when the fetch throws (dropped connection)', async () => {
     // A network error rejects the fetch before any event — the error-event path never runs.
     server.use(http.post(MESSAGES_URL, () => HttpResponse.error()))
