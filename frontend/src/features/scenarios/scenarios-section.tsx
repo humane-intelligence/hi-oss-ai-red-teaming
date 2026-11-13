@@ -43,63 +43,58 @@ function TasksSubsection({
           No tasks yet. Add tasks to spell out what this scenario asks red-teamers to attempt.
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {/* `contents` lets the cards share the grid with Add task; the explicit role keeps list semantics. */}
-        <ul role="list" className="contents">
-          {tasks.map((t, i) => (
-            <li key={t.id} className="bg-background rounded-md border p-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="min-w-0 text-sm break-words">
-                  <span className="font-medium">Task {i + 1}:</span> {t.name}
-                </p>
-                {canMutate && (
-                  <div className="-mt-1 -mr-1 flex shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Edit task ${i + 1}: ${t.name}`}
-                      onClick={() => {
-                        setEditing(t)
-                        setFormOpen(true)
-                      }}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Delete task ${i + 1}: ${t.name}`}
-                      onClick={() => setDeleteTarget(t)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-              {t.description && (
-                <p className="text-muted-foreground mt-2 text-sm break-words whitespace-pre-line">
-                  {t.description}
-                </p>
+      <ul role="list" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {tasks.map((t, i) => (
+          <li key={t.id} className="bg-background rounded-md border p-3">
+            <div className="flex items-start justify-between gap-2">
+              <p className="min-w-0 text-sm break-words">
+                <span className="font-medium">Task {i + 1}:</span> {t.name}
+              </p>
+              {canMutate && (
+                <div className="-mt-1 -mr-1 flex shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Edit task ${i + 1}: ${t.name}`}
+                    onClick={() => {
+                      setEditing(t)
+                      setFormOpen(true)
+                    }}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Delete task ${i + 1}: ${t.name}`}
+                    onClick={() => setDeleteTarget(t)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
               )}
-            </li>
-          ))}
-        </ul>
-        {canMutate && (
-          <div className="flex items-center">
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label={`Add task to scenario ${scenarioNumber}: ${scenario.name}`}
-              onClick={() => {
-                setEditing(null)
-                setFormOpen(true)
-              }}
-            >
-              <Plus className="size-4" /> Add task
-            </Button>
-          </div>
-        )}
-      </div>
+            </div>
+            {t.description && (
+              <p className="text-muted-foreground mt-2 text-sm break-words whitespace-pre-line">
+                {t.description}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      {canMutate && (
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`Add task to scenario ${scenarioNumber}: ${scenario.name}`}
+          onClick={() => {
+            setEditing(null)
+            setFormOpen(true)
+          }}
+        >
+          <Plus className="size-4" /> Add task
+        </Button>
+      )}
 
       {canMutate && (
         <>
