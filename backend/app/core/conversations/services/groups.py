@@ -38,6 +38,7 @@ from app.core.conversations.filters import ConversationGroupFilters
 from app.core.conversations.filters import ConversationGroupOrderBy
 from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
+from app.core.conversations.models import Turn
 from app.core.evaluations.access import groups_granting
 from app.core.evaluations.access import join_visible_evaluation_group
 from app.core.evaluations.models import EvaluationGroup
@@ -148,6 +149,22 @@ async def _count_live_conversations(session: AsyncSession, conversation_group_id
     ).scalar_one()
 
 
+async def _group_has_turns(session: AsyncSession, conversation_group_id: UUID) -> bool:
+    """Whether any live conversation in the group has a live turn."""
+    statement = (
+        select(literal(1))
+        .select_from(Turn)
+        .join(Conversation, col(Conversation.id) == col(Turn.conversation_id))
+        .where(
+            col(Conversation.conversation_group_id) == conversation_group_id,
+            col(Conversation.deleted_at).is_(None),
+            col(Turn.deleted_at).is_(None),
+        )
+        .limit(1)
+    )
+    return (await session.execute(statement)).first() is not None
+
+
 async def acquire_group_for_conversation(
     session: AsyncSession,
     evaluation_id: UUID,
@@ -168,7 +185,8 @@ async def acquire_group_for_conversation(
     Raises:
         NotFoundError: If the group is not the caller's own live group under the
             evaluation (via `get_conversation_group`; lifted by ``can_manage``).
-        ConflictError: If the group already holds the maximum number of conversations.
+        ConflictError: If the group already holds the maximum number of conversations, or if
+            a prompt has already been sent in it.
     """
     group = await get_conversation_group(
         session, evaluation_id, conversation_group_id, caller_id=caller_id, can_manage=can_manage, for_update=True
@@ -177,6 +195,12 @@ async def acquire_group_for_conversation(
     if await _count_live_conversations(session, conversation_group_id) >= max_size:
         raise ConflictError(
             f"Conversation group {conversation_group_id} already holds the maximum of {max_size} conversations."
+        )
+    # A model joining after the first prompt never saw the earlier turns, so its replies would not be comparable.
+    if await _group_has_turns(session, conversation_group_id):
+        raise ConflictError(
+            f"Conversation group {conversation_group_id} already has prompts; "
+            "models can only be added before the first one."
         )
     return group
 
@@ -351,6 +375,8 @@ async def assert_group_has_room(session: AsyncSession, group_id: UUID) -> None:
     check and the restored row going live — leaving a live conversation under a
     dead group, which the delete's own `live_update` cannot prevent (the row is
     still tombstoned in its snapshot).
+
+    Deliberately no prompt check: restore is an undo, allowed even if the member missed later prompts.
 
     Raises:
         ConflictError: If the group already holds the maximum number of conversations.

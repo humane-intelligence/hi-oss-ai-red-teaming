@@ -2,13 +2,16 @@
 
 `acquire_group_for_conversation` is the shared add/move gate: it row-locks the
 target group (`for_update`) and rejects once the group is at
-`MAX_CONVERSATION_GROUP_SIZE`. The lock's *concurrency* behaviour is a Postgres
-row-lock guarantee, not exercised here (the shared `db_session` is a single
-connection) — these pin the two things the code itself owns: the locked-resolve
-path returns the group, and the cap check raises. Mirrors the `for_update`
-smoke test on `get_assignment` (`tests/core/evaluations/services/test_assignments.py`).
+`MAX_CONVERSATION_GROUP_SIZE` or once a prompt has been sent in it. The lock's
+*concurrency* behaviour is a Postgres row-lock guarantee, not exercised here (the
+shared `db_session` is a single connection) — these pin what the code itself owns:
+the locked-resolve path returns the group, and the cap and first-prompt checks
+raise. Mirrors the `for_update` smoke test on `get_assignment`
+(`tests/core/evaluations/services/test_assignments.py`).
 """
 
+from datetime import UTC
+from datetime import datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_gateway.enums import ProviderVendor
 from app.core.ai_gateway.models import AiModel
+from app.core.conversations.models import Turn
 from app.core.conversations.services.groups import ConversationSpec
 from app.core.conversations.services.groups import acquire_group_for_conversation
 from app.core.conversations.services.groups import create_conversation_group
@@ -63,6 +67,43 @@ async def test_acquire_group_for_conversation_at_capacity_raises_conflict(
             conversation.conversation_group_id,
             caller_id=conversation.user_id,
         )
+
+
+async def test_acquire_group_for_conversation_after_the_first_prompt_raises_conflict(db_session: AsyncSession) -> None:
+    # A model added now would never have seen the earlier prompts, so its replies would not compare.
+    conversation = await persist_conversation(db_session)
+    db_session.add(Turn(conversation_id=conversation.id, turn_index=0))
+    await db_session.flush()
+
+    with pytest.raises(ConflictError, match="already has prompts"):
+        await acquire_group_for_conversation(
+            db_session,
+            conversation.evaluation_id,
+            conversation.conversation_group_id,
+            caller_id=conversation.user_id,
+        )
+
+
+@pytest.mark.parametrize("deleted", ["turn", "conversation"])
+async def test_acquire_group_for_conversation_ignores_deleted_turns(db_session: AsyncSession, deleted: str) -> None:
+    # Only live history is compared, so a deleted turn (or one in a deleted conversation) doesn't lock the group.
+    conversation = await persist_conversation(db_session)
+    turn = Turn(conversation_id=conversation.id, turn_index=0)
+    db_session.add(turn)
+    if deleted == "turn":
+        turn.deleted_at = datetime.now(UTC)
+    else:
+        conversation.deleted_at = datetime.now(UTC)
+    await db_session.flush()
+
+    group = await acquire_group_for_conversation(
+        db_session,
+        conversation.evaluation_id,
+        conversation.conversation_group_id,
+        caller_id=conversation.user_id,
+    )
+
+    assert group.id == conversation.conversation_group_id
 
 
 async def test_batch_created_conversations_inherit_the_licence_protection(db_session: AsyncSession) -> None:
