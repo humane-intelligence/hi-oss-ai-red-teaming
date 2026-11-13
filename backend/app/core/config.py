@@ -213,6 +213,11 @@ class Settings(BaseSettings):
     # Defaults to the catalog's designated default so the two never drift.
     platform_default_data_license: str = DEFAULT_DATA_LICENSE_SPDX_ID
 
+    # Instance-wide switch for conversation tags. Off overrides every evaluation's `tags_enabled`:
+    # nothing reaches the model, tag writes are refused, and the console hides the tag surfaces.
+    # Stored tags and evaluation flags are left as they are, so turning it back on restores them.
+    conversation_tags_enabled: bool = True
+
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_format: Literal["json", "console"] = "json"
     # Stamped as `service` on every JSON log line so log queries can tell the

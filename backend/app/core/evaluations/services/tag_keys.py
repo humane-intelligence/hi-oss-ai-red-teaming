@@ -1,7 +1,9 @@
 """CRUD + lookup for an evaluation's allowed conversation-tag keys (the admin tag schema).
 
-Two independent per-evaluation flags, checked in this order. `Evaluation.tags_enabled` decides
-whether tagging exists here at all: off rejects every tag and the console renders no tagging surface.
+The instance switch `Settings.conversation_tags_enabled` comes first: off reads as `tags_enabled`
+off on every evaluation, without touching the stored flags. Then two independent per-evaluation
+flags, checked in this order. `Evaluation.tags_enabled` decides whether tagging exists here at all:
+off rejects every tag and the console renders no tagging surface.
 `Evaluation.tags_restricted` then decides *which* keys: off means free-form regardless of the key set,
 on means every key must be in the allowed set (an empty set while restricted forbids all tags).
 Keeping "disabled" separate from "restricted with nothing allowed" is deliberate — they are
@@ -18,6 +20,7 @@ continue, over state its owner cannot reach once the console hides the tagging s
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 from sqlmodel import select
 
+from app.core.config import get_settings
 from app.core.conversations.models import Message
 from app.core.conversations.models import recorded_tag_context
 from app.core.conversations.schemas import MAX_TAGS
@@ -37,6 +41,8 @@ from app.core.helpers import sanitise_single_line
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+TagsOffReason = Literal["instance_disabled", "tagging_disabled"]
 
 
 async def list_tag_keys(session: AsyncSession, evaluation_id: UUID) -> list[EvaluationTagKey]:
@@ -111,13 +117,16 @@ async def load_tag_fold_policy(session: AsyncSession, evaluation_id: UUID) -> Ta
 
     For read paths that judge many rows against it — one resolve per export, not per row.
     """
-    enabled, restricted = await _tagging_policy(session, evaluation_id)
+    off_reason, restricted = await _tagging_policy(session, evaluation_id)
     allowed = await allowed_tag_keys(session, evaluation_id) if restricted else set()
-    return TagFoldPolicy(enabled=enabled, restricted=restricted, allowed=frozenset(allowed))
+    return TagFoldPolicy(enabled=off_reason is None, restricted=restricted, allowed=frozenset(allowed))
 
 
-async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[bool, bool]:
-    """The evaluation's ``(tags_enabled, tags_restricted)`` pair.
+async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[TagsOffReason | None, bool]:
+    """The evaluation's effective ``(off_reason, tags_restricted)`` pair, the instance switch applied.
+
+    ``off_reason`` is ``None`` while tagging is on, else which switch turned it off — the instance's
+    wins, since it is the one an evaluation owner cannot undo.
 
     Raises:
         NotFoundError: If no live evaluation has this id. Fail closed: every caller resolves a live,
@@ -134,7 +143,9 @@ async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[b
     if flags is None:
         raise NotFoundError("Evaluation not found.")
     enabled, restricted = flags
-    return bool(enabled), bool(restricted)
+    if not get_settings().conversation_tags_enabled:
+        return "instance_disabled", bool(restricted)
+    return (None if enabled else "tagging_disabled"), bool(restricted)
 
 
 async def allowed_tags_only(session: AsyncSession, evaluation_id: UUID, tags: dict[str, str]) -> dict[str, str]:
@@ -153,14 +164,14 @@ async def allowed_tags_only(session: AsyncSession, evaluation_id: UUID, tags: di
     """
     if not tags:
         return {}
-    enabled, restricted = await _tagging_policy(session, evaluation_id)
-    if not enabled:
+    off_reason, restricted = await _tagging_policy(session, evaluation_id)
+    if off_reason is not None:
         # Observable, like `conversations.history.image_missing`: for an artefact whose value is
         # "what did the model see", a silent drop is a gap the transcript cannot explain later.
         logger.warning(
             "conversations.tags.dropped",
             evaluation_id=str(evaluation_id),
-            reason="tagging_disabled",
+            reason=off_reason,
             dropped=sorted(tags),
         )
         return {}
@@ -186,15 +197,17 @@ async def assert_tags_allowed(session: AsyncSession, evaluation_id: UUID, tags: 
     (an empty set forbids all tags).
 
     Raises:
-        BadRequestError: If the evaluation has tagging disabled, or restricts tags and ``tags``
-            carries a key outside the allowed set (mirrors the allowed-model subset check on model
-            assignment).
+        BadRequestError: If the instance turns conversation tags off, the evaluation has tagging
+            disabled, or it restricts tags and ``tags`` carries a key outside the allowed set
+            (mirrors the allowed-model subset check on model assignment).
         NotFoundError: If no live evaluation has this id.
     """
     if not tags:
         return
-    enabled, restricted = await _tagging_policy(session, evaluation_id)
-    if not enabled:
+    off_reason, restricted = await _tagging_policy(session, evaluation_id)
+    if off_reason == "instance_disabled":
+        raise BadRequestError("Conversation tags are turned off on this instance.")
+    if off_reason == "tagging_disabled":
         raise BadRequestError("Tagging is disabled for this evaluation.")
     if not restricted:
         return

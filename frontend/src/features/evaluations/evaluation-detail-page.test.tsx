@@ -646,6 +646,30 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
     expect(tagKeyCalls).toBe(0)
   })
+
+  it('hides the card when the instance turns tags off', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({
+          signup_enabled: true,
+          password_policy: {
+            min_length: 10,
+            require_uppercase: false,
+            require_digit: false,
+            require_symbol: false,
+          },
+          conversation_tags_enabled: false,
+        }),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage(['evaluations:read', 'evaluations:update'])
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/allowed tags/i)).toBeNull()
+  })
 })
 
 describe('EvaluationDetailPage — in-group authority', () => {

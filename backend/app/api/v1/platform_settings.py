@@ -20,6 +20,7 @@ from app.core.auth.dependencies import require_permission
 from app.core.auth.roles import Permission
 from app.core.auth.schemas import SessionUser
 from app.core.dependencies import DbSession
+from app.core.dependencies import SettingsDep
 from app.core.dependencies import transactional
 from app.core.exceptions import BadRequestError
 from app.core.licenses.catalog import NO_LICENSE_SPDX_ID
@@ -84,11 +85,13 @@ async def get_platform_settings_endpoint(
     description=(
         "Unauthenticated subset of platform settings for the login/registration screens — whether "
         "open self-signup is enabled (the inverse of invite-only mode) and the password rules every "
-        "set-password screen must satisfy."
+        "set-password screen must satisfy, plus whether conversation tags are in use on this instance."
     ),
     responses=COMMON_ERROR_RESPONSES,
 )
-async def get_public_platform_settings_endpoint(db: DbSession, response: Response) -> PublicPlatformSettingsResponse:
+async def get_public_platform_settings_endpoint(
+    db: DbSession, response: Response, app_settings: SettingsDep
+) -> PublicPlatformSettingsResponse:
     """Read the anonymous-safe platform-settings subset.
 
     Deliberately minimal disclosure — `signup_enabled` is derivable anyway by attempting a
@@ -105,6 +108,7 @@ async def get_public_platform_settings_endpoint(db: DbSession, response: Respons
     return PublicPlatformSettingsResponse(
         signup_enabled=not settings.invite_only,
         password_policy=PublicPasswordPolicyResponse.from_model(settings),
+        conversation_tags_enabled=app_settings.conversation_tags_enabled,
     )
 
 

@@ -51,6 +51,7 @@ import { AnnotationChips } from '@/features/annotations/annotation-chips'
 import { indexAnnotations } from '@/features/annotations/annotation-index'
 import { useConversationAnnotations } from '@/features/annotations/queries'
 import type { AnnotationResponse } from '@/lib/api/types'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 const COMPLETED = new Set(['approved', 'rejected'])
 
@@ -73,6 +74,7 @@ type RowProps = {
   annotations: AnnotationResponse[]
   /** Absent when the caller lacks `annotations:create`. */
   onAnnotate?: () => void
+  showTags: boolean
 }
 
 function TranscriptRowView({
@@ -88,6 +90,7 @@ function TranscriptRowView({
   onDeleteNote,
   annotations,
   onAnnotate,
+  showTags,
 }: RowProps) {
   const { message: m, kind } = row
   return (
@@ -138,7 +141,9 @@ function TranscriptRowView({
       <div className={cn(kind === 'superseded' && 'opacity-60')}>
         <Markdown content={m.content} />
       </div>
-      <TagContext tagContext={m.tag_context} partial={m.tag_context_partial} messageId={m.id} />
+      {showTags && (
+        <TagContext tagContext={m.tag_context} partial={m.tag_context_partial} messageId={m.id} />
+      )}
       {(annotations.length > 0 || onAnnotate) && (
         <div className="mt-2 flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -219,6 +224,7 @@ function JumpToFlagged({ ids }: { ids: string[] }) {
 }
 
 function ReviewDetailContent() {
+  const showTags = useConversationTagsEnabled()
   const { submissionId = '' } = useParams<{ submissionId: string }>()
   const location = useLocation()
   const navigate = useNavigate()
@@ -435,6 +441,7 @@ function ReviewDetailContent() {
                     onEditNote={canEditNote ? setEditNote : undefined}
                     onDeleteNote={canDeleteNote ? setDeleteNote : undefined}
                     annotations={annotationIndex.byMessage.get(row.message.id) ?? []}
+                    showTags={showTags}
                     onAnnotate={
                       canAnnotate && liveIds.has(row.message.id)
                         ? () => setAnnotateId(row.message.id)

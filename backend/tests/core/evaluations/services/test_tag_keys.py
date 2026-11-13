@@ -10,6 +10,7 @@ Mixed tiers, so the marker is per group rather than per module: `TagFoldPolicy` 
 object and stays in the unit run, everything touching `db_session` is `integration`.
 """
 
+from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.conversations.schemas import MAX_TAGS
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationTagKey
+from app.core.evaluations.services import tag_keys
 from app.core.evaluations.services.tag_keys import TagFoldPolicy
 from app.core.evaluations.services.tag_keys import add_tag_key
 from app.core.evaluations.services.tag_keys import allowed_tag_keys
@@ -53,6 +55,48 @@ async def _evaluation(
         db_session.add(EvaluationTagKey(evaluation_id=evaluation.id, key=key))
     await db_session.flush()
     return evaluation
+
+
+class TestInstanceSwitch:
+    """`CONVERSATION_TAGS_ENABLED=false` reads as tagging off on every evaluation, whatever its flag says."""
+
+    pytestmark = pytest.mark.integration
+
+    @pytest.fixture(autouse=True)
+    def _tags_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tag_keys, "get_settings", lambda: SimpleNamespace(conversation_tags_enabled=False))
+
+    async def test_authoring_is_refused(self, db_session: AsyncSession) -> None:
+        evaluation = await _evaluation(db_session, enabled=True)
+
+        with pytest.raises(BadRequestError, match="turned off on this instance"):
+            await assert_tags_allowed(db_session, evaluation.id, {"env": "prod"})
+
+    async def test_nothing_reaches_the_prompt(self, db_session: AsyncSession) -> None:
+        evaluation = await _evaluation(db_session, enabled=True)
+
+        assert await allowed_tags_only(db_session, evaluation.id, {"env": "prod"}) == {}
+
+    async def test_names_the_instance_when_both_switches_are_off(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        evaluation = await _evaluation(db_session, enabled=False)
+        warnings: list[dict[str, object]] = []
+        monkeypatch.setattr(tag_keys.logger, "warning", lambda event, **kw: warnings.append({"event": event, **kw}))
+
+        with pytest.raises(BadRequestError, match="turned off on this instance"):
+            await assert_tags_allowed(db_session, evaluation.id, {"env": "prod"})
+        assert await allowed_tags_only(db_session, evaluation.id, {"env": "prod"}) == {}
+        assert [w["reason"] for w in warnings] == ["instance_disabled"]
+
+    async def test_read_side_reports_every_tag_unsent_and_the_flag_stays(self, db_session: AsyncSession) -> None:
+        evaluation = await _evaluation(db_session, enabled=True)
+
+        policy = await load_tag_fold_policy(db_session, evaluation.id)
+
+        assert policy.unsent({"env": "prod"}) == ["env"]
+        await db_session.refresh(evaluation)
+        assert evaluation.tags_enabled is True
 
 
 class TestAllowedTagsOnly:

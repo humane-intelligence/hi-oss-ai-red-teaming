@@ -44,6 +44,8 @@ import { REVERSIBLE_DELETE_NOTE } from '@/lib/restore/restore'
 import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { StatusPill } from '@/components/shared/status-pill'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
+import type { BubbleTagProps } from './bubble'
 
 export function ConversationDetailPage() {
   const { id, conversationId } = useParams<{ id: string; conversationId: string }>()
@@ -59,6 +61,7 @@ export function ConversationDetailPage() {
   const authority = useGroupAuthority(evalId, 'conversations:read')
   const { allows, canManage, groupPermissions } = authority
   const evaluation = useEvaluation(evalId)
+  const conversationTagsEnabled = useConversationTagsEnabled()
   const conversation = useConversation(evalId, convId, { groupPermissions })
   const messages = useMessages(evalId, convId, { groupPermissions })
   const stream = useConversationStream(evalId, convId)
@@ -94,10 +97,10 @@ export function ConversationDetailPage() {
     ? (evaluation.data?.models ?? []).find((m) => m.assignment_id === conv.evaluation_ai_model_id)
     : undefined
   const modelName = assignment?.name ?? undefined
-  // Tagging is a per-evaluation opt-out: with it off the backend rejects every tagged write, so no
-  // tag surface renders. Read as off until the evaluation resolves — revealing a control late beats
-  // offering one that would 400.
-  const tagsEnabled = evaluation.data?.tags_enabled === true
+  // Tagging is a per-evaluation opt-out under an instance-wide switch: with either off the backend
+  // rejects every tagged write, so no tag surface renders. Read as off until both resolve — revealing
+  // a control late beats offering one that would 400.
+  const tagsEnabled = conversationTagsEnabled && evaluation.data?.tags_enabled === true
   // Only a restricted evaluation has a key whitelist to advertise; unrestricted stays free-form,
   // so the query is skipped there rather than fetching a list the authoring UI wouldn't use.
   const tagsRestricted = tagsEnabled && evaluation.data?.tags_restricted === true
@@ -142,6 +145,9 @@ export function ConversationDetailPage() {
     if (record) return new Set(Object.keys(message.tags ?? {}).filter((key) => !(key in record)))
     return unsent
   }
+  const messageTagProps = (message: MessageResponse): BubbleTagProps =>
+    conversationTagsEnabled ? { tags: message.tags, unsentTags: messageUnsentTags(message) } : {}
+
   const unsentHintId = `${useId()}-unsent-tags`
   const acceptsImages = assignment?.input_modalities?.includes('image') ?? false
   // Resolved by id, not looked up in a scenario list: the list is one page deep, so a
@@ -280,11 +286,10 @@ export function ConversationDetailPage() {
                     status={m.status}
                     flagCount={m.flag_count}
                     extra={m.extra}
-                    tagContext={m.tag_context}
+                    tagContext={conversationTagsEnabled ? m.tag_context : undefined}
                     tagContextPartial={m.tag_context_partial}
                     imageKeys={m.image_keys}
-                    tags={m.tags}
-                    unsentTags={messageUnsentTags(m)}
+                    {...messageTagProps(m)}
                     onFlag={assistant && canFlag ? () => setFlagIds([m.id]) : undefined}
                     annotations={annotationIndex.byMessage.get(m.id) ?? []}
                     onAnnotate={canAnnotate ? () => setAnnotateId(m.id) : undefined}
@@ -441,10 +446,11 @@ export function ConversationDetailPage() {
             />
           </header>
 
-          {/* Shown whatever the flag says: `tags_enabled` gates authoring and the prompt fold, and the
-              backend keeps the stored map either way. Hiding it would drop the record of what context
-              the recorded turns were sent with, which is the one thing a reviewer comes here for. */}
-          {Object.keys(conv.tags ?? {}).length > 0 && (
+          {/* Shown whatever the evaluation's flag says: `tags_enabled` gates authoring and the prompt
+              fold, and the backend keeps the stored map either way. Hiding it would drop the record of
+              what context the recorded turns were sent with, which is the one thing a reviewer comes
+              here for. The instance switch is the exception: there tags are off as a feature. */}
+          {conversationTagsEnabled && Object.keys(conv.tags ?? {}).length > 0 && (
             <div className="space-y-1">
               {/* `role="list"` spelled out: the reset drops list-style, and Safari then drops the list
                   semantics with it. Without the label these chips read as loose text before the transcript. */}

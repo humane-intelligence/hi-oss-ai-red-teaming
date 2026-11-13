@@ -1818,7 +1818,7 @@ export interface paths {
         put?: never;
         /**
          * Start a conversation
-         * @description Start a fresh, empty conversation against a model assigned to the scenario's evaluation. The scenario comes from the path and carries that evaluation; the owner is the authenticated caller. The model assignment must belong to the evaluation, and the scenario must be the target group's scenario (a group's conversations all share it). Optional `tags` are free-form key/value pairs stored on the conversation and folded into the model's prompt as context, minus any the evaluation's tagging policy no longer allows — those stay on the row but are not sent. When the evaluation restricts tags, every key must be in its allowed set; when it disables tagging, every key is rejected. The `Location` header points at the conversation's read route, which stays nested under the evaluation.
+         * @description Start a fresh, empty conversation against a model assigned to the scenario's evaluation. The scenario comes from the path and carries that evaluation; the owner is the authenticated caller. The model assignment must belong to the evaluation, and the scenario must be the target group's scenario (a group's conversations all share it). Optional `tags` are free-form key/value pairs stored on the conversation and folded into the model's prompt as context, minus any the evaluation's tagging policy no longer allows — those stay on the row but are not sent. When the evaluation restricts tags, every key must be in its allowed set; when it disables tagging, or the instance turns tags off, every key is rejected. The `Location` header points at the conversation's read route, which stays nested under the evaluation.
          */
         post: operations["create_conversation_endpoint_api_v1_scenarios__scenario_id__conversations_post"];
         delete?: never;
@@ -1870,7 +1870,7 @@ export interface paths {
         head?: never;
         /**
          * Update conversation
-         * @description Update a conversation's inference-parameter overrides or its stored tags, move it to another group, and/or change its title. `parameters` replaces the whole override layer rather than merging — sending `{}` clears it. `tags` behaves the same way: the map replaces the stored tag set wholesale and `{}` clears it; when the evaluation restricts tags, every key must be in its allowed set, and when it disables tagging every key is rejected. `parameters`, `tags` and `conversation_group_id` all reject an explicit `null` (they back NOT NULL columns) — omit the field to leave it unchanged. `conversation_group_id` moves the conversation to another group of the **same evaluation and the same scenario**; if the move empties the previous group, that group is removed. `title` is tri-state: omit to leave unchanged, a string to set it, explicit `null` to clear it. The evaluation / model / scenario links are not editable; start a new conversation instead.
+         * @description Update a conversation's inference-parameter overrides or its stored tags, move it to another group, and/or change its title. `parameters` replaces the whole override layer rather than merging — sending `{}` clears it. `tags` behaves the same way: the map replaces the stored tag set wholesale and `{}` clears it; when the evaluation restricts tags, every key must be in its allowed set, and when it disables tagging, or the instance turns tags off, every key is rejected. `parameters`, `tags` and `conversation_group_id` all reject an explicit `null` (they back NOT NULL columns) — omit the field to leave it unchanged. `conversation_group_id` moves the conversation to another group of the **same evaluation and the same scenario**; if the move empties the previous group, that group is removed. `title` is tri-state: omit to leave unchanged, a string to set it, explicit `null` to clear it. The evaluation / model / scenario links are not editable; start a new conversation instead.
          */
         patch: operations["update_conversation_endpoint_api_v1_evaluations__evaluation_id__conversations__conversation_id__patch"];
         trace?: never;
@@ -2874,7 +2874,7 @@ export interface paths {
         };
         /**
          * Get public platform settings
-         * @description Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy.
+         * @description Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy, plus whether conversation tags are in use on this instance.
          */
         get: operations["get_public_platform_settings_endpoint_api_v1_platform_settings_public_get"];
         put?: never;
@@ -9859,6 +9859,7 @@ export interface components {
          * PublicPlatformSettingsResponse
          * @description Unauthenticated subset of platform settings — safe to expose to anonymous clients.
          * @example {
+         *       "conversation_tags_enabled": true,
          *       "password_policy": {
          *         "min_length": 8,
          *         "require_digit": false,
@@ -9876,6 +9877,11 @@ export interface components {
             signup_enabled: boolean;
             /** @description Rules every screen that sets a password must satisfy. The reset-throttling settings are deliberately not here — they are operational, not part of the form contract. */
             password_policy: components["schemas"]["PublicPasswordPolicyResponse"];
+            /**
+             * Conversation Tags Enabled
+             * @description Whether conversation tags are in use on this instance. When false every evaluation behaves as if tagging were off and the console shows no tags; set by the deployment (`CONVERSATION_TAGS_ENABLED`), not by the platform-settings singleton.
+             */
+            conversation_tags_enabled: boolean;
         };
         /**
          * PublicationStatus
@@ -11716,7 +11722,7 @@ export interface components {
             image_keys?: string[];
             /**
              * Tags
-             * @description Free-form key/value tags for this message, folded into the model's context for this request and merged over the conversation's (these win per key). Rejected with 400 when the evaluation disables tagging or restricts keys to a set this one is outside of — so what this request authors does reach the model, but the same tags are stored and replayed on regenerate / continue, where a policy tightened since then drops them.
+             * @description Free-form key/value tags for this message, folded into the model's context for this request and merged over the conversation's (these win per key). Rejected with 400 when the instance turns tags off, or the evaluation disables tagging or restricts keys to a set this one is outside of — so what this request authors does reach the model, but the same tags are stored and replayed on regenerate / continue, where a policy tightened since then drops them.
              */
             tags?: {
                 [key: string]: string;
@@ -20462,7 +20468,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description A conversation tag key is not allowed for this evaluation's restricted tag schema. */
+            /** @description Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled, or a key is outside its restricted tag schema. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -20786,7 +20792,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description A conversation tag key is not allowed for this evaluation's restricted tag schema. */
+            /** @description Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled, or a key is outside its restricted tag schema. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -20959,7 +20965,7 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
-            /** @description Model cannot serve this request (it cannot answer in text, or an image went to a model that does not accept image input), an image_keys entry is unknown/not the caller's own private upload, or this request's `tags` carry a key the evaluation disallows (tagging disabled, or outside its restricted tag schema). */
+            /** @description Model cannot serve this request (it cannot answer in text, or an image went to a model that does not accept image input), an image_keys entry is unknown/not the caller's own private upload, or this request's `tags` carry a key that is not allowed (tags turned off on the instance, tagging disabled on the evaluation, or outside its restricted tag schema). */
             400: {
                 headers: {
                     [name: string]: unknown;

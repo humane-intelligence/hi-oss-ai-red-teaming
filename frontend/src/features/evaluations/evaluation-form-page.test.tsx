@@ -565,6 +565,28 @@ describe('EvaluationFormPage — custom tags', () => {
 
     expect(box).toHaveAttribute('aria-checked', before)
   })
+
+  it('offers no Custom tags checkbox when the instance turns tags off', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({
+          signup_enabled: true,
+          password_policy: {
+            min_length: 10,
+            require_uppercase: false,
+            require_digit: false,
+            require_symbol: false,
+          },
+          conversation_tags_enabled: false,
+        }),
+      ),
+      ...handlers(['evaluations:create']),
+    )
+    renderCreate()
+
+    await screen.findByRole('checkbox', { name: /mask assigned model identities/i })
+    expect(screen.queryByRole('checkbox', { name: 'Custom tags' })).toBeNull()
+  })
 })
 
 describe('EvaluationFormPage — cover image', () => {

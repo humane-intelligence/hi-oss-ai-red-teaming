@@ -95,6 +95,7 @@ class Settings(BaseSettings):
 | `MAX_CONVERSATION_GROUP_SIZE` | no | `4` | hard cap on conversations a single conversation group may hold |
 | `HEALTH_CHECK_WAKE_DEADLINE_SECONDS` | no | `120` | how long a manual model health check keeps retrying a cold (`starting`) endpoint before settling `dead` |
 | `HEALTH_CHECK_BACKOFF_SECONDS` | no | `5` | pause between those probe attempts |
+| `CONVERSATION_TAGS_ENABLED` | no | `true` | instance-wide switch for conversation tags; `false` reads as `tags_enabled` off on every evaluation (stored data kept) and hides tags in the console — see [Conversation tags](conversation-tags.md) |
 | `PLATFORM_DEFAULT_DATA_LICENSE` | no | `CC-BY-4.0` | initial/fallback default DATA license (a **curated** SPDX id); validated at startup; overridable at runtime via the platform-settings singleton |
 | `EMAIL_BACKEND` | no | `console` | mail delivery adapter: `console` (log-only) / `ses` (AWS SESv2) / `smtp` |
 | `EXPORT_STORAGE_BACKEND` | no | `local` | async-export store adapter: `local` (filesystem) / `s3` |

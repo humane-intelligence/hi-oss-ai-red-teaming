@@ -234,6 +234,22 @@ function renderPage(permissions: string[]) {
   return { qc, ...rendered }
 }
 
+function tagsOffHandler(onServe: () => void) {
+  return http.get('http://localhost/api/v1/platform-settings/public', () => {
+    onServe()
+    return HttpResponse.json({
+      signup_enabled: true,
+      password_policy: {
+        min_length: 10,
+        require_uppercase: false,
+        require_digit: false,
+        require_symbol: false,
+      },
+      conversation_tags_enabled: false,
+    })
+  })
+}
+
 describe('ReviewDetailPage', () => {
   it('renders the submission reason and the full transcript (flagged + context)', async () => {
     server.use(...handlers())
@@ -327,6 +343,27 @@ describe('ReviewDetailPage', () => {
     renderPage(['reviews:read'])
 
     expect(await screen.findByText('env: prod')).toBeInTheDocument()
+  })
+
+  it('shows no tag context when the instance turns tags off', async () => {
+    let served = false
+    server.use(
+      tagsOffHandler(() => (served = true)),
+      ...handlers({
+        transcript: [
+          defaultTranscript[0]!,
+          { ...defaultTranscript[1]!, tag_context: { env: 'prod' } },
+        ],
+        submission: { ...flag, messages: [...flag.messages, defaultTranscript[1]!] },
+      }),
+    )
+    const { qc } = renderPage(['reviews:read'])
+
+    // Pending also reads as off, so wait for the settings answer to land.
+    await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
+    expect(await screen.findAllByText(defaultTranscript[1]!.content)).not.toHaveLength(0)
+    expect(screen.queryByText('env: prod')).toBeNull()
+    expect(screen.queryByText(/sent with/i)).toBeNull()
   })
 
   it('shows it on a superseded flagged row too', async () => {

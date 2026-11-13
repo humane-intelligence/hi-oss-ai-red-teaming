@@ -759,7 +759,8 @@ class UserMessageIn(BaseModel):
         description=(
             "Free-form key/value tags for this message, folded into the model's context for this "
             "request and merged over the conversation's (these win per key). Rejected with 400 when "
-            "the evaluation disables tagging or restricts keys to a set this one is outside of — so "
+            "the instance turns tags off, or the evaluation disables tagging or restricts keys to a "
+            "set this one is outside of — so "
             "what this request authors does reach the model, but the same tags are stored and "
             "replayed on regenerate / continue, where a policy tightened since then drops them."
         ),

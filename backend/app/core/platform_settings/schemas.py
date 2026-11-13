@@ -121,6 +121,7 @@ class PublicPlatformSettingsResponse(BaseModel):
                     "require_digit": False,
                     "require_symbol": False,
                 },
+                "conversation_tags_enabled": True,
             }
         }
     )
@@ -132,6 +133,11 @@ class PublicPlatformSettingsResponse(BaseModel):
     password_policy: PublicPasswordPolicyResponse = Field(
         description="Rules every screen that sets a password must satisfy. The reset-throttling "
         "settings are deliberately not here — they are operational, not part of the form contract."
+    )
+    conversation_tags_enabled: bool = Field(
+        description="Whether conversation tags are in use on this instance. When false every "
+        "evaluation behaves as if tagging were off and the console shows no tags; set by the "
+        "deployment (`CONVERSATION_TAGS_ENABLED`), not by the platform-settings singleton."
     )
 
 

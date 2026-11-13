@@ -8717,8 +8717,8 @@ paths:
         to the evaluation, and the scenario must be the target group's scenario (a group's conversations all share it). Optional
         `tags` are free-form key/value pairs stored on the conversation and folded into the model's prompt as context, minus
         any the evaluation's tagging policy no longer allows — those stay on the row but are not sent. When the evaluation
-        restricts tags, every key must be in its allowed set; when it disables tagging, every key is rejected. The `Location`
-        header points at the conversation's read route, which stays nested under the evaluation.
+        restricts tags, every key must be in its allowed set; when it disables tagging, or the instance turns tags off, every
+        key is rejected. The `Location` header points at the conversation's read route, which stays nested under the evaluation.
       operationId: create_conversation_endpoint_api_v1_scenarios__scenario_id__conversations_post
       parameters:
       - name: scenario_id
@@ -8760,7 +8760,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A conversation tag key is not allowed for this evaluation's restricted tag schema.
+          description: 'Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled,
+            or a key is outside its restricted tag schema.'
           content:
             application/problem+json:
               schema:
@@ -9028,12 +9029,12 @@ paths:
       description: 'Update a conversation''s inference-parameter overrides or its stored tags, move it to another group, and/or
         change its title. `parameters` replaces the whole override layer rather than merging — sending `{}` clears it. `tags`
         behaves the same way: the map replaces the stored tag set wholesale and `{}` clears it; when the evaluation restricts
-        tags, every key must be in its allowed set, and when it disables tagging every key is rejected. `parameters`, `tags`
-        and `conversation_group_id` all reject an explicit `null` (they back NOT NULL columns) — omit the field to leave it
-        unchanged. `conversation_group_id` moves the conversation to another group of the **same evaluation and the same scenario**;
-        if the move empties the previous group, that group is removed. `title` is tri-state: omit to leave unchanged, a string
-        to set it, explicit `null` to clear it. The evaluation / model / scenario links are not editable; start a new conversation
-        instead.'
+        tags, every key must be in its allowed set, and when it disables tagging, or the instance turns tags off, every key
+        is rejected. `parameters`, `tags` and `conversation_group_id` all reject an explicit `null` (they back NOT NULL columns)
+        — omit the field to leave it unchanged. `conversation_group_id` moves the conversation to another group of the **same
+        evaluation and the same scenario**; if the move empties the previous group, that group is removed. `title` is tri-state:
+        omit to leave unchanged, a string to set it, explicit `null` to clear it. The evaluation / model / scenario links
+        are not editable; start a new conversation instead.'
       operationId: update_conversation_endpoint_api_v1_evaluations__evaluation_id__conversations__conversation_id__patch
       parameters:
       - name: evaluation_id
@@ -9082,7 +9083,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A conversation tag key is not allowed for this evaluation's restricted tag schema.
+          description: 'Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled,
+            or a key is outside its restricted tag schema.'
           content:
             application/problem+json:
               schema:
@@ -9370,7 +9372,8 @@ paths:
         '400':
           description: Model cannot serve this request (it cannot answer in text, or an image went to a model that does not
             accept image input), an image_keys entry is unknown/not the caller's own private upload, or this request's `tags`
-            carry a key the evaluation disallows (tagging disabled, or outside its restricted tag schema).
+            carry a key that is not allowed (tags turned off on the instance, tagging disabled on the evaluation, or outside
+            its restricted tag schema).
           content:
             application/problem+json:
               schema:
@@ -14807,7 +14810,8 @@ paths:
       - platform-settings
       summary: Get public platform settings
       description: Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup
-        is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy.
+        is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy, plus whether
+        conversation tags are in use on this instance.
       operationId: get_public_platform_settings_endpoint_api_v1_platform_settings_public_get
       responses:
         '200':
@@ -24093,13 +24097,21 @@ components:
           $ref: '#/components/schemas/PublicPasswordPolicyResponse'
           description: Rules every screen that sets a password must satisfy. The reset-throttling settings are deliberately
             not here — they are operational, not part of the form contract.
+        conversation_tags_enabled:
+          type: boolean
+          title: Conversation Tags Enabled
+          description: Whether conversation tags are in use on this instance. When false every evaluation behaves as if tagging
+            were off and the console shows no tags; set by the deployment (`CONVERSATION_TAGS_ENABLED`), not by the platform-settings
+            singleton.
       type: object
       required:
       - signup_enabled
       - password_policy
+      - conversation_tags_enabled
       title: PublicPlatformSettingsResponse
       description: Unauthenticated subset of platform settings — safe to expose to anonymous clients.
       example:
+        conversation_tags_enabled: true
         password_policy:
           min_length: 8
           require_digit: false
@@ -26216,9 +26228,10 @@ components:
           maxProperties: 16
           title: Tags
           description: Free-form key/value tags for this message, folded into the model's context for this request and merged
-            over the conversation's (these win per key). Rejected with 400 when the evaluation disables tagging or restricts
-            keys to a set this one is outside of — so what this request authors does reach the model, but the same tags are
-            stored and replayed on regenerate / continue, where a policy tightened since then drops them.
+            over the conversation's (these win per key). Rejected with 400 when the instance turns tags off, or the evaluation
+            disables tagging or restricts keys to a set this one is outside of — so what this request authors does reach the
+            model, but the same tags are stored and replayed on regenerate / continue, where a policy tightened since then
+            drops them.
       type: object
       required:
       - content

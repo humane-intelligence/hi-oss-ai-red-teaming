@@ -94,7 +94,8 @@ _NOT_RESTORABLE = problem_response(
     "model-unassign cascade rather than by a user."
 )
 _TAG_NOT_ALLOWED = problem_response(
-    "A conversation tag key is not allowed for this evaluation's restricted tag schema."
+    "Conversation tags are not allowed: the instance turns them off, the evaluation has tagging "
+    "disabled, or a key is outside its restricted tag schema."
 )
 
 # Every route with an object in its path honours in-group authority as well as the JWT;
@@ -127,9 +128,9 @@ _OrderBy = Annotated[
         "(a group's conversations all share it). Optional `tags` are free-form key/value pairs stored on the "
         "conversation and folded into the model's prompt as context, minus any the evaluation's "
         "tagging policy no longer allows — those stay on the row but are not sent. When the "
-        "evaluation restricts tags, every key must be in its allowed set; when it disables tagging, "
-        "every key is rejected. The `Location` header points at the conversation's read route, "
-        "which stays nested under the evaluation."
+        "evaluation restricts tags, every key must be in its allowed set; when it disables tagging, or "
+        "the instance turns tags off, every key is rejected. The `Location` header points at the "
+        "conversation's read route, which stays nested under the evaluation."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
@@ -368,7 +369,8 @@ async def list_conversation_messages_endpoint(
         "another group, and/or change its title. `parameters` replaces the whole override layer rather "
         "than merging — sending `{}` clears it. `tags` behaves the same way: the map replaces the stored "
         "tag set wholesale and `{}` clears it; when the evaluation restricts tags, every key must be in "
-        "its allowed set, and when it disables tagging every key is rejected. `parameters`, `tags` and "
+        "its allowed set, and when it disables tagging, or the instance turns tags off, every key is "
+        "rejected. `parameters`, `tags` and "
         "`conversation_group_id` all reject an explicit `null` (they back NOT NULL columns) — omit the "
         "field to leave it unchanged. `conversation_group_id` moves the conversation to another group of "
         "the **same evaluation and the same scenario**; if the move empties the previous group, that "

@@ -812,6 +812,51 @@ describe('ConversationGroupPage', () => {
     ).toHaveTextContent('env: prod')
   })
 
+  it('shows no stored tags in the panes when the instance turns tags off', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({
+          signup_enabled: true,
+          password_policy: {
+            min_length: 10,
+            require_uppercase: false,
+            require_digit: false,
+            require_symbol: false,
+          },
+          conversation_tags_enabled: false,
+        }),
+      ),
+      http.get(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversations/${CONV_A}/messages`,
+        () =>
+          HttpResponse.json({
+            items: [
+              {
+                id: 'msg-asst-0000-0000-000000000000',
+                turn_id: 'turn-1',
+                role: 'assistant',
+                content: 'prior reply',
+                status: 'complete',
+                created_at: '2026-01-01T00:00:02Z',
+                tags: { persona: 'nurse' },
+                tag_context: { env: 'prod' },
+              },
+            ],
+            total: 1,
+            limit: 100,
+            offset: 0,
+          }),
+      ),
+      ...baseHandlers([{ ...conv(CONV_A, MODEL_A), tags: { env: 'prod' } }, conv(CONV_B, MODEL_B)]),
+    )
+    renderPage()
+
+    expect(await screen.findByText('prior reply')).toBeInTheDocument()
+    expect(screen.queryAllByTestId('pane-conversation-tags')).toHaveLength(0)
+    expect(screen.queryByTestId('message-tags')).toBeNull()
+    expect(screen.queryByTestId('tag-context-msg-asst-0000-0000-000000000000')).toBeNull()
+  })
+
   it('shows each pane the tags its own conversation carries', async () => {
     server.use(
       ...baseHandlers([{ ...conv(CONV_A, MODEL_A), tags: { env: 'prod' } }, conv(CONV_B, MODEL_B)]),

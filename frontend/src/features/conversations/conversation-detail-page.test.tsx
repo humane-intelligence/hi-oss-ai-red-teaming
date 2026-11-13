@@ -593,6 +593,30 @@ describe('ConversationDetailPage — tags', () => {
     expect(screen.queryByTestId('conversation-tags')).toBeNull()
   })
 
+  it('offers no tag editor when the instance turns tags off', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({
+          signup_enabled: true,
+          password_policy: {
+            min_length: 10,
+            require_uppercase: false,
+            require_digit: false,
+            require_symbol: false,
+          },
+          conversation_tags_enabled: false,
+        }),
+      ),
+      ...baseHandlers(conversationTombstonedScenario),
+    )
+    renderWithPerms(['conversations:read', 'conversations:update'])
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /add tags|edit tags/i })).toBeNull()
+  })
+
   it('adds a tag and PATCHes the whole map', async () => {
     let captured: unknown = null
     server.use(
@@ -1231,6 +1255,59 @@ describe('ConversationDetailPage — tags', () => {
     expect(
       await screen.findByTestId('tag-context-msg-assistant-000-000000000000'),
     ).toHaveTextContent('env: prod')
+  })
+
+  it('shows no stored tags at all when the instance turns tags off', async () => {
+    server.use(...baseHandlers({ ...conversationTombstonedScenario, tags: { env: 'prod' } }))
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({
+          signup_enabled: true,
+          password_policy: {
+            min_length: 10,
+            require_uppercase: false,
+            require_digit: false,
+            require_symbol: false,
+          },
+          conversation_tags_enabled: false,
+        }),
+      ),
+      http.get(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversations/${CONV_ID}/messages`,
+        () =>
+          HttpResponse.json({
+            items: [
+              {
+                id: 'msg-user-0000-000000000000',
+                turn_id: 'turn-1',
+                role: 'user',
+                content: 'hi',
+                status: 'complete',
+                created_at: '2026-01-01T00:00:01Z',
+                tags: { persona: 'nurse' },
+              },
+              {
+                id: 'msg-assistant-000-000000000000',
+                turn_id: 'turn-1',
+                role: 'assistant',
+                content: 'here you go',
+                status: 'complete',
+                created_at: '2026-01-01T00:00:02Z',
+                tag_context: { env: 'prod' },
+              },
+            ],
+            total: 2,
+            limit: 100,
+            offset: 0,
+          }),
+      ),
+    )
+    renderWithPerms(['conversations:read', 'conversations:update'])
+
+    expect(await screen.findByText('here you go')).toBeInTheDocument()
+    expect(screen.queryByTestId('conversation-tags')).toBeNull()
+    expect(screen.queryByTestId('message-tags')).toBeNull()
+    expect(screen.queryByTestId('tag-context-msg-assistant-000-000000000000')).toBeNull()
   })
 
   it('names a stored tag that has no value', async () => {
