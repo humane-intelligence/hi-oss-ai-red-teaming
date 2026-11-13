@@ -76,6 +76,7 @@ describe('ScenariosSection — RBAC gates', () => {
     ]) {
       expect(screen.queryByRole('button', { name })).toBeNull()
     }
+    expect(screen.queryByText('Required reviewers')).toBeNull()
   })
 
   it('with evaluations:update — Add scenario button visible, icon buttons in scenario rows', async () => {
@@ -115,13 +116,62 @@ describe('ScenariosSection — cards', () => {
     expect(screen.getByText('Scenario description')).toBeInTheDocument()
   })
 
-  it('keeps the reviewer count from those who cannot change the scenario', async () => {
-    server.use(...baseHandlers())
-    renderSection([])
+  it('keeps scenario, task and control order across several scenarios', async () => {
+    const second: ScenarioResponse = {
+      ...scenario,
+      id: 'scen-0002-0000-0000-000000000000',
+      name: 'Jailbreak',
+      position: 2,
+    }
+    const tasksOf = (scenarioId: string, names: string[]) =>
+      names.map((name, i) => ({
+        ...task,
+        id: `${scenarioId}-t${i}`,
+        scenario_id: scenarioId,
+        name,
+      }))
+    server.use(
+      // Out of position order, so the test sees the sort.
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [second, scenario], total: 2, limit: 100, offset: 0 }),
+      ),
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({
+          items: tasksOf(SCEN_ID, ['Basic injection', 'Nested injection']),
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      http.get(`http://localhost/api/v1/scenarios/${second.id}/tasks`, () =>
+        HttpResponse.json({
+          items: tasksOf(second.id, ['Roleplay', 'Encoding']),
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+    )
+    renderSection(['evaluations:update'])
 
-    expect(await screen.findByText('Prompt injection')).toBeInTheDocument()
-    expect(screen.queryByText('Required reviewers')).toBeNull()
-    expect(screen.queryByRole('button', { name: /add task/i })).toBeNull()
+    expect(await screen.findByText('Encoding')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Scenario 1: Prompt injection',
+      'Scenario 2: Jailbreak',
+    ])
+    expect(
+      screen
+        .getAllByRole('button', { name: /^Edit task/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual([
+      'Edit task 1: Basic injection',
+      'Edit task 2: Nested injection',
+      'Edit task 1: Roleplay',
+      'Edit task 2: Encoding',
+    ])
+    expect(
+      screen.getAllByRole('button', { name: /^Add task/ }).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Add task to scenario 1: Prompt injection', 'Add task to scenario 2: Jailbreak'])
   })
 })
 
