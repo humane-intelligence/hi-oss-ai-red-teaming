@@ -4671,6 +4671,7 @@ export interface components {
          *           },
          *           "scenario_id": "9a7b6c5d-1e2f-4a3b-8c9d-0e1f2a3b4c5d",
          *           "title": "Jailbreak attempt — roleplay framing",
+         *           "turn_count": 3,
          *           "updated_at": "2026-01-02T09:30:00Z",
          *           "user_id": "a1b2c3d4-1111-2222-3333-444455556666"
          *         }
@@ -4783,6 +4784,7 @@ export interface components {
          *       },
          *       "scenario_id": "9a7b6c5d-1e2f-4a3b-8c9d-0e1f2a3b4c5d",
          *       "title": "Jailbreak attempt — roleplay framing",
+         *       "turn_count": 3,
          *       "updated_at": "2026-01-02T09:30:00Z",
          *       "user_id": "a1b2c3d4-1111-2222-3333-444455556666"
          *     }
@@ -4850,6 +4852,11 @@ export interface components {
              * @description Whether this conversation's message text is stored encrypted at rest. Taken from the effective licence when the conversation was created and never re-derived, so it can differ from `effective_license.protects_conversation_data` on a licence changed since.
              */
             content_protected: boolean;
+            /**
+             * Turn Count
+             * @description Number of turns (a user message plus its replies) in the conversation; 0 until the first message.
+             */
+            turn_count: number;
             /**
              * Created At
              * Format: date-time

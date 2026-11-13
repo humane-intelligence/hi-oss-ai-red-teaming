@@ -326,6 +326,7 @@ _EXAMPLE_CONVERSATION_RESPONSE: dict[str, Any] = {
         "created_by_id": None,
     },
     "content_protected": False,
+    "turn_count": 3,
     "created_at": "2026-01-01T12:00:00Z",
     "updated_at": "2026-01-02T09:30:00Z",
 }
@@ -369,6 +370,9 @@ class ConversationResponse(BaseModel):
             "differ from `effective_license.protects_conversation_data` on a licence changed since."
         ),
     )
+    turn_count: int = Field(
+        description="Number of turns (a user message plus its replies) in the conversation; 0 until the first message.",
+    )
     created_at: datetime = Field(description="UTC timestamp of creation.")
     updated_at: datetime = Field(description="UTC timestamp of the last update.")
     deleted_at: datetime | None = Field(
@@ -400,6 +404,7 @@ class ConversationResponse(BaseModel):
             tags=dict(conversation.tags),
             effective_license=DataLicenseSummary.from_model(effective_license),
             content_protected=conversation.content_protected,
+            turn_count=conversation.turn_count,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
             deleted_at=conversation.deleted_at,

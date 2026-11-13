@@ -1038,6 +1038,67 @@ async def test_update_sets_title(auth_db_client: AsyncClient, db_session: AsyncS
     assert response.json()["title"] == "Renamed"  # stripped, like create
 
 
+async def test_update_keeps_the_turn_count(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="turns-update@example.com")
+    token = _token(caller)
+    evaluation = await _evaluation_for(db_session)
+    assignment = await _assignment(db_session, evaluation.id)
+    group_row = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation.id)
+    created = await _create(
+        auth_db_client,
+        token,
+        group_row.scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(group_row.id)},
+    )
+    assert created.json()["turn_count"] == 0
+    conversation = await db_session.get_one(Conversation, UUID(created.json()["id"]))
+    await open_turn(db_session, conversation, settings=get_settings(), content="hello")
+    # The client shares this session, so the count loaded at create would otherwise be served again.
+    db_session.expire(conversation, ["turn_count"])
+
+    response = await auth_db_client.patch(
+        f"/api/v1/evaluations/{evaluation.id}/conversations/{conversation.id}",
+        json={"title": "Renamed"},
+        headers=_auth(token),
+    )
+
+    # The write flushes the row; the count must survive that rather than be expired and lazy-loaded.
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["turn_count"] == 1
+
+
+async def test_turn_count_skips_soft_deleted_turns(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="turns-deleted@example.com")
+    token = _token(caller)
+    evaluation = await _evaluation_for(db_session)
+    assignment = await _assignment(db_session, evaluation.id)
+    group_row = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation.id)
+    created = await _create(
+        auth_db_client,
+        token,
+        group_row.scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(group_row.id)},
+    )
+    conversation = await db_session.get_one(Conversation, UUID(created.json()["id"]))
+    opened = await open_turn(db_session, conversation, settings=get_settings(), content="hello")
+    # Nothing soft-deletes a turn yet, so the filter is only reachable by writing the column.
+    opened.turn.deleted_at = datetime.now(UTC)
+    await db_session.flush()
+    db_session.expire(conversation, ["turn_count"])
+
+    response = await auth_db_client.get(
+        f"/api/v1/evaluations/{evaluation.id}/conversations/{conversation.id}",
+        headers=_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["turn_count"] == 0
+
+
 async def test_update_explicit_null_title_clears_it(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
 ) -> None:
