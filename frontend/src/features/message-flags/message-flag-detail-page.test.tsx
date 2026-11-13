@@ -49,6 +49,7 @@ function renderPage(permissions: string[]) {
       </QueryClientProvider>
     </Wrapper>,
   )
+  return qc
 }
 
 describe('MessageFlagDetailPage — in-group authority', () => {
@@ -165,10 +166,11 @@ describe('MessageFlagDetailPage — tag context', () => {
         HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
       ),
     )
-    renderPage(['evaluations:read'])
+    const qc = renderPage(['evaluations:read'])
 
     expect(await screen.findByText('Here is the forbidden recipe.')).toBeInTheDocument()
-    await waitFor(() => expect(served).toBe(true))
+    // Pending also reads as off, so wait for the settings answer to land.
+    await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
     expect(screen.queryByText('env: prod')).toBeNull()
     expect(screen.queryByText(/sent with/i)).toBeNull()
   })

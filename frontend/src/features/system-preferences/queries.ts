@@ -23,7 +23,8 @@ const SHIPPED_PASSWORD_POLICY: PublicPasswordPolicyResponse = {
 // drives whether the login/register screens offer sign-up and what they say about passwords.
 // Fails open on error: the sign-up path stays visible and the password rules read as the shipped
 // ones (hiding and tightening are the exceptions, and the backend enforces both regardless of what
-// the UI shows), so errors are suppressed rather than toasted at a visitor. While the read is still
+// the UI shows), so errors are suppressed rather than toasted at a visitor. The tags switch is the
+// exception and fails closed — see `useConversationTagsEnabled`. While the read is still
 // pending `signup_enabled` fails open the same way, but the password callers hold their rendering
 // off instead — see `usePasswordPolicy`. The read carries a deadline so that window is bounded.
 // `apiClient` sets no timeout, so a hung read would never reach the error branch that falls back to

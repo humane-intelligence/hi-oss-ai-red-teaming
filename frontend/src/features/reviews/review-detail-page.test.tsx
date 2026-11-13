@@ -357,9 +357,10 @@ describe('ReviewDetailPage', () => {
         submission: { ...flag, messages: [...flag.messages, defaultTranscript[1]!] },
       }),
     )
-    renderPage(['reviews:read'])
+    const { qc } = renderPage(['reviews:read'])
 
-    await waitFor(() => expect(served).toBe(true))
+    // Pending also reads as off, so wait for the settings answer to land.
+    await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
     expect(await screen.findAllByText(defaultTranscript[1]!.content)).not.toHaveLength(0)
     expect(screen.queryByText('env: prod')).toBeNull()
     expect(screen.queryByText(/sent with/i)).toBeNull()
