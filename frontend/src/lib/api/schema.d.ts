@@ -20511,7 +20511,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The target group already holds the maximum number of conversations, or its scenario does not match the conversation's. */
+            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -20835,7 +20835,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The target group already holds the maximum number of conversations, or its scenario does not match the conversation's. */
+            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's; or the conversation itself already has prompts. */
             409: {
                 headers: {
                     [name: string]: unknown;

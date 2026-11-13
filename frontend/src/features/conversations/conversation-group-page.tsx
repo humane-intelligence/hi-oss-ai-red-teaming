@@ -42,6 +42,9 @@ import type {
 } from '@/lib/api/types'
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
+const ADD_MODEL_LOCKED =
+  'Models can only be added before the first prompt, so every model sees the same conversation.'
+
 export function ConversationGroupPage() {
   const { id, groupId } = useParams<{ id: string; groupId: string }>()
   const navigate = useNavigate()
@@ -58,6 +61,7 @@ export function ConversationGroupPage() {
 
   const group = groupQuery.data
   const members = group?.conversations ?? []
+  const prompted = members.some((m) => m.turn_count > 0)
   // `read_any` surfaces other members' groups read-only, so writing needs the owner check too —
   // except for the `evaluation_groups:manage` break-glass, which the write services honour.
   const canWrite = Boolean(group && user && group.user_id === user.id) || canManage
@@ -213,6 +217,10 @@ export function ConversationGroupPage() {
               <p className="text-muted-foreground font-mono text-xs">
                 {members.length} model{members.length === 1 ? '' : 's'} side by side
               </p>
+              {/* The menu below `sm` drops the disabled item's title, so the reason is shown here too. */}
+              {prompted && allows('conversations:create') && canWrite && (
+                <p className="text-muted-foreground text-xs">{ADD_MODEL_LOCKED}</p>
+              )}
             </div>
             <PageActions
               secondary={[
@@ -222,8 +230,10 @@ export function ConversationGroupPage() {
                   icon: Plus,
                   onSelect: () => setAddOpen(true),
                   // The create posts to the group's scenario, so a tombstoned one is a
-                  // route-level 404: dead-end, don't offer it.
-                  disabled: scenarioMissing,
+                  // route-level 404: dead-end, don't offer it. After the first prompt the
+                  // backend refuses (409): a late model would not have seen the earlier turns.
+                  disabled: scenarioMissing || prompted,
+                  title: prompted ? ADD_MODEL_LOCKED : undefined,
                   when: allows('conversations:create') && canWrite,
                 },
                 {

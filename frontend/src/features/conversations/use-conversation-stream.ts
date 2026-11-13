@@ -56,6 +56,8 @@ export function useConversationStream(evaluationId: string, conversationId: stri
       setStreaming(null)
       qc.invalidateQueries({ queryKey: ['messages', conversationId] })
       qc.invalidateQueries({ queryKey: ['conversation', conversationId] })
+      // The group page reads each member's turn count to lock Add model after the first prompt.
+      qc.invalidateQueries({ queryKey: ['conversation-group'] })
     }
     return ok
   }

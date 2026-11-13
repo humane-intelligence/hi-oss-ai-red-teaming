@@ -272,7 +272,8 @@ async def create_conversation(  # noqa: PLR0913 — keyword-only args mirror the
 
     The group is row-locked while it is resolved (`acquire_group_for_conversation`)
     so a concurrent delete can't strand this conversation under a dead group, and
-    the group's `MAX_CONVERSATION_GROUP_SIZE` cap is enforced (a full group is a 409).
+    the group's `MAX_CONVERSATION_GROUP_SIZE` cap is enforced (a full group is a 409), as is
+    joining before the first prompt (a group that already has one is a 409).
 
     ``parameters`` is the already-`dump_inference_params`-serialised override dict
     (the route owns that conversion, per the inference-params write contract).
@@ -283,8 +284,8 @@ async def create_conversation(  # noqa: PLR0913 — keyword-only args mirror the
     Raises:
         NotFoundError: If the evaluation is not visible to the caller, or the
             assignment / scenario / group does not belong to the evaluation.
-        ConflictError: If the target group is already at capacity, or the scenario
-            is not the group's scenario.
+        ConflictError: If the target group is already at capacity or already has prompts,
+            or the scenario is not the group's scenario.
     """
     await get_evaluation(session, evaluation_id, caller_id=user_id, can_manage=can_manage, with_models=False)
     await get_assignment(session, evaluation_id, evaluation_ai_model_id)
