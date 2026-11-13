@@ -22,7 +22,6 @@ import { AnnotateMessageDialog } from '@/features/annotations/annotate-message-d
 import { indexAnnotations } from '@/features/annotations/annotation-index'
 import { useConversationAnnotations } from '@/features/annotations/queries'
 import { FlagMessageDialog } from '@/features/message-flags/flag-message-dialog'
-import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 import type { BubbleTagProps } from './bubble'
 
 export function ConversationPane({
@@ -34,6 +33,7 @@ export function ConversationPane({
   warmupEnabled,
   webAccess,
   acceptsImages,
+  showTags,
   tagsEnabled,
   allowedTagKeys,
   allowedKeysStatus,
@@ -55,6 +55,8 @@ export function ConversationPane({
   warmupEnabled: boolean
   webAccess: boolean
   acceptsImages: boolean
+  // The instance switch: off hides stored tags and their `sent with` record, not just the controls.
+  showTags: boolean
   // Authoritative here, unlike on the full conversation page: the group page renders a pane only once
   // the evaluation has resolved, so `false` means "off", never "not known yet" — which is what lets the
   // marker and the row's name state it.
@@ -81,7 +83,6 @@ export function ConversationPane({
   // `evaluation_groups:manage` break-glass, so the group page resolves it per member.
   canFlag: boolean
 }) {
-  const showTags = useConversationTagsEnabled()
   const label = memberLabel({ title, modelName }, nameSuffix)
   const a11yLabel = memberA11yLabel({ title, modelName }, nameSuffix)
   const messages = useMessages(evaluationId, conversationId, { groupPermissions })

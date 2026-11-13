@@ -270,6 +270,7 @@ export function ConversationGroupPage() {
                     warmupEnabled={warmupEnabled(c.evaluation_ai_model_id)}
                     webAccess={webAccess(c.evaluation_ai_model_id)}
                     acceptsImages={acceptsImages(c.evaluation_ai_model_id)}
+                    showTags={conversationTagsEnabled}
                     tagsEnabled={tagsEnabled}
                     allowedTagKeys={allowedTagKeys}
                     allowedKeysStatus={allowedKeysStatus}
