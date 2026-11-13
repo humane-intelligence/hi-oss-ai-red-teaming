@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Columns2, MessageSquare, Pencil, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Check, ChevronDown, ChevronRight, Columns2, Copy, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissions'
 import { useAuth } from '@/lib/auth/auth-context'
 import { applyApiError } from '@/lib/api/form'
 import { humanizeError } from '@/lib/api/problem'
+import { copyText } from '@/lib/clipboard'
+import { useEvaluationScenarios } from '@/features/scenarios/queries'
 import { useConversationGroups, useDeletedConversations } from './queries'
 import {
   useDeleteConversationGroup,
@@ -16,6 +19,7 @@ import {
 } from './mutations'
 import { REVERSIBLE_DELETE_NOTE } from '@/lib/restore/restore'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Field } from '@/components/shared/field'
 import { FormField } from '@/components/shared/form-field'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
@@ -45,6 +49,7 @@ export function ConversationsSection({
   const canRead = allows('conversations:read')
   const groupsQuery = useConversationGroups(evaluation.id, { groupPermissions })
   const groups = groupsQuery.data?.pages.flatMap((p) => p.items) ?? []
+  const scenarios = useEvaluationScenarios(evaluation.id).data?.items ?? []
   const models = evaluation.models ?? []
   const canRename = allows('conversations:update')
   const canDelete = allows('conversations:delete')
@@ -75,7 +80,7 @@ export function ConversationsSection({
         <p className="text-destructive">{humanizeError(groupsQuery.error)}</p>
       )}
 
-      <div className="space-y-2">
+      <ul role="list" className="space-y-2">
         {groups.map((g) => {
           const isOwn = g.user_id === user?.id
           const writable = isOwn || canManage
@@ -84,6 +89,7 @@ export function ConversationsSection({
               key={g.id}
               evaluationId={evaluation.id}
               group={g}
+              scenarioName={scenarios.find((s) => s.id === g.scenario_id)?.name}
               modelName={modelName}
               onRename={canRename && writable ? () => setRenameTarget(g) : undefined}
               onDelete={canDelete && writable ? () => setDeleteTarget(g) : undefined}
@@ -91,15 +97,15 @@ export function ConversationsSection({
             />
           )
         })}
-        {groupsQuery.isSuccess && groups.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            No conversations yet.
-            {canStart &&
-              models.length > 0 &&
-              ' Use Start a conversation above to probe a model against this evaluation.'}
-          </p>
-        )}
-      </div>
+      </ul>
+      {groupsQuery.isSuccess && groups.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          No conversations yet.
+          {canStart &&
+            models.length > 0 &&
+            ' Use Start a conversation above to probe a model against this evaluation.'}
+        </p>
+      )}
 
       {groupsQuery.hasNextPage && (
         <Button
@@ -227,6 +233,7 @@ function DeletedConversations({
 function GroupCard({
   evaluationId,
   group,
+  scenarioName,
   modelName,
   onRename,
   onDelete,
@@ -234,6 +241,7 @@ function GroupCard({
 }: {
   evaluationId: string
   group: ConversationGroupResponse
+  scenarioName?: string
   modelName: (assignmentId: string) => string
   onRename?: () => void
   onDelete?: () => void
@@ -242,18 +250,23 @@ function GroupCard({
   // *not yours* rather than naming the author.
   isOwn: boolean
 }) {
-  const navigate = useNavigate()
   const members = group.conversations ?? []
   const groupPath = `/evaluations/${evaluationId}/conversation-groups/${group.id}`
+  // Side-by-side members share every turn, so the longest member is the conversation's length.
+  const turns = Math.max(0, ...members.map((c) => c.turn_count))
 
   return (
-    <div className="bg-card rounded-lg border">
+    <li className="bg-card rounded-lg border">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Link to={groupPath} className="min-w-0 truncate font-medium hover:underline">
             {group.name}
           </Link>
-          {!isOwn && <Badge variant="tag">Another member's</Badge>}
+          {!isOwn && (
+            <Badge variant="tag" className="shrink-0 whitespace-nowrap">
+              Another member's
+            </Badge>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {members.length >= 2 && (
@@ -265,39 +278,83 @@ function GroupCard({
             </Link>
           )}
           {onRename && (
-            <Button variant="ghost" size="icon" aria-label="Rename conversation" onClick={onRename}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Rename conversation: ${group.name}`}
+              onClick={onRename}
+            >
               <Pencil className="size-4" />
             </Button>
           )}
           {onDelete && (
-            <Button variant="ghost" size="icon" aria-label="Delete conversation" onClick={onDelete}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Delete conversation: ${group.name}`}
+              onClick={onDelete}
+            >
               <Trash2 className="size-4" />
             </Button>
           )}
         </div>
       </div>
-      <div className="divide-y">
-        {members.map((c) => {
-          const label = c.title || modelName(c.evaluation_ai_model_id)
-          return (
-            <button
-              key={c.id}
-              onClick={() => navigate(`/evaluations/${evaluationId}/conversations/${c.id}`)}
-              className="hover:bg-accent flex w-full items-center gap-3 px-3 py-2 text-left"
-            >
-              <MessageSquare className="text-muted-foreground size-4 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">{label}</div>
-                <div className="text-muted-foreground text-xs">
-                  {c.title && `${modelName(c.evaluation_ai_model_id)} · `}
-                  {new Date(c.created_at).toLocaleString()}
-                </div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
+      <dl className="grid gap-x-6 gap-y-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Field label="Conversation ID">
+          <span className="inline-flex items-center gap-1">
+            <code className="font-mono" title={group.id}>
+              {group.id.slice(0, 8)}
+            </code>
+            <CopyIdButton id={group.id} />
+          </span>
+        </Field>
+        <Field label="Scenario">{scenarioName ?? '—'}</Field>
+        <Field label="Number of turns">{turns > 0 ? turns : 'No messages'}</Field>
+        <Field label={members.length > 1 ? 'Models' : 'Model'}>
+          <ul className="space-y-0.5">
+            {members.map((c) => (
+              <li key={c.id}>
+                <Link
+                  to={`/evaluations/${evaluationId}/conversations/${c.id}`}
+                  className="font-medium hover:underline"
+                >
+                  {c.title || modelName(c.evaluation_ai_model_id)}
+                </Link>
+                {c.title && (
+                  <span className="text-muted-foreground">
+                    {' '}
+                    · {modelName(c.evaluation_ai_model_id)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Field>
+      </dl>
+    </li>
+  )
+}
+
+function CopyIdButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await copyText(id)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {
+      toast.error('Could not copy to clipboard')
+    }
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={copied ? 'Conversation ID copied' : 'Copy conversation ID'}
+      onClick={copy}
+    >
+      {copied ? <Check /> : <Copy />}
+    </Button>
   )
 }
 

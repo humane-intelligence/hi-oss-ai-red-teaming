@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Ban as BanIcon, Check, Copy, Flag, Tag } from 'lucide-react'
 import { toast } from 'sonner'
+import { copyText } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/shared/markdown'
 import { Badge } from '@/components/ui/badge'
@@ -51,20 +52,7 @@ export function Bubble({
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(content)
-      } else {
-        // Non-secure contexts (e.g. the console opened over a LAN IP rather than
-        // localhost) expose no clipboard API — fall back to the legacy path.
-        const ta = document.createElement('textarea')
-        ta.value = content
-        ta.style.position = 'fixed'
-        ta.style.opacity = '0'
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand('copy')
-        ta.remove()
-      }
+      await copyText(content)
       setCopied(true)
       setTimeout(() => setCopied(false), 1200)
     } catch {
