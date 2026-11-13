@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink, matchPath, useLocation } from 'react-router-dom'
 import {
   Activity,
   Building2,
@@ -114,20 +114,30 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
       : 'border-transparent text-muted-foreground hover:bg-sidebar-accent/50',
   )
 
+// Conversation pages sit under `/evaluations/:id/` for their trail, but in the menu they belong to
+// Conversations, not Evaluations.
+const CONVERSATION_PAGE = /^\/evaluations\/[^/]+\/(conversations|conversation-groups)(\/|$)/
+
+function isItemActive(to: string, pathname: string) {
+  if (CONVERSATION_PAGE.test(pathname)) return to === '/conversation-groups'
+  return matchPath({ path: to, end: false }, pathname) !== null
+}
+
 // Logo + permission-filtered navigation, shared verbatim by the desktop sidebar and the mobile
 // drawer. `onNavigate` lets the drawer close itself when a link is followed (no-op on desktop).
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { has, hasRole } = usePermissions()
+  const { pathname } = useLocation()
   return (
     <>
       {/* w-fit: a full-width box would reach under the drawer's close button, so a missed tap on
           it would navigate to Overview instead of closing. */}
-      <NavLink to="/" className="mb-4 block w-fit px-2 pt-1" onClick={onNavigate}>
+      <Link to="/" className="mb-4 block w-fit px-2 pt-1" onClick={onNavigate}>
         <div className="font-display text-lg font-bold tracking-[0.16em]">
           RED<span className="text-primary">·</span>TEAM
         </div>
         <div className="text-muted-foreground mt-0.5 font-mono text-[9px]">console</div>
-      </NavLink>
+      </Link>
       <nav>
         <NavLink to="/" end className={linkClass} onClick={onNavigate}>
           <LayoutDashboard className="size-4" />
@@ -145,12 +155,21 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               <div className="text-muted-foreground mt-5 mb-1 px-3 font-mono text-[9.5px]">
                 {group.label}
               </div>
-              {visibleItems.map(({ to, label, icon: Icon }) => (
-                <NavLink key={to} to={to} className={linkClass} onClick={onNavigate}>
-                  <Icon className="size-4" />
-                  {label}
-                </NavLink>
-              ))}
+              {visibleItems.map(({ to, label, icon: Icon }) => {
+                const isActive = isItemActive(to, pathname)
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    className={linkClass({ isActive })}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={onNavigate}
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                  </Link>
+                )
+              })}
             </div>
           )
         })}
