@@ -31,6 +31,7 @@ from app.core.conversations.enums import MessageStatus
 from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
 from app.core.conversations.models import Message
+from app.core.conversations.models import Turn
 from app.core.conversations.schemas import MAX_TAGS
 from app.core.conversations.services.messages import finalize_message
 from app.core.conversations.services.messages import open_replacement
@@ -409,6 +410,106 @@ async def test_create_scenario_not_matching_group_returns_409(
 
     assert response.status_code == status.HTTP_409_CONFLICT
     _assert_problem(response, status.HTTP_409_CONFLICT)
+
+
+async def test_create_into_a_group_with_prompts_returns_409(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    # A model joining after the first prompt never saw it, so the group's replies would not compare.
+    caller = await _caller(db_session, red_teamer_role, email="prompted-create@example.com")
+    token = _token(caller)
+    evaluation = await _evaluation_for(db_session)
+    assignment = await _assignment(db_session, evaluation.id)
+    group_row = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation.id)
+    body = {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(group_row.id)}
+    first = await _create(auth_db_client, token, group_row.scenario_id, body)
+    assert first.status_code == status.HTTP_201_CREATED
+    db_session.add(Turn(conversation_id=UUID(first.json()["id"]), turn_index=0))
+    await db_session.flush()
+
+    response = await _create(auth_db_client, token, group_row.scenario_id, body)
+
+    _assert_problem(response, status.HTTP_409_CONFLICT)
+    assert "already has prompts" in response.json()["detail"]
+
+
+async def test_move_into_a_group_with_prompts_returns_409(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="prompted-move@example.com")
+    token = _token(caller)
+    evaluation_id = (await _evaluation_for(db_session)).id
+    assignment = await _assignment(db_session, evaluation_id)
+    source = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation_id)
+    target = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation_id, scenario_id=source.scenario_id)
+    # Read before the request: the 409 rolls the session back and expires every loaded row.
+    source_id, target_id, scenario_id = source.id, target.id, source.scenario_id
+    moving = await _create(
+        auth_db_client,
+        token,
+        scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(source_id)},
+    )
+    prompted = await _create(
+        auth_db_client,
+        token,
+        scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(target_id)},
+    )
+    db_session.add(Turn(conversation_id=UUID(prompted.json()["id"]), turn_index=0))
+    await db_session.flush()
+
+    response = await auth_db_client.patch(
+        f"/api/v1/evaluations/{evaluation_id}/conversations/{moving.json()['id']}",
+        json={"conversation_group_id": str(target_id)},
+        headers=_auth(token),
+    )
+
+    _assert_problem(response, status.HTTP_409_CONFLICT)
+    after = await auth_db_client.get(
+        f"/api/v1/evaluations/{evaluation_id}/conversations/{moving.json()['id']}", headers=_auth(token)
+    )
+    assert after.json()["conversation_group_id"] == str(source_id)
+
+
+async def test_move_of_a_conversation_with_prompts_returns_409(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="prompted-mover@example.com")
+    token = _token(caller)
+    evaluation_id = (await _evaluation_for(db_session)).id
+    assignment = await _assignment(db_session, evaluation_id)
+    source = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation_id)
+    target = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation_id, scenario_id=source.scenario_id)
+    # Read before the request: the 409 rolls the session back and expires every loaded row.
+    source_id, target_id, scenario_id = source.id, target.id, source.scenario_id
+    moving = await _create(
+        auth_db_client,
+        token,
+        scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(source_id)},
+    )
+    await _create(
+        auth_db_client,
+        token,
+        scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(target_id)},
+    )
+    # The target has no prompts, but the moving conversation would bring history its members never saw.
+    db_session.add(Turn(conversation_id=UUID(moving.json()["id"]), turn_index=0))
+    await db_session.flush()
+
+    response = await auth_db_client.patch(
+        f"/api/v1/evaluations/{evaluation_id}/conversations/{moving.json()['id']}",
+        json={"conversation_group_id": str(target_id)},
+        headers=_auth(token),
+    )
+
+    _assert_problem(response, status.HTTP_409_CONFLICT)
+    after = await auth_db_client.get(
+        f"/api/v1/evaluations/{evaluation_id}/conversations/{moving.json()['id']}", headers=_auth(token)
+    )
+    assert after.json()["conversation_group_id"] == str(source_id)
 
 
 async def test_create_against_tombstoned_scenario_returns_404(
