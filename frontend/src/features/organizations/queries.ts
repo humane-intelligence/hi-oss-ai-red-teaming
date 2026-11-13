@@ -4,6 +4,7 @@ import { apiClient } from '@/lib/api/client'
 import { unwrap } from '@/lib/api/fetcher'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { operations } from '@/lib/api/schema'
+import type { UserResponse } from '@/lib/api/types'
 
 export type OrganizationOrderBy = NonNullable<
   operations['list_organizations_endpoint_api_v1_organizations_get']['parameters']['query']
@@ -82,6 +83,34 @@ export function useOrganization(
           params: { path: { organization_id: id } },
         }),
       ),
+  })
+}
+
+// The API pages at 100; adding a whole organization needs every member, so walk the pages. Capped at
+// the bulk row limit, which is all one add can take anyway.
+export const ALL_MEMBERS_CAP = 1000
+
+export function useAllOrganizationMembers(organizationId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['organization-members', organizationId, 'all'],
+    enabled: organizationId !== '' && (options?.enabled ?? true),
+    queryFn: async () => {
+      const items: UserResponse[] = []
+      for (;;) {
+        const page = unwrap(
+          await apiClient.GET('/api/v1/organizations/{organization_id}/members', {
+            params: {
+              path: { organization_id: organizationId },
+              query: { limit: 100, offset: items.length },
+            },
+          }),
+        )
+        items.push(...page.items)
+        if (page.items.length === 0 || items.length >= Math.min(page.total, ALL_MEMBERS_CAP)) {
+          return { items: items.slice(0, ALL_MEMBERS_CAP), total: page.total }
+        }
+      }
+    },
   })
 }
 

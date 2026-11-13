@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { apiClient } from '@/lib/api/client'
 import { unwrap } from '@/lib/api/fetcher'
 import type {
+  BulkGroupMemberRequest,
   EvaluationGroupCreate,
   EvaluationGroupDraftCreate,
   EvaluationGroupUpdate,
@@ -174,6 +175,28 @@ export function useAddGroupMember(groupId: string, options?: { successMessage?: 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['evaluation-group-members', groupId] })
       toast.success(options?.successMessage ?? 'Member added')
+    },
+  })
+}
+
+export function useBulkAddGroupMembers(groupId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: BulkGroupMemberRequest) =>
+      unwrap(
+        await apiClient.POST('/api/v1/evaluation-groups/{group_id}/members/bulk', {
+          params: { path: { group_id: groupId } },
+          body,
+        }),
+      ),
+    onSuccess: (data) => {
+      // Annotator-role rows change the annotator count on the stat tile.
+      qc.invalidateQueries({ queryKey: ['evaluation-group-members', groupId] })
+      qc.invalidateQueries({ queryKey: ['evaluation-group-annotators', groupId] })
+      // Failed rows are listed in the dialog itself, so only a clean run toasts.
+      if (data.failed === 0) {
+        toast.success(data.succeeded === 1 ? 'Member added' : `${data.succeeded} members added`)
+      }
     },
   })
 }
