@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KeyRound, LogOut, Mail, MailX, RotateCw, UserCheck, UserX } from 'lucide-react'
 import { useUsers, useRoles, type UserOrderBy } from './queries'
+import { fullName } from './names'
 import {
   useBulkChangeUserStatus,
   useBulkForceLogout,
@@ -77,11 +78,6 @@ function bulkSpec(action: BulkAction, count: number) {
   }
 }
 
-function fullName(u: UserResponse) {
-  const name = [u.first_name, u.last_name].filter(Boolean).join(' ')
-  return name || '—'
-}
-
 const columns: Column<UserResponse>[] = [
   {
     id: 'email',
@@ -93,7 +89,7 @@ const columns: Column<UserResponse>[] = [
     ),
     sortKey: 'email',
   },
-  { id: 'name', label: 'Name', header: 'Name', hideBelow: 'lg', cell: (u) => fullName(u) },
+  { id: 'name', label: 'Name', header: 'Name', hideBelow: 'lg', cell: (u) => fullName(u) || '—' },
   {
     id: 'organization',
     label: 'Organization',

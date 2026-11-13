@@ -2,84 +2,88 @@ import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useOrganizationMembers } from './queries'
 import { useAddOrganizationMember, useRemoveOrganizationMember } from './mutations'
-import { useUsers } from '@/features/users/queries'
+import { useInfiniteUsers } from '@/features/users/queries'
+import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { SearchSelect } from '@/components/shared/search-select'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { UserResponse } from '@/lib/api/types'
 
-function displayName(user: {
-  first_name?: string | null
-  last_name?: string | null
-  email: string
-}) {
-  const name = [user.first_name, user.last_name].filter(Boolean).join(' ')
-  return name || user.email
-}
-
 function AddMemberDialog({
   organizationId,
-  currentMemberIds,
   open,
   onOpenChange,
 }: {
   organizationId: string
-  currentMemberIds: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const users = useUsers({ limit: 100, offset: 0 })
+  const [search, setSearch] = useState('')
+  const users = useInfiniteUsers(
+    { limit: 50, search: search.trim() || undefined, order_by: 'email' },
+    { enabled: open },
+  )
   const add = useAddOrganizationMember(organizationId)
   const [userId, setUserId] = useState('')
+  // The modal stays mounted while closed; a fresh key drops the picker's typed term on reopen.
+  const [pickerKey, setPickerKey] = useState(0)
 
   const canSubmit = userId !== '' && !add.isPending
 
-  // Already-assigned users can't be re-added; other-org users stay (assigning moves them).
-  const taken = new Set(currentMemberIds)
-  const candidates = (users.data?.items ?? []).filter((u) => !taken.has(u.id))
+  // Other-org users stay pickable: assigning moves them.
+  const options = (users.data ?? []).map((u) => {
+    const isMember = u.organization?.id === organizationId
+    return {
+      value: u.id,
+      label: [fullName(u), u.email].filter(Boolean).join(' · '),
+      disabled: isMember,
+      hint: isMember ? 'Already a member' : undefined,
+    }
+  })
+
+  // Reset on close, not via `onOpen`: that runs after the first open render, which would
+  // refetch the previous term once more.
+  function close() {
+    setSearch('')
+    setUserId('')
+    setPickerKey((k) => k + 1)
+    onOpenChange(false)
+  }
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={() => setUserId('')}>
+    <Modal open={open} onOpenChange={close} title="Add member">
       <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="member-user">User</Label>
-          <Select value={userId} onValueChange={setUserId}>
-            <SelectTrigger id="member-user">
-              <SelectValue placeholder="— select user —" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {candidates.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.email}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
+        <SearchSelect
+          key={pickerKey}
+          label="User"
+          htmlFor="member-user"
+          value={userId}
+          onChange={setUserId}
+          onSearchChange={setSearch}
+          isPending={users.isLoading}
+          // A failed next page keeps the loaded ones listed; scrolling to the end retries it.
+          isError={users.isError && !users.isFetchNextPageError}
+          emptyLabel="No matching users."
+          options={options}
+          // Don't cancel a background refetch of the pages already loaded.
+          onLoadMore={() => void users.fetchNextPage({ cancelRefetch: false })}
+          hasMore={users.hasNextPage}
+          isLoadingMore={users.isFetchingNextPage}
+        />
         <p className="text-muted-foreground text-xs">
           A user belongs to one organization — assigning them here moves them out of any
           organization they were in before.
         </p>
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={add.isPending}>
+        <Button variant="outline" onClick={close} disabled={add.isPending}>
           Cancel
         </Button>
         <Button
           disabled={!canSubmit}
-          onClick={() => add.mutate({ user_id: userId }, { onSuccess: () => onOpenChange(false) })}
+          onClick={() => add.mutate({ user_id: userId }, { onSuccess: close })}
         >
           {add.isPending ? 'Adding…' : 'Add'}
         </Button>
@@ -122,7 +126,7 @@ export function MembersSection({ organizationId }: { organizationId: string }) {
           <div key={m.id} className="bg-card flex items-center gap-3 rounded-md border px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="font-medium">{displayName(m)}</div>
-              <div className="text-muted-foreground text-sm">{m.email}</div>
+              {fullName(m) && <div className="text-muted-foreground text-sm">{m.email}</div>}
             </div>
             {canManageMembers && (
               <Button
@@ -144,12 +148,7 @@ export function MembersSection({ organizationId }: { organizationId: string }) {
       </div>
 
       {canAddExisting && (
-        <AddMemberDialog
-          organizationId={organizationId}
-          currentMemberIds={memberList.map((m) => m.id)}
-          open={addOpen}
-          onOpenChange={setAddOpen}
-        />
+        <AddMemberDialog organizationId={organizationId} open={addOpen} onOpenChange={setAddOpen} />
       )}
       <ConfirmDialog
         open={removeTarget !== null}

@@ -1,18 +1,19 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/form-field'
 import { useAnchoredListbox } from '@/components/shared/use-anchored-listbox'
 import { cn } from '@/lib/utils'
 
-type Option = { value: string; label: string }
+// A `disabled` option stays visible (with its `hint` saying why) but can't be picked.
+type Option = { value: string; label: string; disabled?: boolean; hint?: string }
 
 // Typeahead combobox: type and the list auto-opens + live-filters (debounced → server);
-// click or ↑/↓+Enter to pick, Esc / outside-click to close. Shared by the export pickers.
+// click or ↑/↓+Enter to pick, Esc / outside-click to close. Shared by the export and member pickers.
 // The listbox is positioned `fixed` (coords from the input's rect) so it escapes a dialog's
 // inner `overflow-y-auto` clip while staying a descendant of the <dialog> top layer — a portal
 // to document.body would render *under* a showModal() dialog instead.
 // Contract note: `value` drives only `aria-selected` — the component does not render a label for a
-// pre-seeded `value`. Both current call sites start empty; a pre-seeded reuse (edit form / deep
+// pre-seeded `value`. Every current call site starts empty; a pre-seeded reuse (edit form / deep
 // link) needs a value→label resolution added first.
 export function SearchSelect({
   label,
@@ -25,6 +26,9 @@ export function SearchSelect({
   isError,
   error,
   emptyLabel = 'No matches.',
+  onLoadMore,
+  hasMore = false,
+  isLoadingMore = false,
 }: {
   label: string
   htmlFor: string
@@ -36,6 +40,10 @@ export function SearchSelect({
   isError: boolean
   error?: string
   emptyLabel?: string
+  // Opt-in paging: scrolling near the end of the list asks the caller for the next page.
+  onLoadMore?: () => void
+  hasMore?: boolean
+  isLoadingMore?: boolean
 }) {
   const [term, setTerm] = useState('')
   const [active, setActive] = useState(-1)
@@ -53,12 +61,32 @@ export function SearchSelect({
     return () => clearTimeout(id)
   }, [term, onSearchChange])
 
+  useEffect(() => {
+    if (active >= 0)
+      document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' })
+  }, [active, listId])
+
+  const nextEnabled = (from: number, dir: 1 | -1) => {
+    for (let i = from + dir; i >= 0 && i < options.length; i += dir) {
+      if (!options[i]?.disabled) return i
+    }
+    return from
+  }
+
   const select = (option: Option) => {
+    if (option.disabled) return
     onChange(option.value)
     skipSearch.current = true
     setTerm(option.label)
     setOpen(false)
     setActive(-1)
+  }
+
+  const onListScroll = (event: UIEvent<HTMLUListElement>) => {
+    const el = event.currentTarget
+    // A couple of rows early, so the next page is usually in before the user reaches the end.
+    if (hasMore && !isLoadingMore && el.scrollHeight - el.scrollTop - el.clientHeight < 64)
+      onLoadMore?.()
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -73,11 +101,15 @@ export function SearchSelect({
     } else if (event.key === 'ArrowDown') {
       event.preventDefault()
       setOpen(true)
-      setActive((i) => Math.min(i + 1, options.length - 1))
+      const next = nextEnabled(active, 1)
+      // Nothing pickable below (say, members at the end of a page): the scroll that loads more may
+      // never come from the keyboard, so ask for it here.
+      if (next === active && hasMore && !isLoadingMore) onLoadMore?.()
+      setActive(next)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setOpen(true) // open so aria-activedescendant points at a rendered option, not a phantom id
-      setActive((i) => Math.max(i - 1, 0))
+      setActive((i) => (i < 0 ? nextEnabled(-1, 1) : nextEnabled(i, -1)))
     } else if (event.key === 'Enter' && open) {
       event.preventDefault() // an open combobox must not submit the surrounding form
       if (active >= 0 && options[active]) select(options[active])
@@ -95,7 +127,9 @@ export function SearchSelect({
         ? 'Could not load results.'
         : options.length === 0
           ? emptyLabel
-          : ''
+          : isLoadingMore
+            ? 'Loading more…'
+            : ''
 
   return (
     <FormField label={label} htmlFor={htmlFor} error={error}>
@@ -115,10 +149,14 @@ export function SearchSelect({
           onFocus={() => setOpen(true)}
           onChange={(event) => {
             skipSearch.current = false // real typing always searches (clears any leftover skip)
-            setTerm(event.target.value)
+            const text = event.target.value
+            // After a pick the box holds its label, which no search matches: keep only what was
+            // typed after it, so Backspace empties the box and a new letter starts a new search.
+            setTerm(value ? (text.startsWith(term) ? text.slice(term.length) : '') : text)
+            if (listRef.current) listRef.current.scrollTop = 0 // a new term starts from its first page
             setOpen(true)
             setActive(-1)
-            if (event.target.value === '' && value) onChange('') // clearing the box clears the filter
+            if (value) onChange('') // any edit drops the pick, so the box never shows one user while another is selected
           }}
           onKeyDown={onKeyDown}
         />
@@ -129,6 +167,7 @@ export function SearchSelect({
           id={listId}
           role="listbox"
           style={{ position: 'fixed', top: rect.top + 4, left: rect.left, width: rect.width }}
+          onScroll={onListScroll}
           className="bg-card z-50 max-h-56 overflow-auto rounded-md border py-1 text-sm shadow-md"
         >
           {isPending ? (
@@ -146,25 +185,43 @@ export function SearchSelect({
               {emptyLabel}
             </li>
           ) : (
-            options.map((option, i) => (
-              <li
-                key={option.value}
-                id={`${listId}-${i}`}
-                role="option"
-                aria-selected={option.value === value}
-                className={cn(
-                  'cursor-pointer px-3 py-1.5',
-                  i === active ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
-                )}
-                onMouseDown={(event) => {
-                  event.preventDefault() // fire before the input blur so the click isn't lost
-                  select(option)
-                }}
-                onMouseEnter={() => setActive(i)}
-              >
-                {option.label}
-              </li>
-            ))
+            <>
+              {options.map((option, i) => (
+                <li
+                  key={option.value}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={option.value === value}
+                  aria-disabled={option.disabled || undefined}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-1.5',
+                    option.disabled
+                      ? 'text-muted-foreground cursor-not-allowed'
+                      : i === active
+                        ? 'bg-accent text-accent-foreground cursor-pointer'
+                        : 'hover:bg-muted cursor-pointer',
+                  )}
+                  onMouseDown={(event) => {
+                    event.preventDefault() // fire before the input blur so the click isn't lost
+                    select(option)
+                  }}
+                  onMouseEnter={() => !option.disabled && setActive(i)}
+                >
+                  <span className="min-w-0">{option.label}</span>
+                  {option.hint && (
+                    <>
+                      {/* A real space, so the accessible name doesn't run the label into the hint. */}{' '}
+                      <span className="ml-auto shrink-0 text-xs">{option.hint}</span>
+                    </>
+                  )}
+                </li>
+              ))}
+              {isLoadingMore && (
+                <li role="presentation" className="text-muted-foreground px-3 py-1.5">
+                  Loading more…
+                </li>
+              )}
+            </>
           )}
         </ul>
       )}

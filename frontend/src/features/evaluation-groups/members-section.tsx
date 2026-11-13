@@ -4,89 +4,93 @@ import { useGroupMembers, useGroupAnnotators } from './queries'
 import { useAddGroupMember, useRemoveGroupMember, useUpdateGroupMember } from './mutations'
 import { BulkInviteDialog } from './bulk-invite-dialog'
 import { RolesPicker } from '@/features/users/roles-picker'
-import { useUsers } from '@/features/users/queries'
+import { useInfiniteUsers } from '@/features/users/queries'
+import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { SearchSelect } from '@/components/shared/search-select'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { useObjectPermissions, usePermissions } from '@/lib/auth/use-permissions'
 import type { EvaluationGroupAccessLevel, ObjectMemberResponse } from '@/lib/api/types'
 
-function displayName(user: {
-  first_name?: string | null
-  last_name?: string | null
-  email: string
-}) {
-  const name = [user.first_name, user.last_name].filter(Boolean).join(' ')
-  return name || user.email
-}
-
 function AddMemberDialog({
   groupId,
+  currentMemberIds,
   open,
   onOpenChange,
 }: {
   groupId: string
+  currentMemberIds: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const users = useUsers({ limit: 100, offset: 0 })
+  const [search, setSearch] = useState('')
+  const users = useInfiniteUsers(
+    { limit: 50, search: search.trim() || undefined, order_by: 'email' },
+    { enabled: open },
+  )
   const add = useAddGroupMember(groupId)
   const [userId, setUserId] = useState('')
   const [roleIds, setRoleIds] = useState<string[]>([])
+  // The modal stays mounted while closed; a fresh key drops the picker's typed term on reopen.
+  const [pickerKey, setPickerKey] = useState(0)
 
   const canSubmit = userId !== '' && roleIds.length > 0 && !add.isPending
 
-  function reset() {
+  const members = new Set(currentMemberIds)
+  const options = (users.data ?? []).map((u) => {
+    const isMember = members.has(u.id)
+    return {
+      value: u.id,
+      label: [fullName(u), u.email].filter(Boolean).join(' · '),
+      disabled: isMember,
+      hint: isMember ? 'Already a member' : undefined,
+    }
+  })
+
+  // Reset on close, not via `onOpen`: that runs after the first open render, which would
+  // refetch the previous term once more.
+  function close() {
+    setSearch('')
     setUserId('')
     setRoleIds([])
+    setPickerKey((k) => k + 1)
+    onOpenChange(false)
   }
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Add member" onOpen={reset}>
+    <Modal open={open} onOpenChange={close} title="Add member">
       <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="member-user">User</Label>
-          <Select value={userId} onValueChange={setUserId}>
-            <SelectTrigger id="member-user">
-              <SelectValue placeholder="— select user —" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {(users.data?.items ?? []).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.email}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
+        <SearchSelect
+          key={pickerKey}
+          label="User"
+          htmlFor="member-user"
+          value={userId}
+          onChange={setUserId}
+          onSearchChange={setSearch}
+          isPending={users.isLoading}
+          // A failed next page keeps the loaded ones listed; scrolling to the end retries it.
+          isError={users.isError && !users.isFetchNextPageError}
+          emptyLabel="No matching users."
+          options={options}
+          // Don't cancel a background refetch of the pages already loaded.
+          onLoadMore={() => void users.fetchNextPage({ cancelRefetch: false })}
+          hasMore={users.hasNextPage}
+          isLoadingMore={users.isFetchingNextPage}
+        />
         <div className="space-y-1.5">
           <Label>Roles</Label>
           <RolesPicker selected={roleIds} onChange={setRoleIds} objectAssignableOnly />
         </div>
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={add.isPending}>
+        <Button variant="outline" onClick={close} disabled={add.isPending}>
           Cancel
         </Button>
         <Button
           disabled={!canSubmit}
-          onClick={() =>
-            add.mutate(
-              { user_id: userId, role_ids: roleIds },
-              { onSuccess: () => onOpenChange(false) },
-            )
-          }
+          onClick={() => add.mutate({ user_id: userId, role_ids: roleIds }, { onSuccess: close })}
         >
           {add.isPending ? 'Adding…' : 'Add'}
         </Button>
@@ -209,6 +213,9 @@ export function MembersSection({
           >
             <div className="min-w-0 flex-1">
               <div className="font-medium">{displayName(m.user)}</div>
+              {fullName(m.user) && (
+                <div className="text-muted-foreground text-sm">{m.user.email}</div>
+              )}
               <div className="text-muted-foreground text-sm">
                 {m.roles.map((r) => r.display_name).join(', ')}
               </div>
@@ -267,7 +274,12 @@ export function MembersSection({
       )}
 
       {canAddExisting && (
-        <AddMemberDialog groupId={groupId} open={addOpen} onOpenChange={setAddOpen} />
+        <AddMemberDialog
+          groupId={groupId}
+          currentMemberIds={memberList.map((m) => m.user.id)}
+          open={addOpen}
+          onOpenChange={setAddOpen}
+        />
       )}
       <BulkInviteDialog groupId={groupId} open={inviteOpen} onOpenChange={setInviteOpen} />
       <EditMemberDialog
