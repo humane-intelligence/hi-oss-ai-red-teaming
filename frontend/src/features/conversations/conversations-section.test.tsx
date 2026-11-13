@@ -253,6 +253,15 @@ describe('ConversationsSection — groups', () => {
     renderSection()
 
     await waitFor(() => expect(screen.getByText(/no conversations yet/i)).toBeInTheDocument())
+    expect(screen.getByText(/use start a conversation above/i)).toBeInTheDocument()
+  })
+
+  it('points at no action for a caller who cannot start one', async () => {
+    server.use(groupsHandler([]))
+    renderSection(['conversations:read'])
+
+    await waitFor(() => expect(screen.getByText(/no conversations yet/i)).toBeInTheDocument())
+    expect(screen.queryByText(/start a conversation/i)).toBeNull()
   })
 })
 
