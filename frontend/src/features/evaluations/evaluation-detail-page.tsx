@@ -308,9 +308,7 @@ export function EvaluationDetailPage() {
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between gap-2">
-                        <h3 className="leading-none font-semibold tracking-tight">
-                          Models ({evaluation.models?.length ?? 0})
-                        </h3>
+                        <CardTitle as="h3">Models ({evaluation.models?.length ?? 0})</CardTitle>
                         {canAssignModel && (
                           <Button size="sm" variant="outline" onClick={() => setAssignOpen(true)}>
                             <Plus className="size-4" /> Assign model
@@ -385,7 +383,7 @@ export function EvaluationDetailPage() {
 
                   <Card>
                     <CardHeader>
-                      <h3 className="leading-none font-semibold tracking-tight">Other details</h3>
+                      <CardTitle as="h3">Other details</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <dl className="space-y-3">

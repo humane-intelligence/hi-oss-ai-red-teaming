@@ -14,8 +14,13 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
   return <div className={cn('flex flex-col gap-1 p-6', className)} {...props} />
 }
 
-export function CardTitle({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('leading-none font-semibold tracking-tight', className)} {...props} />
+// `as`: a card that sits under a section heading is itself a heading; upstream only renders a div.
+export function CardTitle({
+  as: Tag = 'div',
+  className,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement> & { as?: 'div' | 'h3' }) {
+  return <Tag className={cn('leading-none font-semibold tracking-tight', className)} {...props} />
 }
 
 export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

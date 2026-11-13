@@ -7,7 +7,7 @@ import { TaskFormDialog } from './task-form-dialog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Field } from '@/components/shared/field'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { humanizeError } from '@/lib/api/problem'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { ScenarioResponse, TaskResponse } from '@/lib/api/types'
@@ -175,9 +175,9 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
               <Card>
                 <CardHeader>
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <h3 className="min-w-0 leading-none font-semibold tracking-tight break-words">
+                    <CardTitle as="h3" className="min-w-0 break-words">
                       <span className="text-muted-foreground">Scenario {i + 1}:</span> {s.name}
-                    </h3>
+                    </CardTitle>
                     {canMutate && (
                       <div className="-mt-1.5 flex shrink-0">
                         <Button
