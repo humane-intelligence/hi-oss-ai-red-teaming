@@ -77,6 +77,18 @@ class TestInstanceSwitch:
 
         assert await allowed_tags_only(db_session, evaluation.id, {"env": "prod"}) == {}
 
+    async def test_names_the_instance_when_both_switches_are_off(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        evaluation = await _evaluation(db_session, enabled=False)
+        warnings: list[dict[str, object]] = []
+        monkeypatch.setattr(tag_keys.logger, "warning", lambda event, **kw: warnings.append({"event": event, **kw}))
+
+        with pytest.raises(BadRequestError, match="turned off on this instance"):
+            await assert_tags_allowed(db_session, evaluation.id, {"env": "prod"})
+        assert await allowed_tags_only(db_session, evaluation.id, {"env": "prod"}) == {}
+        assert [w["reason"] for w in warnings] == ["instance_disabled"]
+
     async def test_read_side_reports_every_tag_unsent_and_the_flag_stays(self, db_session: AsyncSession) -> None:
         evaluation = await _evaluation(db_session, enabled=True)
 
