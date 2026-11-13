@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '@/test/msw/server'
@@ -88,6 +88,22 @@ describe('MessageFlagDetailPage — coarse route', () => {
   })
 })
 
+function tagsOffHandler(onServe: () => void) {
+  return http.get('http://localhost/api/v1/platform-settings/public', () => {
+    onServe()
+    return HttpResponse.json({
+      signup_enabled: true,
+      password_policy: {
+        min_length: 10,
+        require_uppercase: false,
+        require_digit: false,
+        require_symbol: false,
+      },
+      conversation_tags_enabled: false,
+    })
+  })
+}
+
 describe('MessageFlagDetailPage — tag context', () => {
   it('shows the record for the flagged reply, on the surface the author judges it from', async () => {
     // The submission view sits beside the reviewer transcript: this is the page a red-teamer
@@ -121,5 +137,39 @@ describe('MessageFlagDetailPage — tag context', () => {
     expect(await screen.findByText('env: prod')).toBeInTheDocument()
     // `tag_context_partial` has to travel with it, or the reader takes the map for the whole reply.
     expect(screen.getByText(/sent with the continuation only/i)).toBeInTheDocument()
+  })
+
+  it('shows no record when the instance turns tags off', async () => {
+    let served = false
+    server.use(
+      tagsOffHandler(() => (served = true)),
+      parentGroupHandler(GROUP_ID, ['flags:read']),
+      http.get(`http://localhost/api/v1/message-flags/${FLAG_ID}`, () =>
+        HttpResponse.json({
+          ...flag,
+          messages: [
+            {
+              id: 'msg-assistant-000-000000000000',
+              role: 'assistant' as const,
+              status: 'complete' as const,
+              content: 'Here is the forbidden recipe.',
+              slot: null,
+              tag_context: { env: 'prod' },
+              tag_context_partial: false,
+              created_at: '2026-01-01T00:00:02Z',
+            },
+          ],
+        }),
+      ),
+      http.get('http://localhost/api/v1/reviews', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+    )
+    renderPage(['evaluations:read'])
+
+    expect(await screen.findByText('Here is the forbidden recipe.')).toBeInTheDocument()
+    await waitFor(() => expect(served).toBe(true))
+    expect(screen.queryByText('env: prod')).toBeNull()
+    expect(screen.queryByText(/sent with/i)).toBeNull()
   })
 })
