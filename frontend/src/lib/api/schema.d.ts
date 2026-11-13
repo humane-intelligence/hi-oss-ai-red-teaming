@@ -2874,7 +2874,7 @@ export interface paths {
         };
         /**
          * Get public platform settings
-         * @description Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy.
+         * @description Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy, plus whether conversation tags are in use on this instance.
          */
         get: operations["get_public_platform_settings_endpoint_api_v1_platform_settings_public_get"];
         put?: never;
@@ -9859,6 +9859,7 @@ export interface components {
          * PublicPlatformSettingsResponse
          * @description Unauthenticated subset of platform settings — safe to expose to anonymous clients.
          * @example {
+         *       "conversation_tags_enabled": true,
          *       "password_policy": {
          *         "min_length": 8,
          *         "require_digit": false,
@@ -9876,6 +9877,11 @@ export interface components {
             signup_enabled: boolean;
             /** @description Rules every screen that sets a password must satisfy. The reset-throttling settings are deliberately not here — they are operational, not part of the form contract. */
             password_policy: components["schemas"]["PublicPasswordPolicyResponse"];
+            /**
+             * Conversation Tags Enabled
+             * @description Whether conversation tags are in use on this instance. When false every evaluation behaves as if tagging were off and the console shows no tags; set by the deployment (`CONVERSATION_TAGS_ENABLED`), not by the platform-settings singleton.
+             */
+            conversation_tags_enabled: boolean;
         };
         /**
          * PublicationStatus

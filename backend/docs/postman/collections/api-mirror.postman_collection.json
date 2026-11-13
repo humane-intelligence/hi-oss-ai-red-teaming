@@ -7089,7 +7089,7 @@
                 "public"
               ]
             },
-            "description": "Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy.\n\n**Auth** · 🔓 Public — no token required.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
+            "description": "Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy, plus whether conversation tags are in use on this instance.\n\n**Auth** · 🔓 Public — no token required.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
             "auth": {
               "type": "noauth"
             }

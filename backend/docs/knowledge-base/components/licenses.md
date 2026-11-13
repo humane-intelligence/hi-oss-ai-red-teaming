@@ -110,7 +110,7 @@ A resource-level `PATCH` with a partial body (not a `/default-license` sub-path)
 |---|---|---|---|
 | GET | `/platform-settings` | `platform_settings:read` | Every knob + `updated_at` (`null` = never overridden) |
 | PATCH | `/platform-settings` | `platform_settings:update` | Set `default_license_id` (a live licence, **not** the `No license` sentinel); omit to leave unchanged; explicit `null` → 422; not live → 400 |
-| GET | `/platform-settings/public` | **none** | The anonymous subset — `signup_enabled` + `password_policy` |
+| GET | `/platform-settings/public` | **none** | The anonymous subset — `signup_enabled` + `password_policy` + `conversation_tags_enabled` |
 
 The non-licensing knobs live in [PlatformSettings](../data-models/platform-settings.md).
 

@@ -100,7 +100,7 @@ It does **not** commit: the caller owns the boundary and validates licence refs 
 |---|---|---|
 | `GET /api/v1/platform-settings` | `platform_settings:read` (admin) | every knob; `updated_at: null` before any override |
 | `PATCH /api/v1/platform-settings` | `platform_settings:update` (admin) | any subset; omitted fields unchanged |
-| `GET /api/v1/platform-settings/public` | **none — unauthenticated** | `signup_enabled` (the `invite_only` inverse) + the nested `password_policy` |
+| `GET /api/v1/platform-settings/public` | **none — unauthenticated** | `signup_enabled` (the `invite_only` inverse) + the nested `password_policy` + `conversation_tags_enabled` (from the `CONVERSATION_TAGS_ENABLED` setting, not this singleton — see [Conversation tags](../components/conversation-tags.md)) |
 
 The public route backs the login/registration screens. Disclosure is deliberately minimal and deliberately *not* an enumeration surface: `signup_enabled` is derivable by attempting a registration anyway, and the password policy is revealed by one rejected attempt — while every set-password screen here is anonymous (register, invitation accept, reset confirm), so without it the rules could only be delivered as an error. It carries `Cache-Control: public, max-age=30`, because it is anonymous, hit by every login-screen load, and the app has no rate-limit middleware; a 30s-stale flag is harmless since the register endpoint enforces the mode regardless.
 

@@ -12,12 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth.models import Role
 from app.core.auth.models import User
 from app.core.auth.services.users import create_user as create_user_service
+from app.core.config import get_settings
 from app.core.licenses.catalog import NO_LICENSE_SPDX_ID
 from app.core.licenses.catalog import curated_license_id
 from app.core.licenses.models import DataLicense
 from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
 from app.core.platform_settings.models import PlatformSettings
 from app.core.platform_settings.service import update_platform_settings
+from app.main import app
 from tests.api.v1.conftest import bearer as _auth
 
 _READ_WRITE = ["platform_settings:read", "platform_settings:update"]
@@ -67,6 +69,7 @@ class TestGetPublicPlatformSettings:
                 "require_digit": False,
                 "require_symbol": False,
             },
+            "conversation_tags_enabled": True,
         }
         # Anonymous + fetched per login-screen load — must be shared-cacheable.
         assert response.headers["cache-control"] == "public, max-age=30"
@@ -106,7 +109,18 @@ class TestGetPublicPlatformSettings:
         response = await auth_db_client.get("/api/v1/platform-settings/public")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.json().keys() == {"signup_enabled", "password_policy"}
+        assert response.json().keys() == {"signup_enabled", "password_policy", "conversation_tags_enabled"}
+
+    async def test_conversation_tags_follow_the_instance_setting(
+        self, auth_db_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tags_off = app.dependency_overrides[get_settings]().model_copy(update={"conversation_tags_enabled": False})
+        monkeypatch.setitem(app.dependency_overrides, get_settings, lambda: tags_off)
+
+        response = await auth_db_client.get("/api/v1/platform-settings/public")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["conversation_tags_enabled"] is False
 
 
 @pytest.mark.integration

@@ -1,6 +1,8 @@
 """CRUD + lookup for an evaluation's allowed conversation-tag keys (the admin tag schema).
 
-Two independent per-evaluation flags, checked in this order. `Evaluation.tags_enabled` decides
+The instance switch `Settings.conversation_tags_enabled` comes first: off reads as `tags_enabled`
+off on every evaluation, without touching the stored flags. Then two independent per-evaluation
+flags, checked in this order. `Evaluation.tags_enabled` decides
 whether tagging exists here at all: off rejects every tag and the console renders no tagging surface.
 `Evaluation.tags_restricted` then decides *which* keys: off means free-form regardless of the key set,
 on means every key must be in the allowed set (an empty set while restricted forbids all tags).
@@ -25,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 from sqlmodel import select
 
+from app.core.config import get_settings
 from app.core.conversations.models import Message
 from app.core.conversations.models import recorded_tag_context
 from app.core.conversations.schemas import MAX_TAGS
@@ -117,7 +120,7 @@ async def load_tag_fold_policy(session: AsyncSession, evaluation_id: UUID) -> Ta
 
 
 async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[bool, bool]:
-    """The evaluation's ``(tags_enabled, tags_restricted)`` pair.
+    """The evaluation's effective ``(tags_enabled, tags_restricted)`` pair, the instance switch applied.
 
     Raises:
         NotFoundError: If no live evaluation has this id. Fail closed: every caller resolves a live,
@@ -134,7 +137,7 @@ async def _tagging_policy(session: AsyncSession, evaluation_id: UUID) -> tuple[b
     if flags is None:
         raise NotFoundError("Evaluation not found.")
     enabled, restricted = flags
-    return bool(enabled), bool(restricted)
+    return bool(enabled) and get_settings().conversation_tags_enabled, bool(restricted)
 
 
 async def allowed_tags_only(session: AsyncSession, evaluation_id: UUID, tags: dict[str, str]) -> dict[str, str]:

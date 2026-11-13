@@ -79,7 +79,7 @@ The byte ceiling sits above the largest ASCII payload the published maxima allow
 
 ## The per-evaluation policy
 
-[EvaluationTagKey](../data-models/evaluation-tag-key.md) plus two flags on [Evaluation](../data-models/evaluation.md) (`tags_enabled`, `tags_restricted`) define what is allowed. The policy has **two entry points**, because authoring a tag and replaying one already stored are different acts:
+[EvaluationTagKey](../data-models/evaluation-tag-key.md) plus two flags on [Evaluation](../data-models/evaluation.md) (`tags_enabled`, `tags_restricted`) define what is allowed. Above them sits the instance switch `CONVERSATION_TAGS_ENABLED` (setting, default `true`): off reads as `tags_enabled` off on every evaluation — applied in `_tagging_policy`, so both entry points and the read-side `TagFoldPolicy` follow it — while the stored flags and tags stay untouched. It is published as `conversation_tags_enabled` on `GET /api/v1/platform-settings/public`, and the console hides every tag surface when it is off. The policy has **two entry points**, because authoring a tag and replaying one already stored are different acts:
 
 | Function | Guards | Behaviour |
 |---|---|---|
