@@ -579,6 +579,29 @@ describe('ConversationGroupPage', () => {
     expect(screen.getByRole('button', { name: /add model/i })).toBeDisabled()
   })
 
+  it('locks Add model once a prompt has been sent, and says why', async () => {
+    // A model added later would never see the earlier prompts; the backend refuses it (409).
+    server.use(
+      ...baseHandlers([{ ...conv(CONV_A, MODEL_A), turn_count: 1 }, conv(CONV_B, MODEL_B)]),
+    )
+    renderPage()
+
+    const add = await screen.findByRole('button', { name: /add model/i })
+    expect(add).toBeDisabled()
+    expect(add).toHaveAttribute('title', expect.stringMatching(/before the first prompt/))
+    expect(screen.getByText(/can only be added before the first prompt/)).toBeInTheDocument()
+  })
+
+  it('offers Add model before the first prompt', async () => {
+    server.use(...baseHandlers())
+    renderPage()
+
+    const add = await screen.findByRole('button', { name: /add model/i })
+    expect(add).toBeEnabled()
+    expect(add).not.toHaveAttribute('title')
+    expect(screen.queryByText(/can only be added before the first prompt/)).toBeNull()
+  })
+
   it('renames the group', async () => {
     let captured: unknown = null
     server.use(
