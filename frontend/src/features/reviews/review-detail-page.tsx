@@ -51,6 +51,7 @@ import { AnnotationChips } from '@/features/annotations/annotation-chips'
 import { indexAnnotations } from '@/features/annotations/annotation-index'
 import { useConversationAnnotations } from '@/features/annotations/queries'
 import type { AnnotationResponse } from '@/lib/api/types'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 const COMPLETED = new Set(['approved', 'rejected'])
 
@@ -89,6 +90,7 @@ function TranscriptRowView({
   annotations,
   onAnnotate,
 }: RowProps) {
+  const showTags = useConversationTagsEnabled()
   const { message: m, kind } = row
   return (
     <div
@@ -138,7 +140,9 @@ function TranscriptRowView({
       <div className={cn(kind === 'superseded' && 'opacity-60')}>
         <Markdown content={m.content} />
       </div>
-      <TagContext tagContext={m.tag_context} partial={m.tag_context_partial} messageId={m.id} />
+      {showTags && (
+        <TagContext tagContext={m.tag_context} partial={m.tag_context_partial} messageId={m.id} />
+      )}
       {(annotations.length > 0 || onAnnotate) && (
         <div className="mt-2 flex items-start gap-2">
           <div className="min-w-0 flex-1">

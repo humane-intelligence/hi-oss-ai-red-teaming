@@ -22,6 +22,8 @@ import { AnnotateMessageDialog } from '@/features/annotations/annotate-message-d
 import { indexAnnotations } from '@/features/annotations/annotation-index'
 import { useConversationAnnotations } from '@/features/annotations/queries'
 import { FlagMessageDialog } from '@/features/message-flags/flag-message-dialog'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
+import type { BubbleTagProps } from './bubble'
 
 export function ConversationPane({
   evaluationId,
@@ -79,6 +81,7 @@ export function ConversationPane({
   // `evaluation_groups:manage` break-glass, so the group page resolves it per member.
   canFlag: boolean
 }) {
+  const showTags = useConversationTagsEnabled()
   const label = memberLabel({ title, modelName }, nameSuffix)
   const a11yLabel = memberA11yLabel({ title, modelName }, nameSuffix)
   const messages = useMessages(evaluationId, conversationId, { groupPermissions })
@@ -130,7 +133,7 @@ export function ConversationPane({
     annotationsQ.data?.items ?? [],
     sorted.map((m) => m.id),
   )
-  const tagEntries = Object.entries(tags ?? {})
+  const tagEntries = showTags ? Object.entries(tags ?? {}) : []
   // Same rules as the server's prompt fold, so a filtered-out tag isn't shown as model context.
   // These chips describe what the *next* turn will send under today's policy; a bubble's own chips
   // describe what its turn did send, so the same key can differ between the two.
@@ -159,7 +162,7 @@ export function ConversationPane({
           {/* In the header, not the transcript body below: the body is auto-scrolled to the newest
               message, so on the busy transcript this warns about it would never be read. */}
           <LabelsTruncatedNote total={annotationsQ.data?.total} />
-          {/* Rendered whatever the flag says — see the same chips on the full conversation page. */}
+          {/* Rendered whatever the evaluation's flag says — see the same chips on the full conversation page. */}
           {tagEntries.length > 0 && (
             // `role="list"` spelled out, as on the full conversation page: naming is not allowed on a
             // generic `<div>`, so an `aria-label` there reaches no screen reader at all — the chips
@@ -237,6 +240,9 @@ export function ConversationPane({
           const unsentForMessage = record
             ? new Set(Object.keys(m.tags ?? {}).filter((key) => !(key in record)))
             : messageUnsent
+          const tagProps: BubbleTagProps = showTags
+            ? { tags: m.tags, unsentTags: unsentForMessage }
+            : {}
           return (
             <Bubble
               key={m.id}
@@ -246,10 +252,9 @@ export function ConversationPane({
               flagCount={m.flag_count}
               imageKeys={m.image_keys}
               messageId={m.id}
-              tagContext={m.tag_context}
+              tagContext={showTags ? m.tag_context : undefined}
               tagContextPartial={m.tag_context_partial}
-              tags={m.tags}
-              unsentTags={unsentForMessage}
+              {...tagProps}
               onFlag={m.role === 'assistant' && canFlag ? () => setFlagIds([m.id]) : undefined}
               annotations={annotationIndex.byMessage.get(m.id) ?? []}
               onAnnotate={canAnnotate ? () => setAnnotateId(m.id) : undefined}

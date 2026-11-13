@@ -12,7 +12,7 @@ import type { AnnotationResponse, MessageResponse } from '@/lib/api/types'
 
 // An unmarked chip claims the model received that tag, so the marker set travels with the tags it
 // judges: either both or neither, never tags on their own.
-type TagProps =
+export type BubbleTagProps =
   | { tags?: undefined; unsentTags?: undefined }
   | { tags: MessageResponse['tags']; unsentTags: Set<string> }
 
@@ -47,7 +47,7 @@ export function Bubble({
   // Every author's labels on this message — shared reads, unlike notes.
   annotations?: AnnotationResponse[]
   onAnnotate?: () => void
-} & TagProps) {
+} & BubbleTagProps) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {

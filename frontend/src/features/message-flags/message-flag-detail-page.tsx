@@ -28,6 +28,7 @@ import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissi
 import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import type { MessageFlagResponse } from '@/lib/api/types'
+import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 const editSchema = z.object({
   reason: z.string().min(1, 'Required'),
@@ -114,6 +115,7 @@ function EditFlagDialog({
 }
 
 export function MessageFlagDetailPage() {
+  const showTags = useConversationTagsEnabled()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
@@ -229,11 +231,13 @@ export function MessageFlagDetailPage() {
                     {m.role}
                   </div>
                   <Markdown content={m.content} />
-                  <TagContext
-                    tagContext={m.tag_context}
-                    partial={m.tag_context_partial}
-                    messageId={m.id}
-                  />
+                  {showTags && (
+                    <TagContext
+                      tagContext={m.tag_context}
+                      partial={m.tag_context_partial}
+                      messageId={m.id}
+                    />
+                  )}
                 </div>
               ))}
             </div>
