@@ -226,6 +226,31 @@ describe('ScenariosSection — tasks', () => {
     expect(screen.queryByText(/Tasks \(0\)/)).toBeNull()
   })
 
+  it('renders no task list for a scenario without tasks', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('list')).toHaveLength(1)
+  })
+
+  it('renders no scenario list for an evaluation without scenarios', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+    )
+    renderSection(['evaluations:update'])
+
+    expect(await screen.findByText(/no scenarios yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('list')).toBeNull()
+  })
+
   it('deleting a task calls DELETE on the tasks endpoint', async () => {
     let deleteCalled = false
 
