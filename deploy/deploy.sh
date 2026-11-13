@@ -125,6 +125,11 @@ if ssm_optional SLM_API_KEY; then
 	echo "SLM_API_KEY=$ssm_value" >> .env
 fi
 
+# Instance-wide conversation tags switch — optional; absent → the app default (on).
+if ssm_optional CONVERSATION_TAGS_ENABLED; then
+	echo "CONVERSATION_TAGS_ENABLED=$ssm_value" >> .env
+fi
+
 # Sentry error reporting — opt-in. Appended (not inline) so a missing
 # parameter doesn't abort under `set -e`; absent → `init_sentry` stays a no-op.
 if sentry_dsn="$(ssm SENTRY_DSN 2>/dev/null)"; then
