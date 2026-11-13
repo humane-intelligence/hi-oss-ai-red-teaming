@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -13,6 +13,20 @@ import { licenseStub } from '@/features/licenses/test-fixtures'
 const EVAL_ID = 'eval-0001-0000-0000-000000000000'
 const MODEL_ID = 'model-001-0000-0000-000000000000'
 const CONV_ID = 'conv-0001-0000-0000-000000000000'
+const SCENARIO_ID = 'scn-0001-0000-0000-000000000000'
+
+beforeEach(() => {
+  server.use(
+    http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+      HttpResponse.json({
+        items: [{ id: SCENARIO_ID, name: 'Prompt injection' }],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      }),
+    ),
+  )
+})
 
 const evaluation: EvaluationResponse = {
   id: EVAL_ID,
@@ -75,7 +89,7 @@ function conv(id: string, modelId: string, groupId: string): ConversationRespons
     evaluation_ai_model_id: modelId,
     content_protected: false,
     turn_count: 0,
-    scenario_id: 'scn-0001-0000-0000-000000000000',
+    scenario_id: SCENARIO_ID,
     conversation_group_id: groupId,
     effective_license: licenseStub('CC-BY-4.0'),
     created_at: '2026-01-01T00:00:00Z',
@@ -87,6 +101,7 @@ const multiGroup = {
   id: GROUP_MULTI,
   user_id: AUTH_USER_ID,
   evaluation_id: EVAL_ID,
+  scenario_id: SCENARIO_ID,
   name: 'GPT-4o vs Claude',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -97,6 +112,7 @@ const singleGroup = {
   id: GROUP_SINGLE,
   user_id: AUTH_USER_ID,
   evaluation_id: EVAL_ID,
+  scenario_id: SCENARIO_ID,
   name: 'Quick probe',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -104,8 +120,19 @@ const singleGroup = {
 }
 
 function groupsHandler(groups: unknown[]) {
-  return http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups`, () =>
-    HttpResponse.json({ items: groups, total: groups.length, limit: 100, offset: 0 }),
+  return http.get(
+    `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups`,
+    ({ request }) => {
+      const params = new URL(request.url).searchParams
+      const limit = Number(params.get('limit'))
+      const offset = Number(params.get('offset'))
+      return HttpResponse.json({
+        items: groups.slice(offset, offset + limit),
+        total: groups.length,
+        limit,
+        offset,
+      })
+    },
   )
 }
 
@@ -162,7 +189,7 @@ describe('ConversationsSection — groups', () => {
     await waitFor(() => expect(screen.getByText('GPT-4o vs Claude')).toBeInTheDocument())
     expect(screen.getByText('Quick probe')).toBeInTheDocument()
     // counter = number of sessions (2 groups), not the 3 threads they contain
-    expect(screen.getByText('Conversations (2)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Latest conversations (2)' })).toBeInTheDocument()
     // gpt-4o is a member of both groups; claude-3-opus only of the multi group.
     expect(screen.getAllByText('gpt-4o')).toHaveLength(2)
     expect(screen.getByText('claude-3-opus')).toBeInTheDocument()
@@ -246,6 +273,85 @@ describe('ConversationsSection — groups', () => {
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => expect(deleted).toBe(true))
+  })
+
+  it('labels each card with its short ID, scenario, turns and models', async () => {
+    const talked = {
+      ...multiGroup,
+      conversations: [
+        { ...conv(CONV_ID, MODEL_ID, GROUP_MULTI), turn_count: 3 },
+        { ...conv(CONV_B, MODEL_B, GROUP_MULTI), turn_count: 2 },
+      ],
+    }
+    server.use(groupsHandler([talked, singleGroup]))
+    const user = userEvent.setup()
+    renderSection()
+
+    const card = (await screen.findByText('GPT-4o vs Claude')).closest('li')!
+    expect(within(card).getByTitle(GROUP_MULTI)).toHaveTextContent(GROUP_MULTI.slice(0, 8))
+    expect(within(card).getByText('Started')).toBeInTheDocument()
+    expect(within(card).getByText('Prompt injection')).toBeInTheDocument()
+    expect(within(card).getByText('3')).toBeInTheDocument()
+    expect(within(card).getByText('Models')).toBeInTheDocument()
+
+    const single = screen.getByText('Quick probe').closest('li')!
+    expect(within(single).getByText('No messages')).toBeInTheDocument()
+    expect(within(single).getByText('Model')).toBeInTheDocument()
+
+    await user.click(within(card).getByRole('button', { name: 'Copy conversation ID' }))
+    // user-event installs its own clipboard stub per setup, so nothing leaks past this test.
+    expect(await navigator.clipboard.readText()).toBe(GROUP_MULTI)
+  })
+
+  it('loads ten groups at a time, counting all of them in the heading', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...singleGroup,
+      id: `grp-${String(i).padStart(4, '0')}-0000-0000-000000000000`,
+      name: `Probe ${i + 1}`,
+    }))
+    server.use(groupsHandler(many))
+    const user = userEvent.setup()
+    renderSection()
+
+    expect(await screen.findByText('Probe 10')).toBeInTheDocument()
+    expect(screen.queryByText('Probe 11')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Latest conversations (12)' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Probe 12')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+  })
+
+  it('refetches every loaded page after a delete, without gaps or repeats', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...singleGroup,
+      id: `grp-${String(i).padStart(4, '0')}-0000-0000-000000000000`,
+      name: `Probe ${i + 1}`,
+    }))
+    const first = many[0]!
+    server.use(
+      groupsHandler(many),
+      http.delete(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${first.id}`,
+        () => {
+          many.shift()
+          return new HttpResponse(null, { status: 204 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderSection()
+
+    await user.click(await screen.findByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Probe 12')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Delete conversation: Probe 1' }))
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    await waitFor(() => expect(screen.queryByText('Probe 1')).toBeNull())
+    expect(screen.getByRole('heading', { name: 'Latest conversations (11)' })).toBeInTheDocument()
+    for (let i = 2; i <= 12; i++) expect(screen.getAllByText(`Probe ${i}`)).toHaveLength(1)
   })
 
   it('shows the empty state when there are no groups', async () => {
