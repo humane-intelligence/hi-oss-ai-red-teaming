@@ -1611,6 +1611,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluation-groups/{group_id}/members/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add group members in bulk
+         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member) land inside `results[].error`, and the other rows are still added. `dry_run=true` previews the outcomes and rolls back instead of committing.
+         */
+        post: operations["bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluation-groups/{group_id}/members/{user_id}": {
         parameters: {
             query?: never;
@@ -3982,6 +4002,20 @@ export interface components {
              */
             dry_run: boolean;
         };
+        /** BulkRequest[ObjectMemberCreate] */
+        BulkRequest_ObjectMemberCreate_: {
+            /**
+             * Rows
+             * @description At least one row is required.
+             */
+            rows: components["schemas"]["BulkRow_ObjectMemberCreate_"][];
+            /**
+             * Dry Run
+             * @description If true, the request is processed and rolled back instead of committed.
+             * @default false
+             */
+            dry_run: boolean;
+        };
         /** BulkRequest[UserStatusTarget] */
         BulkRequest_UserStatusTarget_: {
             /**
@@ -4107,6 +4141,34 @@ export interface components {
              * @description Per-row outcomes in request order.
              */
             results: components["schemas"]["BulkRowResult_InvitationResponse_"][];
+        };
+        /** BulkResponse[ObjectMemberResponse] */
+        BulkResponse_ObjectMemberResponse_: {
+            /**
+             * Dry Run
+             * @description Echo of the request flag — `true` means nothing was committed.
+             */
+            dry_run: boolean;
+            /**
+             * Total
+             * @description Number of rows in the request.
+             */
+            total: number;
+            /**
+             * Succeeded
+             * @description Rows whose processor returned without raising.
+             */
+            succeeded: number;
+            /**
+             * Failed
+             * @description Rows that raised an `APIError`.
+             */
+            failed: number;
+            /**
+             * Results
+             * @description Per-row outcomes in request order.
+             */
+            results: components["schemas"]["BulkRowResult_ObjectMemberResponse_"][];
         };
         /** BulkResponse[PasswordResetTarget] */
         BulkResponse_PasswordResetTarget_: {
@@ -4264,6 +4326,24 @@ export interface components {
             /** @description RFC 7807 envelope on failure; `None` on success. */
             error?: components["schemas"]["Problem"] | null;
         };
+        /** BulkRowResult[ObjectMemberResponse] */
+        BulkRowResult_ObjectMemberResponse_: {
+            /**
+             * Row Key
+             * @description Echo of the client-assigned `row_key`.
+             */
+            row_key: string;
+            /**
+             * Status
+             * @description `ok` if the processor returned; `failed` if it raised an `APIError`.
+             * @enum {string}
+             */
+            status: "ok" | "failed";
+            /** @description Server-rendered result on success; `None` on failure. */
+            data?: components["schemas"]["ObjectMemberResponse"] | null;
+            /** @description RFC 7807 envelope on failure; `None` on success. */
+            error?: components["schemas"]["Problem"] | null;
+        };
         /** BulkRowResult[PasswordResetTarget] */
         BulkRowResult_PasswordResetTarget_: {
             /**
@@ -4372,6 +4452,17 @@ export interface components {
             row_key: string;
             /** @description Payload for this row; shape depends on the endpoint. */
             data: components["schemas"]["InvitationCreate"];
+        };
+        /** BulkRow[ObjectMemberCreate] */
+        BulkRow_ObjectMemberCreate_: {
+            /**
+             * Row Key
+             * @description Client-assigned identifier echoed back on the response so FE can correlate results without relying on order.
+             * @example row-001
+             */
+            row_key: string;
+            /** @description Payload for this row; shape depends on the endpoint. */
+            data: components["schemas"]["ObjectMemberCreate"];
         };
         /** BulkRow[PasswordResetTarget] */
         BulkRow_PasswordResetTarget_: {
@@ -19409,6 +19500,82 @@ export interface operations {
             };
             /** @description The user is already a member of this group. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest_ObjectMemberCreate_"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResponse_ObjectMemberResponse_"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks permission to manage this group's members. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation group not found, or not visible to the caller. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
