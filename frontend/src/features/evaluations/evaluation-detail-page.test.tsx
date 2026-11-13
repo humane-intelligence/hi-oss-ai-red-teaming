@@ -169,6 +169,15 @@ describe('EvaluationDetailPage — settings row', () => {
     expect(settings.getByText('Models masked')).toBeInTheDocument()
     // "Date added" in the summary already says it.
     expect(settings.queryByText('Created')).toBeNull()
+    // Same long date as the summary and scenario cards; the time stays, it matters for an edit.
+    expect(
+      settings.getByText(
+        new Date(baseEvaluation.updated_at).toLocaleString(undefined, {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        }),
+      ),
+    ).toBeInTheDocument()
   })
 })
 

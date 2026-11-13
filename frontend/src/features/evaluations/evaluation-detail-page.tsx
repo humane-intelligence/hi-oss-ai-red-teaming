@@ -403,7 +403,10 @@ export function EvaluationDetailPage() {
                           {evaluation.mask_models_enabled ? 'Yes' : 'No'}
                         </Field>
                         <Field label="Updated">
-                          {new Date(evaluation.updated_at).toLocaleString()}
+                          {new Date(evaluation.updated_at).toLocaleString(undefined, {
+                            dateStyle: 'long',
+                            timeStyle: 'short',
+                          })}
                         </Field>
                       </dl>
                     </CardContent>
