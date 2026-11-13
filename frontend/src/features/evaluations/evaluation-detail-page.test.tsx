@@ -160,7 +160,7 @@ describe('EvaluationDetailPage — the trail', () => {
     server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak'))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(
       await within(identity).findByRole('link', { name: /spring jailbreak/i }),
     ).toBeInTheDocument()

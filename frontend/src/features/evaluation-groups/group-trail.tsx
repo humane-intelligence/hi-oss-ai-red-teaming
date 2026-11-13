@@ -27,7 +27,9 @@ export function GroupIdentity({ groupId, path }: { groupId: string; path?: Crumb
   // placeholder would blank the line on every deep link.
   if (isPending && !path)
     return <p className={cn('text-muted-foreground text-sm', slot && 'lg:hidden')}>Loading…</p>
-  const inPage = <Breadcrumbs items={crumbs} label="Evaluation group" />
+  // With `path` the line runs below the group, so naming the landmark after the group would mislabel it.
+  const label = path ? 'Evaluation trail' : 'Evaluation group'
+  const inPage = <Breadcrumbs items={crumbs} label={label} />
   if (!slot) return inPage
   const pinFirst = !path
   // Complementary, never both visible. `lg` not `md`: at 768px the organization and group crumbs
@@ -37,7 +39,7 @@ export function GroupIdentity({ groupId, path }: { groupId: string; path?: Crumb
       <div className="lg:hidden">{inPage}</div>
       {createPortal(
         <div className="hidden overflow-hidden lg:block">
-          <Breadcrumbs items={crumbs} label="Evaluation group" nowrap pinFirst={pinFirst} />
+          <Breadcrumbs items={crumbs} label={label} nowrap pinFirst={pinFirst} />
         </div>,
         slot,
       )}

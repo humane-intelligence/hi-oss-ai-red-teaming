@@ -126,7 +126,7 @@ describe('EvaluationFormPage — the trail on the edit path', () => {
     )
     renderEdit()
 
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(await within(identity).findByRole('link', { name: 'Host group' })).toBeInTheDocument()
 
     // One line carries the whole way down, including the evaluation being edited, which the
@@ -423,7 +423,7 @@ describe('EvaluationFormPage — create object-gating', () => {
     renderCreate()
 
     // The identity line is what names the parent group now.
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(await within(identity).findByRole('link', { name: 'Host group' })).toHaveAttribute(
       'href',
       `/evaluation-groups/${GROUP_ID}`,

@@ -930,7 +930,7 @@ describe('ConversationGroupPage — the way back to the evaluation group', () =>
     renderPage()
 
     // Before this the trail started at the evaluation, so the group was unreachable from here.
-    const identity = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const identity = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     expect(
       await within(identity).findByRole('link', { name: 'Spring Jailbreak Sprint' }),
     ).toHaveAttribute('href', '/evaluation-groups/grp-0000-0000-0000-000000000000')

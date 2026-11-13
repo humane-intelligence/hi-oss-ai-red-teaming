@@ -93,7 +93,7 @@ describe('GroupIdentity', () => {
       />,
     )
 
-    const nav = await screen.findByRole('navigation', { name: 'Evaluation group' })
+    const nav = await screen.findByRole('navigation', { name: 'Evaluation trail' })
     await within(nav).findByRole('link', { name: GROUP_TITLE })
     expect(
       within(nav)
