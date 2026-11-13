@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -222,6 +223,21 @@ describe('SearchSelect (typeahead combobox)', () => {
       expect(onLoadMore).toHaveBeenCalledOnce()
     })
 
+    it('asks for the next page when ↓ has no enabled option left below', () => {
+      const onLoadMore = vi.fn()
+      setup({
+        onLoadMore,
+        hasMore: true,
+        options: [OPTS[0]!, { value: 'u2', label: 'bob@ex.com', disabled: true }],
+      })
+      const input = screen.getByLabelText('Red-teamer')
+      fireEvent.focus(input)
+      fireEvent.keyDown(input, { key: 'ArrowDown' }) // → alice
+      expect(onLoadMore).not.toHaveBeenCalled()
+      fireEvent.keyDown(input, { key: 'ArrowDown' }) // only the disabled bob below
+      expect(onLoadMore).toHaveBeenCalledOnce()
+    })
+
     it('does not ask when there is no next page or one is already loading', () => {
       const onLoadMore = vi.fn()
       const { rerender } = render(
@@ -270,6 +286,39 @@ describe('SearchSelect (typeahead combobox)', () => {
       fireEvent.change(input, { target: { value: 'b' } })
       expect(list.scrollTop).toBe(0)
     })
+  })
+
+  it('after a pick, typing replaces the label and Backspace empties the box', async () => {
+    const onSearchChange = vi.fn()
+    function Controlled() {
+      const [value, setValue] = useState('')
+      return (
+        <SearchSelect
+          label="Red-teamer"
+          htmlFor="rt"
+          value={value}
+          onChange={setValue}
+          onSearchChange={onSearchChange}
+          options={OPTS}
+          isPending={false}
+          isError={false}
+        />
+      )
+    }
+    render(<Controlled />)
+    const u = userEvent.setup()
+    const input = screen.getByLabelText('Red-teamer')
+
+    await u.click(input)
+    await u.click(screen.getByRole('option', { name: 'bob@ex.com' }))
+    expect(input).toHaveValue('bob@ex.com')
+    await u.type(input, 'a')
+    expect(input).toHaveValue('a')
+    await waitFor(() => expect(onSearchChange).toHaveBeenLastCalledWith('a'), { timeout: 800 })
+
+    await u.click(screen.getByRole('option', { name: 'alice@ex.com' }))
+    await u.type(input, '{Backspace}')
+    expect(input).toHaveValue('')
   })
 
   it('shows loading / error / empty states while open', () => {

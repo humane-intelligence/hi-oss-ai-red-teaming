@@ -101,7 +101,11 @@ export function SearchSelect({
     } else if (event.key === 'ArrowDown') {
       event.preventDefault()
       setOpen(true)
-      setActive((i) => nextEnabled(i, 1))
+      const next = nextEnabled(active, 1)
+      // Nothing pickable below (say, members at the end of a page): the scroll that loads more may
+      // never come from the keyboard, so ask for it here.
+      if (next === active && hasMore && !isLoadingMore) onLoadMore?.()
+      setActive(next)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setOpen(true) // open so aria-activedescendant points at a rendered option, not a phantom id
@@ -145,7 +149,10 @@ export function SearchSelect({
           onFocus={() => setOpen(true)}
           onChange={(event) => {
             skipSearch.current = false // real typing always searches (clears any leftover skip)
-            setTerm(event.target.value)
+            const text = event.target.value
+            // After a pick the box holds its label, which no search matches: keep only what was
+            // typed after it, so Backspace empties the box and a new letter starts a new search.
+            setTerm(value ? (text.startsWith(term) ? text.slice(term.length) : '') : text)
             if (listRef.current) listRef.current.scrollTop = 0 // a new term starts from its first page
             setOpen(true)
             setActive(-1)
