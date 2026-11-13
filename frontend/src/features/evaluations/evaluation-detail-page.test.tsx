@@ -101,6 +101,7 @@ function renderPage(permissions: string[]) {
       </QueryClientProvider>
     </Wrapper>,
   )
+  return qc
 }
 
 describe('EvaluationDetailPage — group link', () => {
@@ -723,9 +724,11 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
   })
 
   it('hides the card when the instance turns tags off', async () => {
+    let served = false
     server.use(
-      http.get('http://localhost/api/v1/platform-settings/public', () =>
-        HttpResponse.json({
+      http.get('http://localhost/api/v1/platform-settings/public', () => {
+        served = true
+        return HttpResponse.json({
           signup_enabled: true,
           password_policy: {
             min_length: 10,
@@ -734,16 +737,17 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
             require_symbol: false,
           },
           conversation_tags_enabled: false,
-        }),
-      ),
+        })
+      }),
       ...baseHandlers(),
     )
-    renderPage(['evaluations:read', 'evaluations:update'])
+    const qc = renderPage(['evaluations:read', 'evaluations:update'])
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
-    )
+    // The switch reads as off until the settings arrive, so wait for them or this passes vacuously.
+    await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
+    const settings = screen.getByRole('region', { name: 'Evaluation settings' })
+    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-2')
   })
 })
 

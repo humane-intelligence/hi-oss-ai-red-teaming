@@ -302,7 +302,9 @@ export function EvaluationDetailPage() {
                 <div
                   className={cn(
                     'grid grid-cols-[minmax(0,1fr)] items-start gap-4',
-                    evaluation.tags_enabled ? 'lg:grid-cols-3' : 'lg:grid-cols-2',
+                    conversationTagsEnabled && evaluation.tags_enabled
+                      ? 'lg:grid-cols-3'
+                      : 'lg:grid-cols-2',
                   )}
                 >
                   <Card>
