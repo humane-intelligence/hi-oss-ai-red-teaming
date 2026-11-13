@@ -776,6 +776,26 @@ describe('EvaluationDetailPage — in-group authority', () => {
     expect(tile('Models to test')).toHaveTextContent(String(baseEvaluation.models?.length ?? 0))
   })
 
+  it('claims no task total when the scenarios run past one page', async () => {
+    server.use(
+      groupWith(['evaluation_groups:export']),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({
+          items: [scenario('s1'), scenario('s2')],
+          total: 101,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      ...content,
+      ...baseHandlers(),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(() => expect(tile('Scenarios to test')).toHaveTextContent('101'))
+    expect(tile('Tasks to complete')).toHaveTextContent('—')
+  })
+
   it('claims no totals and no missing scenario when the scenario list fails to load', async () => {
     server.use(
       groupWith(['evaluation_groups:export', 'conversations:create']),

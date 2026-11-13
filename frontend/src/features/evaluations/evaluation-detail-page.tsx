@@ -81,7 +81,11 @@ export function EvaluationDetailPage() {
   const metrics = useEvaluationMetrics(id ?? '', { enabled: canViewMetrics })
   const scenarios = useEvaluationScenarios(id ?? '')
   const scenarioItems = scenarios.data?.items ?? []
-  const taskCount = useTaskCount(scenarios.data?.items.map((s) => s.id))
+  // Past the list's one page the sum would cover only part of the scenarios the tile beside it counts.
+  const allScenariosListed = scenarios.data && scenarios.data.items.length >= scenarios.data.total
+  const taskCount = useTaskCount(
+    allScenariosListed ? scenarios.data?.items.map((s) => s.id) : undefined,
+  )
   // A reason only for what is known to be missing: a scenario list still loading, or one that
   // failed to load, is not an evaluation without scenarios.
   const startBlocked =
