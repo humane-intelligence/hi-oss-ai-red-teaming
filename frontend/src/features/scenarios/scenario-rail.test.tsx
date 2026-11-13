@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { ScenarioRail } from './scenario-rail'
-import { togglingKey } from './task-completion-ui'
 import type { RailMember, RollupCountsState } from './task-completion-ui'
 import type { ScenarioResponse, TaskResponse } from '@/lib/api/types'
 
@@ -93,20 +92,9 @@ describe('ScenarioRail toggle mode', () => {
 
 function member({
   conversationId,
-  name,
   ...overrides
-}: Partial<RailMember> & { conversationId: string; name?: string }): RailMember {
-  // The rail is handed resolved labels (the group page builds them via `member-names`), so
-  // a case only needs the name it wants rendered.
-  const label = name ?? `model-${conversationId}`
-  return {
-    conversationId,
-    label,
-    a11yLabel: label,
-    completedTaskIds: new Set(),
-    canToggle: true,
-    ...overrides,
-  }
+}: Partial<RailMember> & { conversationId: string }): RailMember {
+  return { conversationId, completedTaskIds: new Set(), canToggle: true, ...overrides }
 }
 
 function renderRollupRail(
@@ -114,7 +102,7 @@ function renderRollupRail(
   opts?: {
     countsState?: RollupCountsState
     countsReadable?: boolean
-    togglingKeys?: Set<string>
+    togglingTaskIds?: Set<string>
   },
 ) {
   const onToggle = vi.fn()
@@ -126,7 +114,7 @@ function renderRollupRail(
         mode: 'rollup',
         members,
         onToggle,
-        togglingKeys: opts?.togglingKeys ?? new Set(),
+        togglingTaskIds: opts?.togglingTaskIds ?? new Set(),
         countsState: opts?.countsState ?? 'ready',
         countsReadable: opts?.countsReadable ?? true,
       }}
@@ -135,92 +123,112 @@ function renderRollupRail(
   return { onToggle }
 }
 
+const ALL_MODELS_NOTE = 'Checking a task marks it complete for every model in this conversation.'
+const OWNED_MODELS_NOTE =
+  'Checking a task marks it complete for the models you own; the others count toward the total only.'
+const done = () => new Set([TASK_ID])
+const twoMembersDoneIn = (doneIn: readonly string[]) =>
+  ['c1', 'c2'].map((id) =>
+    member({ conversationId: id, completedTaskIds: new Set(doneIn.includes(id) ? [TASK_ID] : []) }),
+  )
+
 describe('ScenarioRail rollup mode', () => {
-  const MEMBERS = [
-    member({ conversationId: 'c1', name: 'gpt-4o', completedTaskIds: new Set([TASK_ID]) }),
-    member({ conversationId: 'c2', name: 'claude-sonnet-4' }),
+  // One of two done: the state older per-model check-offs can leave behind.
+  const PARTIAL = [
+    member({ conversationId: 'c1', completedTaskIds: done() }),
+    member({ conversationId: 'c2' }),
   ]
   // A group a break-glass manager composed: the caller owns c1, someone else owns c2.
   const MIXED = [
-    member({ conversationId: 'c1', name: 'gpt-4o' }),
-    member({ conversationId: 'c2', name: 'claude-sonnet-4', canToggle: false }),
+    member({ conversationId: 'c1' }),
+    member({ conversationId: 'c2', canToggle: false }),
   ]
 
-  it('shows the K/N roll-up collapsed, with no checkbox until expanded', () => {
-    renderRollupRail(MEMBERS)
+  it('shows one checkbox per task beside the K/N roll-up, with no per-model rows', () => {
+    renderRollupRail(PARTIAL)
 
-    expect(screen.getByLabelText('Completed in 1 of 2 conversations')).toHaveTextContent('1/2')
-    expect(screen.getByRole('button', { name: /Basic injection/ })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    )
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Completed for 1 of 2 models')).toHaveTextContent('1/2')
+    expect(screen.getByText(ALL_MODELS_NOTE)).toBeInTheDocument()
   })
 
-  it('expands into one checkbox per owned member, reflecting each conversation’s state', async () => {
-    renderRollupRail(MEMBERS)
+  it.each([
+    ['unchecked when no model has it', [], 'unchecked'],
+    ['checked when every model has it', ['c1', 'c2'], 'checked'],
+    ['mixed when only some models have it', ['c1'], 'mixed'],
+  ] as const)('reads %s', (_name, doneIn, expected) => {
+    renderRollupRail(twoMembersDoneIn(doneIn))
 
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    const boxes = screen.getAllByRole('checkbox')
-    expect(boxes).toHaveLength(2)
-    expect(boxes[0]).toBeChecked() // gpt-4o has the task checked off
-    expect(boxes[1]).not.toBeChecked()
-    expect(screen.getByText('gpt-4o')).toBeInTheDocument()
-    expect(screen.getByText('claude-sonnet-4')).toBeInTheDocument()
+    const box = screen.getByRole('checkbox')
+    if (expected === 'mixed') expect(box).toBePartiallyChecked()
+    else if (expected === 'checked') expect(box).toBeChecked()
+    else expect(box).not.toBeChecked()
   })
 
-  it('toggles the task for the member whose checkbox was clicked', async () => {
-    const { onToggle } = renderRollupRail(MEMBERS)
+  it.each([
+    ['completes the task from unchecked', [], true],
+    ['completes the task from mixed', ['c1'], true],
+    ['clears the task from checked', ['c1', 'c2'], false],
+  ] as const)('%s', async (_name, doneIn, next) => {
+    const { onToggle } = renderRollupRail(twoMembersDoneIn(doneIn))
 
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-    await userEvent.click(screen.getAllByRole('checkbox')[1]!)
+    await userEvent.click(screen.getByRole('checkbox'))
 
-    expect(onToggle).toHaveBeenCalledWith('c2', TASK_ID, true)
+    expect(onToggle).toHaveBeenCalledWith(TASK_ID, next)
   })
 
-  it('derives the roll-up from the members, counting a task done only when all have it', () => {
+  it('counts every model in the roll-up, striking the task only when all have it', () => {
     renderRollupRail([
-      member({ conversationId: 'c1', completedTaskIds: new Set([TASK_ID]) }),
-      member({ conversationId: 'c2', completedTaskIds: new Set([TASK_ID]) }),
+      member({ conversationId: 'c1', completedTaskIds: done() }),
+      member({ conversationId: 'c2', completedTaskIds: done() }),
     ])
 
-    expect(screen.getByLabelText('Completed in 2 of 2 conversations')).toHaveTextContent('2/2')
+    expect(screen.getByLabelText('Completed for 2 of 2 models')).toHaveTextContent('2/2')
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100')
   })
 
-  it('shows the task rows while a member’s completions load, without asserting a count', () => {
-    renderRollupRail(MEMBERS, { countsState: 'loading' })
+  it('reflects only the models the caller owns in a mixed group, and says so', () => {
+    renderRollupRail([
+      member({ conversationId: 'c1', completedTaskIds: done() }),
+      member({ conversationId: 'c2', canToggle: false }),
+    ])
 
-    // The block must NOT unmount: adding a model mounts a new query, and dropping the
-    // rows would collapse every open disclosure.
+    // The box sets c1 only, so c2's missing check-off must not make it read as partial.
+    expect(screen.getByRole('checkbox')).toBeChecked()
+    expect(screen.getByLabelText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(screen.getByText(OWNED_MODELS_NOTE)).toBeInTheDocument()
+  })
+
+  it('shows the task rows while a member’s completions load, without asserting a count', () => {
+    renderRollupRail(PARTIAL, { countsState: 'loading' })
+
+    // The block must NOT unmount: adding a model mounts a new query.
     expect(screen.getByText(task.name)).toBeInTheDocument()
     expect(screen.getByLabelText('Loading completion counts')).toHaveTextContent('…')
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+    // Transient and self-clearing, so a real disabled is honest.
+    expect(screen.getByRole('checkbox')).toBeDisabled()
   })
 
   it('says the counts are unavailable when a member’s read failed', () => {
-    renderRollupRail(MEMBERS, { countsState: 'error' })
+    renderRollupRail(PARTIAL, { countsState: 'error' })
 
     // Silently reading a failed member as "nothing completed" would under-report K.
     expect(screen.getByLabelText('Completion counts unavailable')).toHaveTextContent('—')
     // Inline too, not only on activation — a sighted mouse user must not have to click a
     // seemingly-live checkbox to find out why nothing happens.
     expect(screen.getByText('Completion counts unavailable — reload to retry.')).toBeInTheDocument()
-    // Indeterminate: omitted, not 0 — which would assert "0% done".
     expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
   })
 
-  it('leaves a row reachable and explains itself when the counts failed', async () => {
-    const { onToggle } = renderRollupRail(MEMBERS, { countsState: 'error' })
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-    const box = screen.getAllByRole('checkbox')[0]!
+  it('leaves the box reachable and explains itself when the counts failed', async () => {
+    const { onToggle } = renderRollupRail(PARTIAL, { countsState: 'error' })
+    const box = screen.getByRole('checkbox')
 
     // A failed read doesn't recover on its own (retry: 1, no refetch on focus), so a real
-    // `disabled` would leave a permanently dead control out of the tab order — the exact
-    // pattern the blocked-row half of this work removed.
+    // `disabled` would leave a permanently dead control out of the tab order.
     expect(box).not.toBeDisabled()
     expect(box).toHaveAttribute('aria-disabled', 'true')
     box.focus()
@@ -234,123 +242,72 @@ describe('ScenarioRail rollup mode', () => {
     })
   })
 
-  it('keeps a real disabled while the counts are merely loading', async () => {
-    renderRollupRail(MEMBERS, { countsState: 'loading' })
+  it('disables the box while that task’s toggle is in flight', () => {
+    renderRollupRail(PARTIAL, { togglingTaskIds: new Set([TASK_ID]) })
 
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    // Transient and self-clearing, so there is nothing to explain.
-    expect(screen.getAllByRole('checkbox')[0]!).toBeDisabled()
+    expect(screen.getByRole('checkbox')).toBeDisabled()
   })
 
-  it('drops the disclosure entirely when no conversation is the caller’s', () => {
-    renderRollupRail(
-      [
-        member({ conversationId: 'c1', name: 'gpt-4o', completedTaskIds: new Set([TASK_ID]) }),
-        member({ conversationId: 'c2', name: 'claude-sonnet-4' }),
-      ].map((m) => ({ ...m, canToggle: false })),
-    )
+  it('shows the roll-up alone when no conversation is the caller’s', () => {
+    renderRollupRail(PARTIAL.map((m) => ({ ...m, canToggle: false })))
 
-    // The per-member breakdown exists to be acted on; with nothing actionable the row is
-    // just the roll-up, as this view showed before check-off arrived.
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
-    expect(screen.getByLabelText('Completed in 1 of 2 conversations')).toHaveTextContent('1/2')
-    expect(screen.getByText('Read-only — not your conversations.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Completed for 1 of 2 models')).toHaveTextContent('1/2')
+    expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
   })
 
   it('shows no roll-up at all when the caller may not read the counts', () => {
     renderRollupRail(
-      [
-        member({ conversationId: 'c1', name: 'gpt-4o', completedTaskIds: new Set([TASK_ID]) }),
-        member({ conversationId: 'c2', name: 'claude-sonnet-4' }),
-      ].map((m) => ({ ...m, canToggle: false })),
+      PARTIAL.map((m) => ({ ...m, canToggle: false })),
       { countsReadable: false },
     )
 
     // The reads a supervisor can make are author-scoped and so structurally empty; a badge
     // off them would report the owner's work as 0/2.
-    expect(screen.queryByLabelText(/Completed in/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Completed for/)).not.toBeInTheDocument()
     expect(screen.queryByText('1/2')).not.toBeInTheDocument()
     // Not an indeterminate bar either — that still promises a number is coming.
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    // The checklist itself stays: the tasks are worth reading even without a score.
     expect(screen.getByText(task.name)).toBeInTheDocument()
+    // The missing counts are the more surprising absence, and the rail shows a single note.
     expect(
       screen.getByText("Completion progress isn't shown for conversations you don't own."),
     ).toBeInTheDocument()
+    expect(screen.queryByText('Read-only — not your conversation.')).not.toBeInTheDocument()
   })
 
-  it('explains the missing counts rather than the read-only rows', () => {
-    renderRollupRail([member({ conversationId: 'c1', canToggle: false })], {
-      countsReadable: false,
-    })
-
-    // Both notes are true, but the absent roll-up is the more surprising one, and the rail
-    // shows a single note.
-    expect(
-      screen.getByText("Completion progress isn't shown for conversations you don't own."),
-    ).toBeInTheDocument()
-    expect(screen.queryByText('Read-only — not your conversations.')).not.toBeInTheDocument()
-  })
-
-  it('keeps an owned row true and operable in a mixed group with no roll-up', async () => {
-    // The caller owns c1 of a group a break-glass manager composed. Hiding the group's count
-    // must not cost them their own row: its state is readable and its checkbox must work.
+  it('keeps the owned box true and operable in a mixed group with no roll-up', async () => {
     const { onToggle } = renderRollupRail(
       [
-        member({ conversationId: 'c1', name: 'gpt-4o', completedTaskIds: new Set([TASK_ID]) }),
-        member({ conversationId: 'c2', name: 'claude-sonnet-4', canToggle: false }),
+        member({ conversationId: 'c1', completedTaskIds: done() }),
+        member({ conversationId: 'c2', canToggle: false }),
       ],
       { countsReadable: false },
     )
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
 
     const box = screen.getByRole('checkbox')
     expect(box).toBeChecked()
     expect(box).not.toBeDisabled()
     await userEvent.click(box)
-    expect(onToggle).toHaveBeenCalledWith('c1', TASK_ID, false)
-    // Still no group number — c2's completions remain unreadable.
-    expect(screen.queryByLabelText(/Completed in/)).not.toBeInTheDocument()
+    expect(onToggle).toHaveBeenCalledWith(TASK_ID, false)
+    expect(screen.queryByLabelText(/Completed for/)).not.toBeInTheDocument()
   })
 
-  it('still disables an owned row while its read is in flight, roll-up hidden or not', async () => {
+  it('still disables the owned box while its read is in flight, roll-up hidden or not', () => {
     renderRollupRail(MIXED, { countsReadable: false, countsState: 'loading' })
 
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    // Hiding the group number must not cost the caller the load signal on their own row — an
-    // enabled box reading unchecked asserts "not completed" from a set still in flight.
+    // An enabled box reading unchecked would assert "not completed" from a set still in flight.
     expect(screen.getByRole('checkbox')).toBeDisabled()
-    // Named, not `/Completed in/`: under `loading` the badge is labelled "Loading completion
-    // counts", so the loose pattern passes whether or not the badge renders.
     expect(screen.queryByLabelText('Loading completion counts')).not.toBeInTheDocument()
   })
 
-  it('reports an unknown state on a non-owned row when the roll-up is unreadable', async () => {
-    renderRollupRail(MIXED, { countsReadable: false })
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    // Settled reads, but not the caller's to make: "not completed" here would be the hidden
-    // roll-up's claim restated one row down.
-    expect(screen.getByLabelText(/claude-sonnet-4 — completion unknown$/)).toBeInTheDocument()
-  })
-
-  it('still explains a failed read on an owned row, and blames the failure not ownership', async () => {
+  it('blames a failed read rather than ownership when the roll-up is unreadable', async () => {
     const { onToggle } = renderRollupRail(MIXED, { countsReadable: false, countsState: 'error' })
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
     const box = screen.getByRole('checkbox')
 
     expect(box).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(box)
     expect(onToggle).not.toHaveBeenCalled()
-    expect(toast.info).toHaveBeenCalledWith('Completion counts unavailable — reload to retry.', {
-      id: 'task-counts-unavailable',
-    })
     // A retryable failure outranks the privacy note — attributing it to ownership would send
     // the caller away from the one thing that would fix it.
     expect(screen.getByText('Completion counts unavailable — reload to retry.')).toBeInTheDocument()
@@ -359,83 +316,12 @@ describe('ScenarioRail rollup mode', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('shows state but no checkbox on the members of a mixed group it cannot write to', async () => {
-    const { onToggle } = renderRollupRail([
-      member({ conversationId: 'c1', name: 'gpt-4o' }),
-      member({
-        conversationId: 'c2',
-        name: 'claude-sonnet-4',
-        completedTaskIds: new Set([TASK_ID]),
-        canToggle: false,
-      }),
-    ])
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    // An affordance that can only ever refuse is worse than none — the blocked member's
-    // state is conveyed by a static marker instead.
-    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
-    expect(screen.getByLabelText(/claude-sonnet-4 — completed$/)).toBeInTheDocument()
-    expect(onToggle).not.toHaveBeenCalled()
-    // "Read-only" would be a lie with a live checkbox on screen.
-    expect(screen.getByText("Conversations you don't own show state only.")).toBeInTheDocument()
-    expect(screen.queryByText('Read-only — not your conversations.')).not.toBeInTheDocument()
-  })
-
-  it('reports an unknown state on a non-owned row while the counts are failed', async () => {
-    renderRollupRail(
-      [
-        member({ conversationId: 'c1', name: 'gpt-4o' }),
-        member({ conversationId: 'c2', name: 'claude-sonnet-4', canToggle: false }),
-      ],
-      { countsState: 'error' },
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    // The marker must not assert "not completed" from a set that never resolved — the
-    // same rule the badge and the checkbox already follow.
-    expect(screen.getByLabelText(/claude-sonnet-4 — completion unknown$/)).toBeInTheDocument()
-  })
-
-  it('disables only the member row whose toggle is in flight', async () => {
-    renderRollupRail(MEMBERS, { togglingKeys: new Set([togglingKey('c1', TASK_ID)]) })
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    const boxes = screen.getAllByRole('checkbox')
-    expect(boxes[0]).toBeDisabled()
-    expect(boxes[1]).not.toBeDisabled()
-  })
-
-  it('renders the resolved label it is given, wherever the name appears', async () => {
-    // Building the label — title vs model, and the position suffix that disambiguates a
-    // masked group — belongs to `member-names` (see member-names.test.ts). The rail's job
-    // is to render what it's handed, in the row, the tooltip and the accessible name.
-    renderRollupRail([
-      member({ conversationId: 'c1', name: '— masked — (1)', a11yLabel: '— masked — (1)' }),
-      member({
-        conversationId: 'c2',
-        name: 'Refusal probe (2)',
-        a11yLabel: 'Refusal probe (2) (gpt-4o)',
-      }),
-    ])
-
-    await userEvent.click(screen.getByRole('button', { name: /Basic injection/ }))
-
-    expect(screen.getByText('— masked — (1)')).toBeInTheDocument()
-    expect(screen.getByText('Refusal probe (2)')).toBeInTheDocument()
-    expect(
-      screen.getByRole('checkbox', { name: 'Basic injection — Refusal probe (2) (gpt-4o)' }),
-    ).toBeInTheDocument()
-  })
-
-  it('renders an empty group as 0/0 with nothing to expand', () => {
+  it('renders an empty group as 0/0 with nothing to check', () => {
     renderRollupRail([])
 
-    expect(screen.getByLabelText('Completed in 0 of 0 conversations')).toHaveTextContent('0/0')
-    // No members means no panel and no read-only claim — the group is empty, not blocked.
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-    expect(screen.queryByText('Read-only — not your conversations.')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Completed for 0 of 0 models')).toHaveTextContent('0/0')
+    // No members means no checkbox and no read-only claim — the group is empty, not blocked.
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+    expect(screen.queryByText('Read-only — not your conversation.')).not.toBeInTheDocument()
   })
 })

@@ -29,7 +29,7 @@ export const memberLabel = (member: NamedMember, suffix = '') => baseName(member
 
 /**
  * What a screen reader hears. Keeps the model name even when a title covers it visually
- * (there it is only a subtitle), so panes and rail rows can be told apart when read out.
+ * (there it is only a subtitle), so panes can be told apart when read out.
  *
  * The suffix goes with the title, not after the parenthetical, so the visible label stays
  * a prefix of this — WCAG 2.5.3 label-in-name, which voice control relies on.
