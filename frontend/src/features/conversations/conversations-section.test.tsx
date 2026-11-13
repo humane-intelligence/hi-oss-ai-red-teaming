@@ -74,6 +74,7 @@ function conv(id: string, modelId: string, groupId: string): ConversationRespons
     evaluation_id: EVAL_ID,
     evaluation_ai_model_id: modelId,
     content_protected: false,
+    turn_count: 0,
     scenario_id: 'scn-0001-0000-0000-000000000000',
     conversation_group_id: groupId,
     effective_license: licenseStub('CC-BY-4.0'),

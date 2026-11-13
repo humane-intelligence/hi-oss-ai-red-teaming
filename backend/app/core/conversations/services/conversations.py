@@ -312,7 +312,7 @@ async def create_conversation(  # noqa: PLR0913 — keyword-only args mirror the
     )
     session.add(conversation)
     await session.flush()
-    await session.refresh(conversation, attribute_names=["created_at", "updated_at"])
+    await session.refresh(conversation, attribute_names=["created_at", "updated_at", "turn_count"])
     return conversation
 
 

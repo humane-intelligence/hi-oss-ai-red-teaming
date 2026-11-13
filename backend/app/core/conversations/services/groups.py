@@ -299,7 +299,7 @@ async def create_conversation_group(
 
     await session.refresh(conversation_group, attribute_names=["created_at", "updated_at"])
     for conversation in conversations:
-        await session.refresh(conversation, attribute_names=["created_at", "updated_at"])
+        await session.refresh(conversation, attribute_names=["created_at", "updated_at", "turn_count"])
     return conversation_group, conversations
 
 

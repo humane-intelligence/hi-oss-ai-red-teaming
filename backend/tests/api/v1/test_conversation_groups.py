@@ -22,7 +22,10 @@ from app.core.auth.models import Role
 from app.core.auth.models import User
 from app.core.auth.roles import Permission
 from app.core.auth.services.users import create_user as create_user_service
+from app.core.config import get_settings
+from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
+from app.core.conversations.services.messages import open_turn
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
@@ -476,6 +479,33 @@ async def test_get_returns_group_with_conversations(
     body = response.json()
     assert body["id"] == conversation_group_id
     assert len(body["conversations"]) == 1
+
+
+async def test_list_reports_turn_count_per_member_conversation(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="turns@example.com")
+    token = _token(caller)
+    evaluation = await _evaluation_for(db_session)
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
+    model = {"evaluation_ai_model_id": str(assignment.id)}
+    created = await _create_group(auth_db_client, token, scenario.id, {"name": "g", "models": [model, model]})
+    assert [c["turn_count"] for c in created.json()["conversations"]] == [0, 0]
+    used_id, unused_id = (c["id"] for c in created.json()["conversations"])
+    used = await db_session.get_one(Conversation, UUID(used_id))
+    for text in ("first", "second"):
+        await open_turn(db_session, used, settings=get_settings(), content=text)
+    # The client shares this session, so the count loaded at create would otherwise be served again.
+    db_session.expire(used, ["turn_count"])
+
+    response = await auth_db_client.get(
+        f"/api/v1/evaluations/{evaluation.id}/conversation-groups", headers=_auth(token)
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    (group,) = response.json()["items"]
+    assert {c["id"]: c["turn_count"] for c in group["conversations"]} == {used_id: 2, unused_id: 0}
 
 
 async def test_get_other_users_group_returns_404(

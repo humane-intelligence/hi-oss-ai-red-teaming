@@ -12,11 +12,10 @@ import { AuthorityError } from './authority-error'
 import { useEvaluation, useEvaluationTagKeys } from '@/features/evaluations/queries'
 import { useScenario, useScenarioTasks } from '@/features/scenarios/queries'
 import { ScenarioRail } from '@/features/scenarios/scenario-rail'
-import { togglingKey } from '@/features/scenarios/task-completion-ui'
 import { useConversationGroup } from './queries'
 import { useAddConversationToGroup, useDeleteConversationGroup } from './mutations'
 import { useMembersCompletedTasks, useToggleTaskCompletion } from './task-completions'
-import { memberA11yLabel, memberLabel, memberNameSuffixes } from './member-names'
+import { memberNameSuffixes } from './member-names'
 import { RenameGroupDialog } from './conversations-section'
 import { REVERSIBLE_DELETE_NOTE } from '@/lib/restore/restore'
 import { ConversationPane } from './conversation-pane'
@@ -36,6 +35,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError, fieldErrorsFromProblem } from '@/lib/api/problem'
 import { NotAuthorized } from '@/lib/auth/not-authorized'
+import { notifyMutationError } from '@/lib/query'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import type {
   ConversationGroupResponse,
@@ -76,11 +76,11 @@ export function ConversationGroupPage() {
   // The roll-up needs *every* member readable — a partial count is exactly the kind of number
   // the rail must not assert.
   const countsReadable = members.every(canReadCompletions)
-  // Per member, not the group roll-up endpoint: the rail checks tasks off per conversation,
+  // Per member, not the group roll-up endpoint: completion is stored per conversation,
   // and these are the same cache entries the conversation page writes — so a toggle there
   // is already reflected here, and the K/N roll-up derives from one source.
   //
-  // Gated on *any* readable member, not all: in a mixed group the caller's own row must still
+  // Gated on *any* readable member, not all: in a mixed group the caller's own members must still
   // show true state and toggle, and `canToggle` implies ownership implies readable — so this
   // guarantees every live checkbox has a mounted query behind it. A supervisor who owns none
   // reads nothing, which is the case worth saving the requests on. Ids stay unfiltered because
@@ -88,32 +88,35 @@ export function ConversationGroupPage() {
   const memberCompletions = useMembersCompletedTasks(
     members.some(canReadCompletions) ? members.map((m) => m.id) : [],
   )
-  const toggleCompletion = useToggleTaskCompletion()
-  // Keyed per (member, task), so a toggle disables only the row it belongs to.
-  const [togglingKeys, setTogglingKeys] = useState<Set<string>>(new Set())
+  const toggleCompletion = useToggleTaskCompletion({ suppressErrorToast: true })
+  // Task ids with a fan-out in flight, so the rail disables only that task's box.
+  const [togglingTaskIds, setTogglingTaskIds] = useState<Set<string>>(new Set())
   // Owner-only, break-glass excluded — same rule as `canFlag` below. Check-off resolves
   // the conversation under the caller's ownership and `evaluation_groups:manage` does not
   // lift that, so a toggle a non-owner reached would 404.
   const canToggleConversation = (c: ConversationResponse) =>
     c.user_id === user?.id && allows('conversations:update')
-  const onToggleTask = (conversationId: string, taskId: string, next: boolean) => {
-    // The rail renders no checkbox for a member this returns false for, so this is a
-    // safety net — kept because its sibling on the conversation page has one.
-    const member = members.find((c) => c.id === conversationId)
-    if (!member || !canToggleConversation(member)) return
-    const key = togglingKey(conversationId, taskId)
-    setTogglingKeys((prev) => new Set(prev).add(key))
-    toggleCompletion.mutate(
-      { conversationId, taskId, next },
-      {
-        onSettled: () =>
-          setTogglingKeys((prev) => {
-            const nextSet = new Set(prev)
-            nextSet.delete(key)
-            return nextSet
-          }),
-      },
+  const onToggleTask = (taskId: string, next: boolean) => {
+    // Only members whose state differs: a failed no-op PUT would roll back to unchecked a
+    // task the server already has.
+    const targets = members.filter(
+      (c, i) =>
+        canToggleConversation(c) &&
+        (memberCompletions.completedTaskIdsByConversation[i]?.has(taskId) ?? false) !== next,
     )
+    if (targets.length === 0) return
+    setTogglingTaskIds((prev) => new Set(prev).add(taskId))
+    void Promise.allSettled(
+      targets.map((c) => toggleCompletion.mutateAsync({ conversationId: c.id, taskId, next })),
+    ).then((results) => {
+      const failed = results.find((r) => r.status === 'rejected')
+      if (failed) notifyMutationError(failed.reason)
+      setTogglingTaskIds((prev) => {
+        const nextSet = new Set(prev)
+        nextSet.delete(taskId)
+        return nextSet
+      })
+    })
   }
 
   const [input, setInput] = useState('')
@@ -140,9 +143,8 @@ export function ConversationGroupPage() {
     (evaluation.data?.models ?? []).find((m) => m.assignment_id === assignmentId)
   const modelName = (assignmentId: string) => assignmentFor(assignmentId)?.name ?? '— masked —'
 
-  // Named once for both consumers below — the panes and the rail's per-member rows must
-  // carry the same name for the same conversation, or the disambiguating number is worse
-  // than none.
+  // Named once for the whole row of panes — the disambiguating number depends on every
+  // member's name.
   const memberNames = members.map((c) => ({
     title: c.title,
     modelName: modelName(c.evaluation_ai_model_id),
@@ -294,29 +296,36 @@ export function ConversationGroupPage() {
                     e.preventDefault()
                     broadcast()
                   }}
-                  className="bg-background sticky bottom-0 flex gap-2 py-2"
+                  className="bg-background sticky bottom-0 space-y-1 py-2"
                 >
-                  <Textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        broadcast()
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          broadcast()
+                        }
+                      }}
+                      aria-label="Message all models"
+                      aria-describedby="broadcast-hint"
+                      placeholder={
+                        anyWarming
+                          ? 'Waiting for every model to warm up…'
+                          : 'Type here to message all models in this conversation.'
                       }
-                    }}
-                    aria-label="Message all models"
-                    placeholder={
-                      anyWarming
-                        ? 'Waiting for every model to warm up…'
-                        : 'Message all models… (Enter to send, Shift+Enter for newline)'
-                    }
-                    rows={2}
-                    className="min-h-0"
-                  />
-                  <Button type="submit" disabled={!input.trim() || anyWarming}>
-                    Send to all
-                  </Button>
+                      rows={2}
+                      className="min-h-0"
+                    />
+                    <Button type="submit" disabled={!input.trim() || anyWarming}>
+                      Send to all
+                    </Button>
+                  </div>
+                  {/* Under the box, not in the placeholder: the box is two lines tall and clips it. */}
+                  <p id="broadcast-hint" className="text-muted-foreground text-xs">
+                    Press return to send. Use shift + return for line breaks.
+                  </p>
                 </form>
               )}
             </div>
@@ -334,14 +343,12 @@ export function ConversationGroupPage() {
                     mode: 'rollup',
                     members: members.map((c, i) => ({
                       conversationId: c.id,
-                      label: memberLabel(memberNames[i]!, nameSuffixes[i]),
-                      a11yLabel: memberA11yLabel(memberNames[i]!, nameSuffixes[i]),
                       completedTaskIds:
                         memberCompletions.completedTaskIdsByConversation[i] ?? new Set(),
                       canToggle: canToggleConversation(c),
                     })),
                     onToggle: onToggleTask,
-                    togglingKeys,
+                    togglingTaskIds,
                     countsState: memberCompletions.state,
                     countsReadable,
                   }}

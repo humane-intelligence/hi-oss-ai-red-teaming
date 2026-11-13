@@ -9,6 +9,10 @@ change between minor versions.
 
 ### Added
 
+- `turn_count` on conversation responses, including the member conversations embedded in a
+  conversation group: the number of turns sent so far, `0` for a conversation that was started and
+  never used.
+
 - A `provider_model_id` that starts with the routing prefix the `provider` field adds
   (`anthropic/claude-…` under `anthropic`) is refused on save with a 400 pinned to the field —
   only for vendor-hosted rows: with an `inference_endpoint` the id goes through as the proxy

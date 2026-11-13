@@ -8,6 +8,7 @@ import type { AllowedKeysStatus } from './tag-key-field'
 import { tagRowStats, tagsFromRows, type TagRow } from './tag-rows'
 import { MAX_TAGS, MAX_TAG_KEY_LEN, MAX_TAG_VALUE_LEN } from '@/lib/api/limits'
 import { Textarea } from '@/components/ui/textarea'
+import { InfoHint } from '@/components/shared/info-hint'
 import { AttachmentStrip } from './attachment-strip'
 import { useMessageAttachments } from './use-message-attachments'
 import type { UserMessageIn } from '@/lib/api/types'
@@ -25,6 +26,7 @@ export function ChatComposer({
   allowedTagKeys,
   allowedKeysStatus,
   placeholder,
+  hint,
   ariaLabel = 'Message',
   rows = 2,
   size = 'default',
@@ -43,6 +45,8 @@ export function ChatComposer({
   // the two unsettled states need copy of their own rather than a blank picker.
   allowedKeysStatus: AllowedKeysStatus
   placeholder: string
+  // Shown under the box rather than in the placeholder, which a two-line box clips on narrow screens.
+  hint?: string
   ariaLabel?: string
   rows?: number
   size?: 'default' | 'sm'
@@ -94,6 +98,7 @@ export function ChatComposer({
             ? 'Fill the empty row first'
             : null
   const tagPanelId = `${useId()}-tags`
+  const hintId = `${useId()}-hint`
   const addReasonId = `${tagPanelId}-add-reason`
 
   useEffect(() => {
@@ -146,23 +151,26 @@ export function ChatComposer({
       )}
       {tagsEnabled && (
         <div className="mt-2">
-          <button
-            type="button"
-            aria-expanded={tagsOpen}
-            aria-controls={tagPanelId}
-            onClick={() =>
-              setTagsOpen((open) => {
-                const next = !open
-                if (next && tagRows.length === 0) setTagRows([blankRow()])
-                return next
-              })
-            }
-            // The padding is the hit box: bare text would leave this under the 24px minimum, and on a
-            // phone this is the only way into the tagging surface.
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 py-1.5 text-xs"
-          >
-            <Tag className="size-3" /> Tags{tagCount ? ` (${tagCount})` : ''}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-expanded={tagsOpen}
+              aria-controls={tagPanelId}
+              onClick={() =>
+                setTagsOpen((open) => {
+                  const next = !open
+                  if (next && tagRows.length === 0) setTagRows([blankRow()])
+                  return next
+                })
+              }
+              // The padding is the hit box: bare text would leave this under the 24px minimum, and on a
+              // phone this is the only way into the tagging surface.
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 py-1.5 text-xs"
+            >
+              <Tag className="size-3" /> Tags{tagCount ? ` (${tagCount})` : ''}
+            </button>
+            <InfoHint text="Each tag is added to the model's instructions, so it changes how the model answers. Pick one tag per category." />
+          </div>
           {tagsOpen && (
             <div id={tagPanelId} className="mt-1 space-y-1">
               {tagError && <p className="text-destructive text-xs">{tagError}</p>}
@@ -279,6 +287,7 @@ export function ChatComposer({
             }
           }}
           aria-label={ariaLabel}
+          aria-describedby={hint ? hintId : undefined}
           placeholder={placeholder}
           rows={rows}
           className="min-h-0"
@@ -300,6 +309,11 @@ export function ChatComposer({
           {pending ? <Loader2 className="size-4 animate-spin" /> : 'Send'}
         </Button>
       </form>
+      {hint && (
+        <p id={hintId} className="text-muted-foreground mt-1 text-xs">
+          {hint}
+        </p>
+      )}
     </>
   )
 }
