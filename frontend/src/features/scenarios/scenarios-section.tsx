@@ -40,7 +40,8 @@ function TasksSubsection({
       {list.isError && <p className="text-destructive text-sm">{humanizeError(list.error)}</p>}
       {list.isSuccess && tasks.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          No tasks yet. Add tasks to spell out what this scenario asks red-teamers to attempt.
+          No tasks yet.
+          {canMutate && ' Add tasks to spell out what this scenario asks red-teamers to attempt.'}
         </p>
       )}
       {tasks.length > 0 && (
@@ -240,7 +241,8 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
       )}
       {list.isSuccess && scenarios.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          No scenarios yet. Add a scenario to give red-teamers a challenge to probe.
+          No scenarios yet.
+          {canMutate && ' Add a scenario to give red-teamers a challenge to probe.'}
         </p>
       )}
 

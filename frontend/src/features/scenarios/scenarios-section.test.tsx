@@ -235,7 +235,7 @@ describe('ScenariosSection — tasks', () => {
     )
     renderSection(['evaluations:update'])
 
-    expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument()
+    expect(await screen.findByText(/no tasks yet\. add tasks/i)).toBeInTheDocument()
     expect(screen.getAllByRole('list')).toHaveLength(1)
   })
 
@@ -247,8 +247,31 @@ describe('ScenariosSection — tasks', () => {
     )
     renderSection(['evaluations:update'])
 
-    expect(await screen.findByText(/no scenarios yet/i)).toBeInTheDocument()
+    expect(await screen.findByText(/no scenarios yet\. add a scenario/i)).toBeInTheDocument()
     expect(screen.queryByRole('list')).toBeNull()
+  })
+
+  it('offers no call to add tasks to those who cannot', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/scenarios/${SCEN_ID}/tasks`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(['evaluations:read'])
+
+    expect(await screen.findByText(/^No tasks yet\.$/)).toBeInTheDocument()
+  })
+
+  it('offers no call to add a scenario to those who cannot', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/scenarios`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+    )
+    renderSection(['evaluations:read'])
+
+    expect(await screen.findByText(/^No scenarios yet\.$/)).toBeInTheDocument()
   })
 
   it('deleting a task calls DELETE on the tasks endpoint', async () => {
