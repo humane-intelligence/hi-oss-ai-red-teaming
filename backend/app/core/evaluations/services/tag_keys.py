@@ -197,9 +197,9 @@ async def assert_tags_allowed(session: AsyncSession, evaluation_id: UUID, tags: 
     (an empty set forbids all tags).
 
     Raises:
-        BadRequestError: If the evaluation has tagging disabled, or restricts tags and ``tags``
-            carries a key outside the allowed set (mirrors the allowed-model subset check on model
-            assignment).
+        BadRequestError: If the instance turns conversation tags off, the evaluation has tagging
+            disabled, or it restricts tags and ``tags`` carries a key outside the allowed set
+            (mirrors the allowed-model subset check on model assignment).
         NotFoundError: If no live evaluation has this id.
     """
     if not tags:

@@ -94,7 +94,8 @@ _NOT_RESTORABLE = problem_response(
     "model-unassign cascade rather than by a user."
 )
 _TAG_NOT_ALLOWED = problem_response(
-    "A conversation tag key is not allowed for this evaluation's restricted tag schema."
+    "Conversation tags are not allowed: the instance turns them off, the evaluation has tagging "
+    "disabled, or a key is outside its restricted tag schema."
 )
 
 # Every route with an object in its path honours in-group authority as well as the JWT;

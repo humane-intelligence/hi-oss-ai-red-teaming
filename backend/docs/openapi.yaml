@@ -8760,7 +8760,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A conversation tag key is not allowed for this evaluation's restricted tag schema.
+          description: 'Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled,
+            or a key is outside its restricted tag schema.'
           content:
             application/problem+json:
               schema:
@@ -9082,7 +9083,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A conversation tag key is not allowed for this evaluation's restricted tag schema.
+          description: 'Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled,
+            or a key is outside its restricted tag schema.'
           content:
             application/problem+json:
               schema:
@@ -9370,7 +9372,8 @@ paths:
         '400':
           description: Model cannot serve this request (it cannot answer in text, or an image went to a model that does not
             accept image input), an image_keys entry is unknown/not the caller's own private upload, or this request's `tags`
-            carry a key the evaluation disallows (tagging disabled, or outside its restricted tag schema).
+            carry a key that is not allowed (tags turned off on the instance, tagging disabled on the evaluation, or outside
+            its restricted tag schema).
           content:
             application/problem+json:
               schema:

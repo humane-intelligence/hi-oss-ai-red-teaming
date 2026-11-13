@@ -107,7 +107,8 @@ _SEND_RESPONSES = _STREAM_RESPONSES | {
         "Model cannot serve this request (it cannot answer in text, or an image went "
         "to a model that does not accept image input), "
         "an image_keys entry is unknown/not the caller's own private upload, or this request's `tags` "
-        "carry a key the evaluation disallows (tagging disabled, or outside its restricted tag schema)."
+        "carry a key that is not allowed (tags turned off on the instance, tagging disabled on the "
+        "evaluation, or outside its restricted tag schema)."
     ),
     status.HTTP_409_CONFLICT: problem_response("client_message_id already used in another conversation."),
 }

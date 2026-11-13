@@ -20468,7 +20468,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description A conversation tag key is not allowed for this evaluation's restricted tag schema. */
+            /** @description Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled, or a key is outside its restricted tag schema. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -20792,7 +20792,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description A conversation tag key is not allowed for this evaluation's restricted tag schema. */
+            /** @description Conversation tags are not allowed: the instance turns them off, the evaluation has tagging disabled, or a key is outside its restricted tag schema. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -20965,7 +20965,7 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
-            /** @description Model cannot serve this request (it cannot answer in text, or an image went to a model that does not accept image input), an image_keys entry is unknown/not the caller's own private upload, or this request's `tags` carry a key the evaluation disallows (tagging disabled, or outside its restricted tag schema). */
+            /** @description Model cannot serve this request (it cannot answer in text, or an image went to a model that does not accept image input), an image_keys entry is unknown/not the caller's own private upload, or this request's `tags` carry a key that is not allowed (tags turned off on the instance, tagging disabled on the evaluation, or outside its restricted tag schema). */
             400: {
                 headers: {
                     [name: string]: unknown;
