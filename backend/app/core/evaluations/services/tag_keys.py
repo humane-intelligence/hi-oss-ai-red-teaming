@@ -2,8 +2,8 @@
 
 The instance switch `Settings.conversation_tags_enabled` comes first: off reads as `tags_enabled`
 off on every evaluation, without touching the stored flags. Then two independent per-evaluation
-flags, checked in this order. `Evaluation.tags_enabled` decides
-whether tagging exists here at all: off rejects every tag and the console renders no tagging surface.
+flags, checked in this order. `Evaluation.tags_enabled` decides whether tagging exists here at all:
+off rejects every tag and the console renders no tagging surface.
 `Evaluation.tags_restricted` then decides *which* keys: off means free-form regardless of the key set,
 on means every key must be in the allowed set (an empty set while restricted forbids all tags).
 Keeping "disabled" separate from "restricted with nothing allowed" is deliberate — they are
@@ -163,7 +163,7 @@ async def allowed_tags_only(session: AsyncSession, evaluation_id: UUID, tags: di
         logger.warning(
             "conversations.tags.dropped",
             evaluation_id=str(evaluation_id),
-            reason="tagging_disabled",
+            reason="tagging_disabled" if get_settings().conversation_tags_enabled else "instance_disabled",
             dropped=sorted(tags),
         )
         return {}
@@ -198,6 +198,8 @@ async def assert_tags_allowed(session: AsyncSession, evaluation_id: UUID, tags: 
         return
     enabled, restricted = await _tagging_policy(session, evaluation_id)
     if not enabled:
+        if not get_settings().conversation_tags_enabled:
+            raise BadRequestError("Conversation tags are turned off on this instance.")
         raise BadRequestError("Tagging is disabled for this evaluation.")
     if not restricted:
         return

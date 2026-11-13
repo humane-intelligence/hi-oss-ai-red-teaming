@@ -111,11 +111,11 @@ class TestGetPublicPlatformSettings:
         assert response.status_code == status.HTTP_200_OK
         assert response.json().keys() == {"signup_enabled", "password_policy", "conversation_tags_enabled"}
 
-    async def test_conversation_tags_follow_the_instance_setting(
-        self, auth_db_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_conversation_tags_follow_the_instance_setting(self, auth_db_client: AsyncClient) -> None:
         tags_off = app.dependency_overrides[get_settings]().model_copy(update={"conversation_tags_enabled": False})
-        monkeypatch.setitem(app.dependency_overrides, get_settings, lambda: tags_off)
+        # Assigned, not monkeypatched: `_configured_settings` pops this key on teardown, and a
+        # monkeypatch undone after it would put that fixture's override back for later tests.
+        app.dependency_overrides[get_settings] = lambda: tags_off
 
         response = await auth_db_client.get("/api/v1/platform-settings/public")
 

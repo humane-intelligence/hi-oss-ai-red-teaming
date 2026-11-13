@@ -68,7 +68,7 @@ class TestInstanceSwitch:
     async def test_authoring_is_refused(self, db_session: AsyncSession) -> None:
         evaluation = await _evaluation(db_session, enabled=True)
 
-        with pytest.raises(BadRequestError, match="disabled"):
+        with pytest.raises(BadRequestError, match="turned off on this instance"):
             await assert_tags_allowed(db_session, evaluation.id, {"env": "prod"})
 
     async def test_nothing_reaches_the_prompt(self, db_session: AsyncSession) -> None:
@@ -82,6 +82,7 @@ class TestInstanceSwitch:
         policy = await load_tag_fold_policy(db_session, evaluation.id)
 
         assert policy.unsent({"env": "prod"}) == ["env"]
+        await db_session.refresh(evaluation)
         assert evaluation.tags_enabled is True
 
 
