@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api/client'
 import { unwrap } from '@/lib/api/fetcher'
 import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissions'
@@ -14,17 +14,27 @@ const READ = 'conversations:read'
 // applied here. Deliberately not an `enabled` override: that would let a caller replace the
 // permission check with an unrelated condition (a collapsed panel, a lazy tab).
 type ObjectAuthority = { groupPermissions?: readonly string[] }
+const GROUPS_PAGE = 10
+
 export function useConversationGroups(evaluationId: string, options: ObjectAuthority = {}) {
   const { has } = useEffectivePermissions(options.groupPermissions)
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['conversation-groups', evaluationId],
     enabled: evaluationId !== '' && has(READ),
-    queryFn: async () =>
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) =>
       unwrap(
         await apiClient.GET('/api/v1/evaluations/{evaluation_id}/conversation-groups', {
-          params: { path: { evaluation_id: evaluationId }, query: { limit: 100, offset: 0 } },
+          params: {
+            path: { evaluation_id: evaluationId },
+            query: { limit: GROUPS_PAGE, offset: pageParam },
+          },
         }),
       ),
+    getNextPageParam: (last) => {
+      const next = last.offset + last.items.length
+      return next < last.total ? next : undefined
+    },
   })
 }
 

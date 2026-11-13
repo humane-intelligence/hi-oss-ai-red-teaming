@@ -104,8 +104,19 @@ const singleGroup = {
 }
 
 function groupsHandler(groups: unknown[]) {
-  return http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups`, () =>
-    HttpResponse.json({ items: groups, total: groups.length, limit: 100, offset: 0 }),
+  return http.get(
+    `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups`,
+    ({ request }) => {
+      const params = new URL(request.url).searchParams
+      const limit = Number(params.get('limit'))
+      const offset = Number(params.get('offset'))
+      return HttpResponse.json({
+        items: groups.slice(offset, offset + limit),
+        total: groups.length,
+        limit,
+        offset,
+      })
+    },
   )
 }
 
@@ -162,7 +173,7 @@ describe('ConversationsSection — groups', () => {
     await waitFor(() => expect(screen.getByText('GPT-4o vs Claude')).toBeInTheDocument())
     expect(screen.getByText('Quick probe')).toBeInTheDocument()
     // counter = number of sessions (2 groups), not the 3 threads they contain
-    expect(screen.getByText('Conversations (2)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Latest conversations (2)' })).toBeInTheDocument()
     // gpt-4o is a member of both groups; claude-3-opus only of the multi group.
     expect(screen.getAllByText('gpt-4o')).toHaveLength(2)
     expect(screen.getByText('claude-3-opus')).toBeInTheDocument()
@@ -246,6 +257,26 @@ describe('ConversationsSection — groups', () => {
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => expect(deleted).toBe(true))
+  })
+
+  it('loads ten groups at a time, counting all of them in the heading', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...singleGroup,
+      id: `grp-${String(i).padStart(4, '0')}-0000-0000-000000000000`,
+      name: `Probe ${i + 1}`,
+    }))
+    server.use(groupsHandler(many))
+    const user = userEvent.setup()
+    renderSection()
+
+    expect(await screen.findByText('Probe 10')).toBeInTheDocument()
+    expect(screen.queryByText('Probe 11')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Latest conversations (12)' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Probe 12')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
   })
 
   it('shows the empty state when there are no groups', async () => {

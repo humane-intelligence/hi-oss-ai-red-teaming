@@ -44,12 +44,11 @@ export function ConversationsSection({
   const { has: allows } = useEffectivePermissions(groupPermissions)
   const canRead = allows('conversations:read')
   const groupsQuery = useConversationGroups(evaluation.id, { groupPermissions })
-  const groups = groupsQuery.data?.items ?? []
+  const groups = groupsQuery.data?.pages.flatMap((p) => p.items) ?? []
   const models = evaluation.models ?? []
   const canRename = allows('conversations:update')
   const canDelete = allows('conversations:delete')
   const canStart = allows('conversations:create')
-  const total = groups.length
 
   const [renameTarget, setRenameTarget] = useState<ConversationGroupResponse | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ConversationGroupResponse | null>(null)
@@ -64,13 +63,16 @@ export function ConversationsSection({
 
   return (
     <div className="space-y-3">
-      <h2 className="font-display text-lg font-semibold tracking-tight">Conversations ({total})</h2>
+      <h2 className="font-display text-lg font-semibold tracking-tight">
+        Latest conversations
+        {groupsQuery.isSuccess && ` (${groupsQuery.data.pages[0]?.total ?? 0})`}
+      </h2>
 
       {models.length === 0 && (
         <p className="text-muted-foreground text-sm">Assign a model to start conversations.</p>
       )}
       {groupsQuery.isError && (
-        <p className="text-destructive">Error: {(groupsQuery.error as Error).message}</p>
+        <p className="text-destructive">{humanizeError(groupsQuery.error)}</p>
       )}
 
       <div className="space-y-2">
@@ -89,7 +91,7 @@ export function ConversationsSection({
             />
           )
         })}
-        {!groupsQuery.isPending && groups.length === 0 && (
+        {groupsQuery.isSuccess && groups.length === 0 && (
           <p className="text-muted-foreground text-sm">
             No conversations yet.
             {canStart &&
@@ -98,6 +100,17 @@ export function ConversationsSection({
           </p>
         )}
       </div>
+
+      {groupsQuery.hasNextPage && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={groupsQuery.isFetchingNextPage}
+          onClick={() => groupsQuery.fetchNextPage()}
+        >
+          {groupsQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
+        </Button>
+      )}
 
       {canDelete && <DeletedConversations evaluationId={evaluation.id} modelName={modelName} />}
 
