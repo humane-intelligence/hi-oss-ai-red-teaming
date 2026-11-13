@@ -856,6 +856,62 @@ describe('EvaluationDetailPage — in-group authority', () => {
     expect(await screen.findByText('NEW CONVERSATION ?scenario=s2')).toBeInTheDocument()
   })
 
+  it("previews the picked scenario's tasks, or says it has none or why they did not load", async () => {
+    const user = userEvent.setup()
+    server.use(
+      canStart,
+      http.get('http://localhost/api/v1/scenarios/s1/tasks', () =>
+        HttpResponse.json({
+          items: [{ id: 't1', scenario_id: 's1', name: 'Extract the system prompt' }],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+      http.get('http://localhost/api/v1/scenarios/s2/tasks', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...content,
+      ...baseHandlers(withModel),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+    const dialog = await screen.findByRole('dialog')
+    const pick = async (name: string) => {
+      await user.click(within(dialog).getByRole('combobox', { name: 'Scenario' }))
+      await user.click(await screen.findByRole('option', { name }))
+    }
+
+    await pick('s1')
+    expect(await within(dialog).findByText('Extract the system prompt')).toBeInTheDocument()
+    await pick('s2')
+    expect(await within(dialog).findByText('No tasks in this scenario.')).toBeInTheDocument()
+  })
+
+  it('says why the task preview is missing when the tasks fail to load', async () => {
+    const user = userEvent.setup()
+    server.use(
+      canStart,
+      http.get('http://localhost/api/v1/scenarios/s1/tasks', () =>
+        HttpResponse.json({ title: 'Tasks unavailable', status: 500 }, { status: 500 }),
+      ),
+      ...content,
+      ...baseHandlers(withModel),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    await waitFor(async () => expect(await startButton()).toBeEnabled())
+    await user.click(await startButton())
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('combobox', { name: 'Scenario' }))
+    await user.click(await screen.findByRole('option', { name: 's1' }))
+
+    expect(await within(dialog).findByText(/went wrong on the server/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText('No tasks in this scenario.')).toBeNull()
+  })
+
   it('skips the dialog when there is only one scenario to pick', async () => {
     const user = userEvent.setup()
     server.use(

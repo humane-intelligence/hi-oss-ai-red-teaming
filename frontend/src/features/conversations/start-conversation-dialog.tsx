@@ -4,6 +4,7 @@ import { useScenarioTasks } from '@/features/scenarios/queries'
 import { FormField } from '@/components/shared/form-field'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
+import { humanizeError } from '@/lib/api/problem'
 import {
   Select,
   SelectContent,
@@ -69,16 +70,21 @@ export function StartConversationDialog({
             {scenario.description && (
               <p className="text-muted-foreground whitespace-pre-line">{scenario.description}</p>
             )}
-            {(tasks.data?.items.length ?? 0) > 0 && (
-              <div>
-                <p className="font-medium">Tasks in this scenario</p>
-                <ul className="text-muted-foreground list-disc pl-5">
-                  {tasks.data?.items.map((t) => (
-                    <li key={t.id}>{t.name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {tasks.isPending && <p className="text-muted-foreground">Loading tasks…</p>}
+            {tasks.isError && <p className="text-destructive">{humanizeError(tasks.error)}</p>}
+            {tasks.isSuccess &&
+              (tasks.data.items.length === 0 ? (
+                <p className="text-muted-foreground">No tasks in this scenario.</p>
+              ) : (
+                <div>
+                  <p className="font-medium">Tasks in this scenario</p>
+                  <ul className="text-muted-foreground list-disc pl-5">
+                    {tasks.data.items.map((t) => (
+                      <li key={t.id}>{t.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
           </div>
         )}
         <div className="flex justify-end gap-2">
