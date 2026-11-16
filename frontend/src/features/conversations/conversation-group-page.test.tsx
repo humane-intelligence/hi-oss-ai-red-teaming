@@ -1490,3 +1490,122 @@ describe('ConversationGroupPage — internet access marker', () => {
     expect(await screen.findByText('Internet access')).toBeInTheDocument()
   })
 })
+
+describe('ConversationGroupPage — conversation labels', () => {
+  const categoriesUrl = `http://localhost/api/v1/evaluations/${EVAL_ID}/label-categories`
+  const groupUrl = `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${GROUP_ID}`
+  const categories = [
+    {
+      id: 'cat-lang',
+      evaluation_id: EVAL_ID,
+      name: 'language',
+      values: ['english'],
+      created_at: '',
+    },
+    { id: 'cat-note', evaluation_id: EVAL_ID, name: 'note', values: [], created_at: '' },
+  ]
+  // 'polish' has since been dropped from the category's list; the group still holds it.
+  const labelled = {
+    ...group(),
+    labels: [
+      { category_id: 'cat-lang', name: 'language', value: 'polish' },
+      { category_id: 'cat-note', name: 'note', value: 'roleplay' },
+    ],
+  }
+
+  it('shows the labels under the title', async () => {
+    server.use(
+      http.get(groupUrl, () => HttpResponse.json(labelled)),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+    )
+    renderPage()
+
+    const list = await screen.findByRole('list', { name: 'Labels' })
+    expect(within(list).getByText('language: polish')).toBeInTheDocument()
+    expect(within(list).getByText('note: roleplay')).toBeInTheDocument()
+  })
+
+  it('edits labels, keeping a value no longer listed and sending a cleared one blank', async () => {
+    let captured: unknown = null
+    server.use(
+      http.get(groupUrl, () => HttpResponse.json(labelled)),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+      http.patch(groupUrl, async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json(labelled)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('polish (not in the list)')
+    await user.clear(within(dialog).getByLabelText('note'))
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() =>
+      expect(captured).toEqual({ labels: { 'cat-lang': 'polish', 'cat-note': '' } }),
+    )
+  })
+
+  it('shows a held value spelled differently from the list as that listed value', async () => {
+    server.use(
+      http.get(groupUrl, () =>
+        HttpResponse.json({
+          ...group(),
+          labels: [{ category_id: 'cat-lang', name: 'language', value: 'ENGLISH' }],
+        }),
+      ),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('english')
+  })
+
+  it('keeps a held label whose category the cached list does not know yet', async () => {
+    let captured: unknown = null
+    server.use(
+      http.get(groupUrl, () =>
+        HttpResponse.json({
+          ...labelled,
+          labels: [...labelled.labels, { category_id: 'cat-new', name: 'persona', value: 'x' }],
+        }),
+      ),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+      http.patch(groupUrl, async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json(labelled)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: /^save$/i }),
+    )
+
+    await waitFor(() =>
+      expect(captured).toEqual({
+        labels: { 'cat-lang': 'polish', 'cat-note': 'roleplay', 'cat-new': 'x' },
+      }),
+    )
+  })
+
+  it('offers no label editing when the evaluation defines no categories', async () => {
+    server.use(...baseHandlers())
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /labels/i })).toBeNull()
+  })
+})

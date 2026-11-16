@@ -234,6 +234,28 @@ export function useRenameConversationGroup(evaluationId: string) {
   })
 }
 
+// PATCH `labels` replaces the whole set, so callers send every category, blank to clear one.
+export function useSetGroupLabels(evaluationId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ groupId, labels }: { groupId: string; labels: Record<string, string> }) =>
+      unwrap(
+        await apiClient.PATCH(
+          '/api/v1/evaluations/{evaluation_id}/conversation-groups/{conversation_group_id}',
+          {
+            params: { path: { evaluation_id: evaluationId, conversation_group_id: groupId } },
+            body: { labels },
+          },
+        ),
+      ),
+    onSuccess: (group) => {
+      qc.invalidateQueries({ queryKey: ['conversation-groups'] })
+      qc.invalidateQueries({ queryKey: ['conversation-group', group.id] })
+      toast.success('Labels saved')
+    },
+  })
+}
+
 export function useAddConversationToGroup(scenarioId: string, groupId: string) {
   const qc = useQueryClient()
   return useMutation({

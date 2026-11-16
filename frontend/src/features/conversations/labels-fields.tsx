@@ -45,7 +45,7 @@ export function LabelsFields({
                     {v}
                   </option>
                 ))}
-                {keptUnlisted && <option value={kept}>{kept} (no longer listed)</option>}
+                {keptUnlisted && <option value={kept}>{kept} (not in the list)</option>}
               </PlainSelect>
             ) : (
               <Input

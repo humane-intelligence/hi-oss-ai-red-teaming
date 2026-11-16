@@ -1831,3 +1831,53 @@ describe('ConversationDetailPage — internet access marker', () => {
     expect(await screen.findByText('Internet access')).toBeInTheDocument()
   })
 })
+
+describe('ConversationDetailPage — conversation labels', () => {
+  it("shows its group's labels and edits them from here", async () => {
+    let captured: unknown = null
+    const groupUrl = `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${GROUP_ID}`
+    const labelledGroup = {
+      id: GROUP_ID,
+      user_id: AUTH_USER_ID,
+      evaluation_id: EVAL_ID,
+      name: 'Model probe',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      conversations: [],
+      labels: [{ category_id: 'cat-lang', name: 'language', value: 'english' }],
+    }
+    server.use(
+      http.get(groupUrl, () => HttpResponse.json(labelledGroup)),
+      ...baseHandlers(conversationWithScenario),
+      http.get(`http://localhost/api/v1/scenarios/${SCENARIO_ID}/tasks`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/label-categories`, () =>
+        HttpResponse.json([
+          {
+            id: 'cat-lang',
+            evaluation_id: EVAL_ID,
+            name: 'language',
+            values: ['english', 'polish'],
+            created_at: '',
+          },
+        ]),
+      ),
+      http.patch(groupUrl, async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json(labelledGroup)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const list = await screen.findByRole('list', { name: 'Labels' })
+    expect(within(list).getByText('language: english')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Edit labels' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.selectOptions(within(dialog).getByLabelText('language'), 'polish')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(captured).toEqual({ labels: { 'cat-lang': 'polish' } }))
+  })
+})
