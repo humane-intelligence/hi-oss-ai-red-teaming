@@ -82,7 +82,7 @@ export function AddMembersDialog({
     { limit: 50, search: term || undefined, order_by: 'email' },
     { enabled: open && canPickUsers, suppressErrorToast: true },
   )
-  const memberIds = useAllGroupMemberIds(groupId, { enabled: open })
+  const memberIds = useAllGroupMemberIds(groupId, { enabled: open, suppressErrorToast: true })
   const roles = useRoles({ objectAssignable: true, enabled: open })
   const add = useBulkAddGroupMembers(groupId)
 
@@ -96,7 +96,6 @@ export function AddMembersDialog({
   const others = (users.data ?? []).filter((u) => !orgIds.has(u.id))
   const roleList = [...(roles.data?.items ?? [])].sort((a, b) => rank(a.name) - rank(b.name))
   // The bulk route rejects a larger request whole (422), so stop it here with a reason.
-  const tooMany = picked.size > ALL_MEMBERS_CAP
 
   function toggle(user: Picked) {
     setPicked((prev) => {
@@ -124,7 +123,7 @@ export function AddMembersDialog({
     // Keep what was set on an earlier pass through this step; a newly picked user starts as Red Teamer.
     setRoleIds((prev) =>
       Object.fromEntries(
-        [...picked.keys()].map((id) => [id, prev[id] ?? (fallback ? [fallback.id] : [])]),
+        pickedList.map((u) => [u.id, prev[u.id] ?? (fallback ? [fallback.id] : [])]),
       ),
     )
     setStep('roles')
@@ -140,7 +139,10 @@ export function AddMembersDialog({
     })
   }
 
-  const pickedList = [...picked.values()]
+  // A pick made before the member ids landed may be a member already; it is shown as such, so drop it.
+  const pickedList = [...picked.values()].filter((u) => !members.has(u.id))
+  // The bulk route rejects a larger request whole (422), so stop it here with a reason.
+  const tooMany = pickedList.length > ALL_MEMBERS_CAP
   const allHold = (roleId: string) =>
     pickedList.length > 0 && pickedList.every((u) => roleIds[u.id]?.includes(roleId))
   const someHold = (roleId: string) => pickedList.some((u) => roleIds[u.id]?.includes(roleId))
@@ -319,8 +321,11 @@ export function AddMembersDialog({
           </div>
           {tooMany && (
             <p className="text-muted-foreground text-xs">
-              One add takes at most {ALL_MEMBERS_CAP} users — {picked.size} are selected.
+              One add takes at most {ALL_MEMBERS_CAP} users — {pickedList.length} are selected.
             </p>
+          )}
+          {memberIds.isError && (
+            <p className="text-destructive text-xs">Couldn’t load the group’s current members.</p>
           )}
           {roles.isError && (
             <p className="text-destructive text-xs">Couldn’t load the roles to assign.</p>
@@ -330,10 +335,12 @@ export function AddMembersDialog({
               Cancel
             </Button>
             <Button
-              disabled={picked.size === 0 || tooMany || !roles.isSuccess || !memberIds.isSuccess}
+              disabled={
+                pickedList.length === 0 || tooMany || !roles.isSuccess || !memberIds.isSuccess
+              }
               onClick={toRoles}
             >
-              Next{picked.size > 0 && ` (${picked.size} selected)`}
+              Next{pickedList.length > 0 && ` (${pickedList.length} selected)`}
             </Button>
           </div>
         </>

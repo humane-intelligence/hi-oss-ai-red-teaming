@@ -601,6 +601,30 @@ describe('MembersSection — add flow', () => {
     expect(within(dialog).getByRole('checkbox', { name: /carol@example.com/ })).toBeEnabled()
   })
 
+  it('drops a member picked before the member list arrived', async () => {
+    handlers({ users: [user1, user3] })
+    let release: () => void = () => {}
+    server.use(
+      http.get(
+        `http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`,
+        async ({ request }) => {
+          // Only the dialog's id walk pages by offset; hold it back so the pick lands first.
+          if (new URL(request.url).searchParams.has('offset')) {
+            await new Promise<void>((resolve) => (release = resolve))
+          }
+          return HttpResponse.json({ items: [member], total: 1, limit: 100, offset: 0 })
+        },
+      ),
+    )
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByRole('checkbox', { name: /ada@example.com/ }))
+    await user.click(within(dialog).getByRole('checkbox', { name: /carol@example.com/ }))
+    release()
+
+    expect(await within(dialog).findByRole('button', { name: 'Next (1 selected)' })).toBeEnabled()
+  })
+
   it('toasts the outcome of a partly failed add when the page is gone before it lands', async () => {
     handlers({ users: [user3] })
     let respond: () => void = () => {}

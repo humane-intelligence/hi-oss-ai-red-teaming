@@ -157,10 +157,14 @@ export function useGroupMembers(
 
 // "Already a member" in the add dialog must hold past the first page, or a large group's members
 // show as pickable and come back as failed rows.
-export function useAllGroupMemberIds(groupId: string, options?: { enabled?: boolean }) {
+export function useAllGroupMemberIds(
+  groupId: string,
+  options?: { enabled?: boolean; suppressErrorToast?: boolean },
+) {
   return useQuery({
     queryKey: ['evaluation-group-members', groupId, 'all-ids'],
     enabled: groupId !== '' && (options?.enabled ?? true),
+    meta: options?.suppressErrorToast ? { suppressErrorToast: true } : undefined,
     queryFn: async () => {
       const ids: string[] = []
       for (;;) {
