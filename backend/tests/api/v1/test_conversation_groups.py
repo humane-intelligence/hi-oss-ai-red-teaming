@@ -1228,13 +1228,22 @@ async def test_create_sets_labels_canonical_and_cleaned_by_category_name(
     assert fetched.json()["labels"] == expected
 
 
-@pytest.mark.parametrize("which", ["outside-list", "unknown-category"])
+@pytest.mark.parametrize("which", ["outside-list", "unknown-category", "other-evaluation"])
 async def test_create_rejects_a_label_the_evaluation_does_not_define(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role, which: str
 ) -> None:
     caller = await _caller(db_session, red_teamer_role, email=f"labels-bad-{which}@example.com")
     _, scenario, assignment, ids = await _labelled_setup(db_session)
-    labels = {ids["language"]: "german"} if which == "outside-list" else {str(uuid4()): "x"}
+    if which == "outside-list":
+        labels = {ids["language"]: "german"}
+    elif which == "other-evaluation":
+        other = await _evaluation_for(db_session)
+        foreign = EvaluationLabelCategory(evaluation_id=other.id, name="language")
+        db_session.add(foreign)
+        await db_session.flush()
+        labels = {str(foreign.id): "x"}
+    else:
+        labels = {str(uuid4()): "x"}
 
     response = await _create_group(
         auth_db_client,
@@ -1272,6 +1281,33 @@ async def test_patch_replaces_labels_and_keeps_the_name(
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["name"] == "keep me"
     assert [(label["name"], label["value"]) for label in response.json()["labels"]] == [("language", "Polish")]
+    assert response.json()["updated_at"] > created.json()["updated_at"]
+
+
+async def test_patch_with_unchanged_labels_keeps_updated_at(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-same@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["language"]: "Polish"},
+        },
+    )
+
+    response = await auth_db_client.patch(
+        f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}",
+        json={"labels": {ids["language"]: "polish"}},
+        headers=_auth(token),
+    )
+
+    assert response.json()["updated_at"] == created.json()["updated_at"]
 
 
 async def test_patch_rejects_null_labels(

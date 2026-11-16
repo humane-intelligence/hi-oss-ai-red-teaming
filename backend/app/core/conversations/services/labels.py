@@ -7,6 +7,8 @@ from collections import defaultdict
 from collections.abc import Collection
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -58,10 +60,20 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
                 raise BadRequestError(f"{value!r} is not one of the values of label {category.name!r}.")
             value = match
         rows.append(ConversationGroupLabel(conversation_group_id=group.id, category_id=category_id, value=value))
+    stored = await session.execute(
+        select(col(ConversationGroupLabel.category_id), col(ConversationGroupLabel.value)).where(
+            col(ConversationGroupLabel.conversation_group_id) == group.id
+        )
+    )
+    if dict(stored.tuples().all()) == {row.category_id: row.value for row in rows}:
+        return
     await session.execute(
         delete(ConversationGroupLabel).where(col(ConversationGroupLabel.conversation_group_id) == group.id)
     )
     session.add_all(rows)
+    # The group row itself is untouched otherwise, so its `updated_at` would miss a relabel.
+    group.updated_at = datetime.now(UTC)
+    session.add(group)
     await session.flush()
 
 
