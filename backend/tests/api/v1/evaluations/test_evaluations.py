@@ -25,6 +25,7 @@ from app.core.evaluations.enums import EvaluationStatus
 from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
 from app.core.evaluations.models import Task
@@ -854,6 +855,43 @@ async def test_duplicate_deep_copies_tag_schema(
         .all()
     )
     assert [k.key for k in new_keys] == ["env"]
+
+
+@pytest.mark.integration
+async def test_duplicate_without_children_copies_the_label_categories(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    manager_role: Role,
+) -> None:
+    caller = await _caller(db_session, manager_role, email="dup-labels@example.com")
+    group = await persist_evaluation_group(db_session, created_by_id=caller.id)
+    source = Evaluation(title="T", description="d", evaluation_group_id=group.id, created_by_id=caller.id)
+    db_session.add(source)
+    await db_session.flush()
+    gone = EvaluationLabelCategory(evaluation_id=source.id, name="gone")
+    db_session.add_all([EvaluationLabelCategory(evaluation_id=source.id, name="language", values=["en", "pl"]), gone])
+    await db_session.flush()
+    gone.soft_delete(caller.id)
+    await db_session.flush()
+    source_id = source.id
+
+    response = await auth_db_client.post(
+        f"/api/v1/evaluations/{source_id}/duplicate", headers={"Authorization": f"Bearer {_token(caller)}"}
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    copied = (
+        (
+            await db_session.execute(
+                EvaluationLabelCategory.live_select().where(
+                    col(EvaluationLabelCategory.evaluation_id) == response.json()["id"]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [(row.name, row.values) for row in copied] == [("language", ["en", "pl"])]
 
 
 @pytest.mark.integration
