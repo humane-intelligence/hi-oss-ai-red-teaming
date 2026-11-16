@@ -51,6 +51,8 @@ from app.core.conversations.services.groups import get_conversation_group
 from app.core.conversations.services.groups import list_conversation_groups
 from app.core.conversations.services.groups import rename_conversation_group
 from app.core.conversations.services.groups import soft_delete_conversation_group
+from app.core.conversations.services.labels import labels_by_group
+from app.core.conversations.services.labels import set_group_labels
 from app.core.dependencies import DbSession
 from app.core.dependencies import PaginationDep
 from app.core.dependencies import transactional
@@ -104,11 +106,15 @@ _OrderBy = Annotated[
         "`models` (at least one), all owned by the caller and sharing that scenario. The scenario "
         "carries the evaluation the group belongs to. The same model may be listed more than "
         "once — each entry becomes its own conversation. Every model assignment must belong to "
-        "the scenario's evaluation. The `Location` header points at the group's read route, which "
-        "stays nested under the evaluation."
+        "the scenario's evaluation. `labels` sets the group's labels under the evaluation's label "
+        "categories (never sent to the model). The `Location` header points at the group's read route, "
+        "which stays nested under the evaluation."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
+        status.HTTP_400_BAD_REQUEST: problem_response(
+            "A label category is not defined on the evaluation, or a value is outside its list."
+        ),
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _CREATE_NOT_FOUND,
@@ -130,6 +136,7 @@ async def create_conversation_group_endpoint(
 
     ### Errors
 
+    * **400 Bad Request** — a label category is not the evaluation's, or a value is outside its list.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:create`.
     * **404 Not Found** — the scenario isn't visible, or a model assignment isn't part of its evaluation.
@@ -153,11 +160,15 @@ async def create_conversation_group_endpoint(
         models=models,
         can_manage=can_manage,
     )
+    await set_group_labels(db, conversation_group, payload.labels)
     response.headers["Location"] = (
         f"/api/v1/evaluations/{conversation_group.evaluation_id}/conversation-groups/{conversation_group.id}"
     )
     license_str = await resolve_effective_license(db, conversation_group.evaluation_id)
-    return ConversationGroupResponse.from_model(conversation_group, conversations, effective_license=license_str)
+    labels = await labels_by_group(db, [conversation_group.id])
+    return ConversationGroupResponse.from_model(
+        conversation_group, conversations, effective_license=license_str, labels=labels.get(conversation_group.id, [])
+    )
 
 
 @router.get(
@@ -213,9 +224,12 @@ async def list_evaluation_groups_endpoint(
     # All groups share the path evaluation — resolve the effective license once
     # (the resolver owns the evaluation → group → platform-default cascade).
     license_str = await resolve_effective_license(db, evaluation.id)
+    labels = await labels_by_group(db, [group.id for group in groups])
     return Page[ConversationGroupResponse](
         items=[
-            ConversationGroupResponse.from_model(group, group.conversations, effective_license=license_str)
+            ConversationGroupResponse.from_model(
+                group, group.conversations, effective_license=license_str, labels=labels.get(group.id, [])
+            )
             for group in groups
         ],
         total=total,
@@ -264,8 +278,12 @@ async def get_conversation_group_endpoint(
         read_any=True,
     )
     license_str = await resolve_effective_license(db, conversation_group.evaluation_id)
+    labels = await labels_by_group(db, [conversation_group.id])
     return ConversationGroupResponse.from_model(
-        conversation_group, conversation_group.conversations, effective_license=license_str
+        conversation_group,
+        conversation_group.conversations,
+        effective_license=license_str,
+        labels=labels.get(conversation_group.id, []),
     )
 
 
@@ -273,13 +291,17 @@ async def get_conversation_group_endpoint(
     "/evaluations/{evaluation_id}/conversation-groups/{conversation_group_id}",
     response_model=ConversationGroupResponse,
     status_code=status.HTTP_200_OK,
-    summary="Rename group",
+    summary="Rename group or set its labels",
     description=(
-        "Rename a group. The evaluation / scenario links and the member set are not "
-        "editable — start a new group, or add a conversation via the conversation create endpoint."
+        "Rename a group and/or replace its labels; omitted fields stay. The evaluation / scenario links "
+        "and the member set are not editable — start a new group, or add a conversation via the "
+        "conversation create endpoint."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
+        status.HTTP_400_BAD_REQUEST: problem_response(
+            "A label category is not defined on the evaluation, or a value is outside its list."
+        ),
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _GROUP_NOT_FOUND,
@@ -293,10 +315,11 @@ async def update_conversation_group_endpoint(
     caller: _UpdateCaller,
     db: DbSession,
 ) -> ConversationGroupResponse:
-    """Rename a group.
+    """Rename a group or set its labels.
 
     ### Errors
 
+    * **400 Bad Request** — a label category is not the evaluation's, or a value is outside its list.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:update`.
     * **404 Not Found** — no such group owned by the caller in this evaluation.
@@ -310,10 +333,17 @@ async def update_conversation_group_endpoint(
         for_update=True,
         with_conversations=True,
     )
-    conversation_group = await rename_conversation_group(db, conversation_group, name=payload.name)
+    if payload.name is not None:
+        conversation_group = await rename_conversation_group(db, conversation_group, name=payload.name)
+    if payload.labels is not None:
+        await set_group_labels(db, conversation_group, payload.labels)
     license_str = await resolve_effective_license(db, conversation_group.evaluation_id)
+    labels = await labels_by_group(db, [conversation_group.id])
     return ConversationGroupResponse.from_model(
-        conversation_group, conversation_group.conversations, effective_license=license_str
+        conversation_group,
+        conversation_group.conversations,
+        effective_license=license_str,
+        labels=labels.get(conversation_group.id, []),
     )
 
 
@@ -399,10 +429,14 @@ async def list_conversation_groups_endpoint(
         offset=pagination.offset,
     )
     licenses = await resolve_effective_licenses(db, [group.evaluation_id for group in groups])
+    labels = await labels_by_group(db, [group.id for group in groups])
     return Page[ConversationGroupResponse](
         items=[
             ConversationGroupResponse.from_model(
-                group, group.conversations, effective_license=licenses[group.evaluation_id]
+                group,
+                group.conversations,
+                effective_license=licenses[group.evaluation_id],
+                labels=labels.get(group.id, []),
             )
             for group in groups
         ],

@@ -35,6 +35,7 @@ from app.core.conversations.models import TAG_CONTEXT_PARTIAL_EXTRA_KEY
 from app.core.conversations.models import recorded_tag_context
 from app.core.conversations.tags import TAG_KEY_PATTERN
 from app.core.conversations.tags import is_valid_tag_key
+from app.core.evaluations.schemas import MAX_LABEL_CATEGORIES
 from app.core.helpers import sanitise_single_line
 from app.core.licenses.models import DataLicense
 from app.core.licenses.schemas import DataLicenseSummary
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     from app.core.conversations.models import Conversation
     from app.core.conversations.models import ConversationGroup
     from app.core.conversations.models import Message
+    from app.core.conversations.services.labels import GroupLabel
 
 
 def _require_nonblank(value: str) -> str:
@@ -517,6 +519,12 @@ class ConversationUpdate(BaseModel):
         return value
 
 
+GroupLabelsInput = Annotated[
+    dict[UUID, Annotated[str, Field(max_length=200)]],
+    Field(max_length=MAX_LABEL_CATEGORIES),
+]
+
+
 class ConversationGroupModelEntry(BaseModel):
     """One conversation to open in the group — the model assignment and its per-conversation overrides."""
 
@@ -563,6 +571,13 @@ class ConversationGroupCreate(BaseModel):
     models: list[ConversationGroupModelEntry] = Field(
         min_length=1, description="One entry per conversation to open in the group."
     )
+    labels: GroupLabelsInput = Field(
+        default_factory=dict,
+        description=(
+            "Labels, keyed by a label category of the evaluation. A category with values takes one of "
+            "them; one without takes free text. Labels are never sent to the model."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -588,14 +603,25 @@ class ConversationGroupCreate(BaseModel):
 class ConversationGroupUpdate(BaseModel):
     """Payload for `PATCH /v1/evaluations/{evaluation_id}/conversation-groups/{id}`.
 
-    Only `name` is editable — the evaluation / scenario links and the member set
-    are immutable (start a new group, or add a conversation via the conversation
-    create endpoint).
+    `name` and `labels` are editable; omitted fields stay. The evaluation / scenario links and the
+    member set are immutable (start a new group, or add a conversation via the conversation create
+    endpoint).
     """
 
     model_config = ConfigDict(json_schema_extra={"example": {"name": "GPT-4o vs Claude (round 2)"}})
 
-    name: str = Field(min_length=1, max_length=255, description="New display name for the group.")
+    name: str | None = Field(default=None, min_length=1, max_length=255, description="New display name for the group.")
+    labels: GroupLabelsInput | None = Field(
+        default=None,
+        description="Replacement label set, keyed by label category; a blank value clears that category.",
+    )
+
+    @field_validator("name", "labels", mode="before")
+    @classmethod
+    def _reject_explicit_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("must not be null; omit the field to leave it unchanged")
+        return value
 
     @field_validator("name")
     @classmethod
@@ -606,6 +632,14 @@ class ConversationGroupUpdate(BaseModel):
         return stripped
 
 
+class ConversationGroupLabelResponse(BaseModel):
+    """One label on a group, under a live label category of its evaluation."""
+
+    category_id: UUID = Field(description="Label category the value is set under.")
+    name: str = Field(description="Category name.")
+    value: str = Field(description="The value.")
+
+
 _EXAMPLE_GROUP_RESPONSE: dict[str, Any] = {
     "id": "5d2e1f0a-6b7c-4d8e-9f0a-1b2c3d4e5f60",
     "user_id": "a1b2c3d4-1111-2222-3333-444455556666",
@@ -614,6 +648,7 @@ _EXAMPLE_GROUP_RESPONSE: dict[str, Any] = {
     "name": "GPT-4o vs Claude",
     "created_at": "2026-01-01T12:00:00Z",
     "updated_at": "2026-01-02T09:30:00Z",
+    "labels": [{"category_id": "6f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f", "name": "language", "value": "polish"}],
     "conversations": [_EXAMPLE_CONVERSATION_RESPONSE],
 }
 
@@ -621,10 +656,10 @@ _EXAMPLE_GROUP_RESPONSE: dict[str, Any] = {
 class ConversationGroupResponse(BaseModel):
     """Public view of a `ConversationGroup` with its member conversations embedded.
 
-    Build via `ConversationGroupResponse.from_model(group, conversations, effective_license=...)`;
+    Build via `ConversationGroupResponse.from_model(group, conversations, effective_license=..., labels=...)`;
     the caller supplies the live member conversations (eager-loaded under the same
-    owner/visibility scope as the group itself) and the group's effective license (every member
-    shares the group's evaluation).
+    owner/visibility scope as the group itself), the group's effective license (every member
+    shares the group's evaluation) and its labels (`labels_by_group`, batched across a page).
     """
 
     model_config = ConfigDict(json_schema_extra={"example": _EXAMPLE_GROUP_RESPONSE})
@@ -636,6 +671,10 @@ class ConversationGroupResponse(BaseModel):
     name: str = Field(description="Display name for the group.")
     created_at: datetime = Field(description="UTC timestamp of creation.")
     updated_at: datetime = Field(description="UTC timestamp of the last update.")
+    labels: list[ConversationGroupLabelResponse] = Field(
+        default_factory=list,
+        description="The group's labels under live categories, by category name. Never sent to the model.",
+    )
     conversations: list[ConversationResponse] = Field(
         default_factory=list,
         description=(
@@ -647,7 +686,12 @@ class ConversationGroupResponse(BaseModel):
 
     @classmethod
     def from_model(
-        cls, group: ConversationGroup, conversations: list[Conversation], *, effective_license: DataLicense
+        cls,
+        group: ConversationGroup,
+        conversations: list[Conversation],
+        *,
+        effective_license: DataLicense,
+        labels: Sequence[GroupLabel],
     ) -> ConversationGroupResponse:
         """Project a `ConversationGroup` plus its member conversations into the response shape.
 
@@ -662,6 +706,10 @@ class ConversationGroupResponse(BaseModel):
             name=group.name,
             created_at=group.created_at,
             updated_at=group.updated_at,
+            labels=[
+                ConversationGroupLabelResponse(category_id=label.category_id, name=label.name, value=label.value)
+                for label in labels
+            ],
             conversations=[
                 ConversationResponse.from_model(conversation, effective_license=effective_license)
                 for conversation in conversations

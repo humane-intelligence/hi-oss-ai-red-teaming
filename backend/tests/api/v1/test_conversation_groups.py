@@ -29,6 +29,7 @@ from app.core.conversations.services.messages import open_turn
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import Scenario
 from tests.api.v1.conftest import build_settings as _settings
 from tests.api.v1.conftest import make_token as _token
@@ -1185,3 +1186,136 @@ async def test_deleting_one_of_several_conversations_keeps_group(
     # A sibling remains, so the group lives on with one member.
     assert group_follow_up.status_code == status.HTTP_200_OK
     assert len(group_follow_up.json()["conversations"]) == 1
+
+
+async def _labelled_setup(db_session: AsyncSession) -> tuple[Evaluation, Scenario, EvaluationAiModel, dict[str, str]]:
+    evaluation = await _evaluation_for(db_session)
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
+    language = EvaluationLabelCategory(evaluation_id=evaluation.id, name="language", values=["English", "Polish"])
+    note = EvaluationLabelCategory(evaluation_id=evaluation.id, name="Note")
+    db_session.add_all([language, note])
+    await db_session.flush()
+    return evaluation, scenario, assignment, {"language": str(language.id), "note": str(note.id)}
+
+
+async def test_create_sets_labels_canonical_and_cleaned_by_category_name(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-create@example.com")
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+
+    created = await _create_group(
+        auth_db_client,
+        _token(caller),
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["note"]: " tried\nroleplay ", ids["language"]: "polish"},
+        },
+    )
+    fetched = await auth_db_client.get(
+        f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}", headers=_auth(_token(caller))
+    )
+
+    assert created.status_code == status.HTTP_201_CREATED
+    expected = [
+        {"category_id": ids["language"], "name": "language", "value": "Polish"},
+        {"category_id": ids["note"], "name": "Note", "value": "tried roleplay"},
+    ]
+    assert created.json()["labels"] == expected
+    assert fetched.json()["labels"] == expected
+
+
+@pytest.mark.parametrize("which", ["outside-list", "unknown-category"])
+async def test_create_rejects_a_label_the_evaluation_does_not_define(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role, which: str
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email=f"labels-bad-{which}@example.com")
+    _, scenario, assignment, ids = await _labelled_setup(db_session)
+    labels = {ids["language"]: "german"} if which == "outside-list" else {str(uuid4()): "x"}
+
+    response = await _create_group(
+        auth_db_client,
+        _token(caller),
+        scenario.id,
+        {"name": "g", "models": [{"evaluation_ai_model_id": str(assignment.id)}], "labels": labels},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    _assert_problem(response, status.HTTP_400_BAD_REQUEST)
+
+
+async def test_patch_replaces_labels_and_keeps_the_name(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-patch@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "keep me",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["language"]: "English", ids["note"]: "first"},
+        },
+    )
+    url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
+
+    response = await auth_db_client.patch(
+        url, json={"labels": {ids["language"]: "Polish", ids["note"]: " "}}, headers=_auth(token)
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["name"] == "keep me"
+    assert [(label["name"], label["value"]) for label in response.json()["labels"]] == [("language", "Polish")]
+
+
+async def test_patch_rejects_null_labels(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-null@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, _ = await _labelled_setup(db_session)
+    created = await _create_group(
+        auth_db_client, token, scenario.id, {"name": "g", "models": [{"evaluation_ai_model_id": str(assignment.id)}]}
+    )
+
+    response = await auth_db_client.patch(
+        f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}",
+        json={"labels": None},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_a_deleted_category_drops_its_label_from_the_lists(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-deleted@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["language"]: "English", ids["note"]: "kept"},
+        },
+    )
+    category = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))
+    assert category is not None
+    category.soft_delete(caller.id)
+    await db_session.flush()
+
+    nested = await auth_db_client.get(f"/api/v1/evaluations/{evaluation.id}/conversation-groups", headers=_auth(token))
+    flat = await auth_db_client.get("/api/v1/conversation-groups", headers=_auth(token))
+
+    assert [label["name"] for label in nested.json()["items"][0]["labels"]] == ["Note"]
+    assert [label["name"] for label in flat.json()["items"][0]["labels"]] == ["Note"]

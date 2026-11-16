@@ -59,6 +59,7 @@ from app.core.conversations.enums import MessageStatus
 from app.core.conversations.models import TAG_CONTEXT_EXTRA_KEY
 from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
+from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.models import Message
 from app.core.conversations.models import MessageImage
 from app.core.conversations.models import Turn
@@ -68,6 +69,7 @@ from app.core.conversations.tags import TAG_CONTEXT_PREAMBLE
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
 from app.core.exceptions import NotFoundError
@@ -1254,6 +1256,33 @@ async def test_send_without_tags_prepends_no_system_message(
 
     assert response.status_code == status.HTTP_200_OK
     assert _system_prompts(provider) == []  # no tags, no base prompt → nothing injected
+
+
+async def test_group_labels_never_reach_the_prompt(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = await _user(db_session, ["conversations:update"])
+    conversation = await _conversation(db_session, user)
+    category = EvaluationLabelCategory(evaluation_id=conversation.evaluation_id, name="language")
+    db_session.add(category)
+    await db_session.flush()
+    db_session.add(
+        ConversationGroupLabel(
+            conversation_group_id=conversation.conversation_group_id, category_id=category.id, value="polish"
+        )
+    )
+    await db_session.flush()
+    provider = _FakeProvider([_chunk(content="x"), _chunk(finish_reason="stop")])
+    _patch_provider(monkeypatch, provider)
+    _keep_open(monkeypatch, db_session)
+
+    with as_user(user):
+        response = await async_client_with_db.post(_url(conversation), json={"content": "hi"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert _system_prompts(provider) == []
+    assert provider.received_messages is not None
+    assert all("polish" not in str(m.content) for m in provider.received_messages)
 
 
 async def test_send_tags_appended_after_existing_system_prompt(
