@@ -11,6 +11,9 @@ export async function copyText(text: string) {
   ta.style.opacity = '0'
   document.body.appendChild(ta)
   ta.select()
-  document.execCommand('copy')
-  ta.remove()
+  try {
+    if (!document.execCommand('copy')) throw new Error('copy failed')
+  } finally {
+    ta.remove()
+  }
 }
