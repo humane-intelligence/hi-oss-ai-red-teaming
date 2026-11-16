@@ -320,6 +320,56 @@ describe('GroupCreatePage', () => {
     expect(Object.prototype.hasOwnProperty.call(body.models[1], 'title')).toBe(false)
   })
 
+  it('sends the labels set, leaving out the blank ones', async () => {
+    let captured: unknown = null
+    server.use(
+      ...baseHandlers(),
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}/label-categories`, () =>
+        HttpResponse.json([
+          {
+            id: 'cat-lang',
+            evaluation_id: EVAL_ID,
+            name: 'language',
+            values: ['english', 'polish'],
+            created_at: '',
+          },
+          { id: 'cat-note', evaluation_id: EVAL_ID, name: 'note', values: [], created_at: '' },
+          { id: 'cat-team', evaluation_id: EVAL_ID, name: 'team', values: [], created_at: '' },
+        ]),
+      ),
+      http.post(
+        `http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`,
+        async ({ request }) => {
+          captured = await request.json()
+          return HttpResponse.json(groupResponse(), { status: 201 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    expect(await screen.findByText(/never sent to the model/i)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('language'), 'polish')
+    await user.type(screen.getByLabelText('note'), '  roleplay ')
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect((captured as { labels: unknown }).labels).toEqual({
+      'cat-lang': 'polish',
+      'cat-note': 'roleplay',
+    })
+  })
+
+  it('shows no label fields when the evaluation defines no categories', async () => {
+    server.use(...baseHandlers())
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    expect(screen.queryByText(/labels \(optional\)/i)).toBeNull()
+  })
+
   it('shows an inline error when creating the group fails validation', async () => {
     server.use(
       ...baseHandlers(),

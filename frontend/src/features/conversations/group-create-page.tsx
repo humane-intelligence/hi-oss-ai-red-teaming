@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Loader2, Plus, X } from 'lucide-react'
-import { useEvaluation } from '@/features/evaluations/queries'
+import { useEvaluation, useEvaluationLabelCategories } from '@/features/evaluations/queries'
+import { labelPayload, type LabelValues } from './label-values'
+import { LabelsFields } from './labels-fields'
 import { useEvaluationScenarios } from '@/features/scenarios/queries'
 import { useGroupAuthority } from './use-group-authority'
 import { AuthorityError } from './authority-error'
@@ -61,6 +63,7 @@ export function GroupCreatePage() {
   const authority = useGroupAuthority(evalId, 'conversations:create')
   const evaluation = useEvaluation(evalId)
   const scenarios = useEvaluationScenarios(evalId)
+  const labelCategories = useEvaluationLabelCategories(evalId)
   const createGroup = useCreateConversationGroup()
 
   const models = evaluation.data?.models ?? []
@@ -69,6 +72,7 @@ export function GroupCreatePage() {
 
   const [searchParams] = useSearchParams()
   const [name, setName] = useState('')
+  const [labels, setLabels] = useState<LabelValues>({})
   const [scenarioId, setScenarioId] = useState(() => searchParams.get('scenario') ?? '')
   // Membership check, not just non-empty: a stale `?scenario=` deep-link (deleted scenario,
   // old URL) must neither arm Start nor leave the native select displaying the first live
@@ -130,7 +134,11 @@ export function GroupCreatePage() {
     createGroup.mutate(
       {
         scenarioId: chosenScenarioId,
-        body: { name: name.trim() || fallbackName, models: payloadModels },
+        body: {
+          name: name.trim() || fallbackName,
+          models: payloadModels,
+          labels: labelPayload(labels, { keepBlanks: false }),
+        },
       },
       { onSuccess: (group) => navigate(`/evaluations/${evalId}/conversation-groups/${group.id}`) },
     )
@@ -203,6 +211,22 @@ export function GroupCreatePage() {
               </p>
             )}
           </FormField>
+
+          {(labelCategories.data?.length ?? 0) > 0 && (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Labels (optional)</legend>
+              <p className="text-muted-foreground text-xs">
+                Describe this conversation for exports and reports. Labels are never sent to the
+                model.
+              </p>
+              <LabelsFields
+                categories={labelCategories.data ?? []}
+                value={labels}
+                onChange={setLabels}
+                idPrefix="group-label"
+              />
+            </fieldset>
+          )}
 
           <div className="space-y-3">
             <Label>Models</Label>
