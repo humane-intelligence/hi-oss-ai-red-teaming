@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { SidebarNav } from './sidebar-nav'
 import { authWrapper } from '@/lib/auth/auth.testutils'
@@ -15,11 +15,9 @@ function renderAt(path: string) {
   )
 }
 
+// The whole document, not just <nav>: the logo link sits outside it and must never be marked.
 function current() {
-  return within(screen.getByRole('navigation'))
-    .getAllByRole('link')
-    .filter((l) => l.getAttribute('aria-current') === 'page')
-    .map((l) => l.textContent)
+  return [...document.querySelectorAll('[aria-current="page"]')].map((l) => l.textContent)
 }
 
 describe('SidebarNav — active item', () => {
