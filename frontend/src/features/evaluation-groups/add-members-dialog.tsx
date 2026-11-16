@@ -77,8 +77,14 @@ export function AddMembersDialog({
     enabled: open && showOrganization,
   })
   const term = search.trim()
+  // The organization list filters locally per keystroke; only the server search waits for a pause.
+  const [serverTerm, setServerTerm] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setServerTerm(term), 300)
+    return () => clearTimeout(id)
+  }, [term])
   const users = useInfiniteUsers(
-    { limit: 50, search: term || undefined, order_by: 'email' },
+    { limit: 50, search: serverTerm || undefined, order_by: 'email' },
     { enabled: open && canPickUsers, suppressErrorToast: true },
   )
   const memberIds = useAllGroupMemberIds(groupId, { enabled: open, suppressErrorToast: true })
@@ -198,6 +204,7 @@ export function AddMembersDialog({
   function close() {
     setStep('users')
     setSearch('')
+    setServerTerm('')
     setPicked(new Map())
     setRoleIds({})
     setResult(null)

@@ -511,6 +511,8 @@ describe('MembersSection — add flow', () => {
     await user.type(within(dialog).getByLabelText('Users'), 'car')
 
     await waitFor(() => expect(userQueries.at(-1)?.get('search')).toBe('car'))
+    // Debounced: the unfiltered first page, then one search for the whole term, not one per keystroke.
+    expect(userQueries.map((q) => q.get('search'))).toEqual([null, 'car'])
     expect(userQueries.at(-1)?.get('order_by')).toBe('email')
   })
 
