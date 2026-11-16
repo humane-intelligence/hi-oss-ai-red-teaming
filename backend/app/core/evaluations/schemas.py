@@ -1131,13 +1131,10 @@ class GroupInvitationBulkRequest(BulkRequest[GroupInvitationCreate]):
 
 
 class GroupMemberBulkRequest(BulkRequest[ObjectMemberCreate]):
-    """Bulk envelope of the group member add.
+    """Bulk envelope of the group member add; a `user_id` may appear in one row only (422 otherwise)."""
 
-    A user repeated across rows is rejected up front: the later row would 409 as
-    "already a member" although the user wasn't one before the request, and its
-    roles would be silently dropped.
-    """
-
+    # Processed anyway, the later row would 409 as "already a member" for a user who wasn't one
+    # before the request, and its roles would be dropped.
     @model_validator(mode="after")
     def _validate_unique_users(self) -> GroupMemberBulkRequest:
         seen: set[UUID] = set()

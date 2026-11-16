@@ -7172,11 +7172,7 @@ export interface components {
         };
         /**
          * GroupMemberBulkRequest
-         * @description Bulk envelope of the group member add.
-         *
-         *     A user repeated across rows is rejected up front: the later row would 409 as
-         *     "already a member" although the user wasn't one before the request, and its
-         *     roles would be silently dropped.
+         * @description Bulk envelope of the group member add; a `user_id` may appear in one row only (422 otherwise).
          */
         GroupMemberBulkRequest: {
             /**

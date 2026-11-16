@@ -627,6 +627,7 @@ async def test_bulk_add_rejects_a_user_repeated_across_rows(
         )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "Duplicate user_id" in response.text
 
 
 async def test_bulk_add_on_a_hidden_group_is_404(
