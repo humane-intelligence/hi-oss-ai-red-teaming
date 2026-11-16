@@ -43,7 +43,7 @@ import type {
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 
 const ADD_MODEL_LOCKED =
-  'Models can only be added before the first prompt, so every model sees the same conversation.'
+  'Models can only be added before the first prompt, so a new model never joins mid-conversation.'
 
 export function ConversationGroupPage() {
   const { id, groupId } = useParams<{ id: string; groupId: string }>()
