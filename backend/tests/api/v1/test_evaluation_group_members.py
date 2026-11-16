@@ -20,6 +20,7 @@ from app.core.audit.enums import AuditAction
 from app.core.audit.models import AuditLog
 from app.core.auth.models import Role
 from app.core.auth.models import User
+from app.core.auth.models import UserStatus
 from app.core.auth.object_roles.models import ObjectRoleAssignment
 from app.core.auth.object_roles.registry import ObjectType
 from app.core.auth.object_roles.service import grant_roles
@@ -629,6 +630,59 @@ async def test_bulk_add_rejects_a_user_repeated_across_rows(
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "Duplicate user_id" in response.text
+
+
+async def test_add_refuses_a_deactivated_user(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # Matches the group invitation, which 409s the same account.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    deactivated = await create_user(
+        db_session,
+        email=f"{uuid4().hex[:8]}@example.com",
+        roles=[await make_role(db_session)],
+        status=UserStatus.INACTIVE,
+    )
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _members_url(group),
+            json={"user_id": str(deactivated.id), "role_ids": [str(system_roles["viewer"].id)]},
+        )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "deactivated" in response.json()["detail"]
+
+
+async def test_bulk_add_fails_a_deactivated_row_and_adds_an_invited_one(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # An account still onboarding is added; its roles wait for activation, as with an invitation.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    deactivated = await create_user(
+        db_session,
+        email=f"{uuid4().hex[:8]}@example.com",
+        roles=[await make_role(db_session)],
+        status=UserStatus.INACTIVE,
+    )
+    invited = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={
+                "rows": [
+                    _row("deactivated", deactivated.id, system_roles["viewer"]),
+                    _row("invited", invited.id, system_roles["viewer"]),
+                ]
+            },
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    statuses = {r["row_key"]: (r["status"], r["error"] and r["error"]["status"]) for r in response.json()["results"]}
+    assert statuses == {"deactivated": ("failed", status.HTTP_409_CONFLICT), "invited": ("ok", None)}
 
 
 async def test_bulk_add_takes_more_rows_than_an_invitation_bulk(

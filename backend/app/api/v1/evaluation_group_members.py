@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit.enums import AuditAction
 from app.core.audit.service import record_audit
+from app.core.auth.models import UserStatus
 from app.core.auth.object_roles.registry import OBJECT_ROLE_REGISTRY
 from app.core.auth.object_roles.registry import ObjectType
 from app.core.auth.object_roles.schemas import ObjectMemberCreate
@@ -41,6 +42,7 @@ from app.core.dependencies import transactional
 from app.core.evaluations.dependencies import GroupReadDep
 from app.core.evaluations.dependencies import ManageMembersDep
 from app.core.evaluations.schemas import GroupMemberBulkRequest
+from app.core.exceptions import ConflictError
 from app.core.openapi import COMMON_ERROR_RESPONSES
 from app.core.openapi import problem_response
 from app.core.schemas import Page
@@ -70,6 +72,9 @@ async def _add_member(
     """
     user = await get_user(session, payload.user_id)
     roles = await resolve_assignable_roles(session, _SCOPE_SPEC, payload.role_ids)
+    # Same rule and order as the group invitation; a pending account is fine, its roles wait for activation.
+    if user.status is UserStatus.INACTIVE:
+        raise ConflictError("User is deactivated. Reactivate via PATCH /users/{id} first.")
     member = await add_member(session, _OBJECT_TYPE, group_id, user, roles)
     if audit:
         await record_audit(
@@ -151,7 +156,7 @@ async def list_group_members_endpoint(
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _NOT_FOUND,
-        status.HTTP_409_CONFLICT: problem_response("The user is already a member of this group."),
+        status.HTTP_409_CONFLICT: problem_response("The user is already a member of this group, or is deactivated."),
     },
 )
 @transactional
@@ -173,7 +178,7 @@ async def add_group_member_endpoint(
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `evaluation_groups:manage_members` permission for this group.
     * **404 Not Found** — the group or the target user does not exist.
-    * **409 Conflict** — the user is already a member of this group.
+    * **409 Conflict** — the user is already a member of this group, or is deactivated.
     """
     member = await _add_member(db, context.group.id, payload, caller)
     response.headers["Location"] = f"/api/v1/evaluation-groups/{context.group.id}/members/{payload.user_id}"
@@ -188,9 +193,10 @@ async def add_group_member_endpoint(
     description=(
         "Add several users to the group, each with their own roles, with per-row outcomes. Always returns "
         "200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable "
-        "role, `404` for an unknown user, `409` for a user who is already a member) land inside "
-        "`results[].error`, and the other rows are still added. `dry_run=true` previews the outcomes and "
-        "rolls back instead of committing."
+        "role, `404` for an unknown user, `409` for a user who is already a member or is deactivated) land "
+        "inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row "
+        "only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls "
+        "back instead of committing."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {

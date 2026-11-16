@@ -7569,7 +7569,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: The user is already a member of this group.
+          description: The user is already a member of this group, or is deactivated.
           content:
             application/problem+json:
               schema:
@@ -7584,8 +7584,9 @@ paths:
       summary: Add group members in bulk
       description: Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK
         when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown
-        user, `409` for a user who is already a member) land inside `results[].error`, and the other rows are still added.
-        `dry_run=true` previews the outcomes and rolls back instead of committing.
+        user, `409` for a user who is already a member or is deactivated) land inside `results[].error`, and the other rows
+        are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true`
+        previews the outcomes and rolls back instead of committing.
       operationId: bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post
       parameters:
       - name: group_id

@@ -1622,7 +1622,7 @@ export interface paths {
         put?: never;
         /**
          * Add group members in bulk
-         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member) land inside `results[].error`, and the other rows are still added. `dry_run=true` previews the outcomes and rolls back instead of committing.
+         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member or is deactivated) land inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls back instead of committing.
          */
         post: operations["bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post"];
         delete?: never;
@@ -19501,7 +19501,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The user is already a member of this group. */
+            /** @description The user is already a member of this group, or is deactivated. */
             409: {
                 headers: {
                     [name: string]: unknown;
