@@ -167,6 +167,15 @@ export function AddMembersDialog({
 
   const missingRole = pickedList.some((u) => (roleIds[u.id] ?? []).length === 0)
 
+  // A step change unmounts the focused control, which drops focus to <body>, outside the modal.
+  const stepRef = useRef<HTMLDivElement>(null)
+  const focusedStep = useRef(step)
+  useEffect(() => {
+    if (!open || focusedStep.current === step) return
+    focusedStep.current = step
+    stepRef.current?.querySelector<HTMLElement>('input, button:not(:disabled)')?.focus()
+  }, [open, step])
+
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -222,7 +231,7 @@ export function AddMembersDialog({
       className="max-w-2xl"
     >
       {step === 'users' && (
-        <>
+        <div ref={stepRef} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="add-members-search">Users</Label>
             <Input
@@ -350,11 +359,11 @@ export function AddMembersDialog({
               Next{pickedList.length > 0 && ` (${pickedList.length} selected)`}
             </Button>
           </div>
-        </>
+        </div>
       )}
 
       {step === 'roles' && (
-        <>
+        <div ref={stepRef} className="space-y-4">
           <p className="text-muted-foreground text-sm">
             Choose the roles each user gets in this group.
           </p>
@@ -415,22 +424,26 @@ export function AddMembersDialog({
               </tbody>
             </table>
           </div>
-          {missingRole && (
-            <p className="text-muted-foreground text-xs">Give every user at least one role.</p>
-          )}
+          <p id="add-members-missing-role" aria-live="polite" className="text-muted-foreground text-xs">
+            {missingRole ? 'Give every user at least one role.' : ''}
+          </p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setStep('users')} disabled={add.isPending}>
               Back
             </Button>
-            <Button disabled={missingRole || add.isPending} onClick={() => void submit()}>
+            <Button
+              disabled={missingRole || add.isPending}
+              aria-describedby={missingRole ? 'add-members-missing-role' : undefined}
+              onClick={() => void submit()}
+            >
               {add.isPending ? 'Adding…' : `Add ${pickedList.length}`}
             </Button>
           </div>
-        </>
+        </div>
       )}
 
       {step === 'result' && result && (
-        <>
+        <div ref={stepRef} className="space-y-4">
           <div className="space-y-2 text-sm" role="status">
             <p>
               Added {result.succeeded} of {result.total}. These could not be added:
@@ -455,7 +468,7 @@ export function AddMembersDialog({
           <div className="flex justify-end">
             <Button onClick={close}>Done</Button>
           </div>
-        </>
+        </div>
       )}
     </Modal>
   )

@@ -479,7 +479,21 @@ describe('MembersSection — add flow', () => {
       }),
     )
     expect(within(dialog).getByRole('button', { name: 'Add 2' })).toBeDisabled()
-    expect(within(dialog).getByText('Give every user at least one role.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Add 2' })).toHaveAccessibleDescription(
+      'Give every user at least one role.',
+    )
+  })
+
+  it('moves focus into each step instead of dropping it out of the dialog', async () => {
+    handlers({ users: [user3] })
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    expect(within(dialog).getByRole('checkbox', { name: 'Select all as Red Teamer' })).toHaveFocus()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Back' }))
+    expect(within(dialog).getByLabelText('Users')).toHaveFocus()
   })
 
   it('keeps the picks and their roles when going back a step', async () => {
