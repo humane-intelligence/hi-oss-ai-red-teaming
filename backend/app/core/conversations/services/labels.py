@@ -65,13 +65,16 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
             col(ConversationGroupLabel.conversation_group_id) == group.id
         )
     )
-    if dict(stored.tuples().all()) == {row.category_id: row.value for row in rows}:
+    # Rows under a deleted category are invisible already; they don't make an unchanged set a change.
+    visible = {category_id: value for category_id, value in stored.tuples() if category_id in categories}
+    if visible == {row.category_id: row.value for row in rows}:
         return
     await session.execute(
         delete(ConversationGroupLabel).where(col(ConversationGroupLabel.conversation_group_id) == group.id)
     )
     session.add_all(rows)
-    # The group row itself is untouched otherwise, so its `updated_at` would miss a relabel.
+    # The group row is untouched otherwise, so `updated_at` would miss a relabel. App clock on purpose:
+    # the DB's now() is pinned to transaction start, so it couldn't tell a relabel from the create.
     group.updated_at = datetime.now(UTC)
     session.add(group)
     await session.flush()

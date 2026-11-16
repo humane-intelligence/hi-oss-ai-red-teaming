@@ -5,6 +5,7 @@ Comparative-testing groups: nested `/evaluations/{id}/conversation-groups`
 the `conversation_group_id` grouping that lands on conversations.
 """
 
+from datetime import datetime
 from uuid import UUID
 from uuid import uuid4
 
@@ -1281,7 +1282,7 @@ async def test_patch_replaces_labels_and_keeps_the_name(
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["name"] == "keep me"
     assert [(label["name"], label["value"]) for label in response.json()["labels"]] == [("language", "Polish")]
-    assert response.json()["updated_at"] > created.json()["updated_at"]
+    assert datetime.fromisoformat(response.json()["updated_at"]) > datetime.fromisoformat(created.json()["updated_at"])
 
 
 async def test_patch_with_unchanged_labels_keeps_updated_at(
@@ -1307,6 +1308,7 @@ async def test_patch_with_unchanged_labels_keeps_updated_at(
         headers=_auth(token),
     )
 
+    assert response.status_code == status.HTTP_200_OK
     assert response.json()["updated_at"] == created.json()["updated_at"]
 
 

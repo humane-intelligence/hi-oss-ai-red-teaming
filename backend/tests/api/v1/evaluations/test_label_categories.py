@@ -260,7 +260,8 @@ async def test_create_and_delete_are_audited(
     created = await auth_db_client.post(
         _url(evaluation), json={"name": "language", "values": ["en"]}, headers=_auth(caller)
     )
-    await auth_db_client.delete(_url(evaluation, f"/{created.json()['id']}"), headers=_auth(caller))
+    deleted = await auth_db_client.delete(_url(evaluation, f"/{created.json()['id']}"), headers=_auth(caller))
+    assert (created.status_code, deleted.status_code) == (status.HTTP_201_CREATED, status.HTTP_204_NO_CONTENT)
 
     rows = {
         row.action: row
