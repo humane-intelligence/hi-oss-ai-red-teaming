@@ -20,6 +20,7 @@ from sqlalchemy import Enum
 from sqlalchemy import Index
 from sqlalchemy import Text
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
 from sqlmodel import Relationship
 from sqlmodel import col
@@ -335,6 +336,33 @@ class EvaluationTagKey(BaseModel, table=True):
 
     evaluation_id: uuid.UUID = Field(foreign_key="evaluations.id", nullable=False, ondelete="CASCADE")
     key: str = Field(max_length=64, nullable=False)
+
+
+class EvaluationLabelCategory(BaseModel, table=True):
+    """A conversation-label category an evaluation's owner defines, e.g. ``language``.
+
+    Labels are metadata for organising and reporting conversations — unlike tags they never
+    reach the model. ``values`` is the allowed list; empty means the label takes free text.
+    """
+
+    __tablename__ = "evaluation_label_categories"
+    __table_args__ = (
+        Index(
+            "ix_evaluation_label_categories_evaluation_id_name",
+            "evaluation_id",
+            text("lower(name)"),
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    evaluation_id: uuid.UUID = Field(foreign_key="evaluations.id", nullable=False, ondelete="CASCADE")
+    name: str = Field(max_length=64, nullable=False)
+    values: list[str] = Field(
+        default_factory=list,
+        sa_type=JSONB,
+        sa_column_kwargs={"nullable": False, "server_default": text("'[]'::jsonb")},
+    )
 
 
 class Scenario(BaseModel, table=True):

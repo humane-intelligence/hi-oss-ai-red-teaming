@@ -333,6 +333,16 @@ erDiagram
         evaluation_id UUID FK
         model_display_mask VARCHAR(255)
     }
+    evaluation_label_categories {
+        id UUID PK
+        created_at TIMESTAMP_WITH_TIME_ZONE
+        updated_at TIMESTAMP_WITH_TIME_ZONE
+        deleted_at TIMESTAMP_WITH_TIME_ZONE
+        deleted_by_id UUID
+        evaluation_id UUID FK
+        name VARCHAR(64)
+        values JSONB
+    }
     evaluation_tag_keys {
         id UUID PK
         created_at TIMESTAMP_WITH_TIME_ZONE
@@ -392,6 +402,11 @@ erDiagram
         name VARCHAR(255)
         description TEXT
         scenario_id UUID FK
+    }
+    conversation_group_labels {
+        conversation_group_id UUID PK,FK
+        category_id UUID PK,FK
+        value VARCHAR(200)
     }
     conversations {
         parameters JSONB
@@ -550,6 +565,7 @@ erDiagram
     users ||--o{ evaluations : "created_by_id"
     ai_models ||--o{ evaluation_ai_models : "model_id"
     evaluations ||--o{ evaluation_ai_models : "evaluation_id"
+    evaluations ||--o{ evaluation_label_categories : "evaluation_id"
     evaluations ||--o{ evaluation_tag_keys : "evaluation_id"
     evaluation_groups |o--o{ export_jobs : "evaluation_group_id"
     evaluations |o--o{ export_jobs : "evaluation_id"
@@ -559,6 +575,8 @@ erDiagram
     scenarios ||--o{ conversation_groups : "scenario_id"
     users ||--o{ conversation_groups : "user_id"
     scenarios ||--o{ tasks : "scenario_id"
+    conversation_groups ||--o{ conversation_group_labels : "conversation_group_id"
+    evaluation_label_categories ||--o{ conversation_group_labels : "category_id"
     conversation_groups ||--o{ conversations : "conversation_group_id"
     evaluation_ai_models ||--o{ conversations : "evaluation_ai_model_id"
     evaluations ||--o{ conversations : "evaluation_id"
