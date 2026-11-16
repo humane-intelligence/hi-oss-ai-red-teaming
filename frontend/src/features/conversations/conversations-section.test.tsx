@@ -195,6 +195,23 @@ describe('ConversationsSection — groups', () => {
     expect(screen.getByText('claude-3-opus')).toBeInTheDocument()
   })
 
+  it("shows a group's labels on its card", async () => {
+    server.use(
+      groupsHandler([
+        {
+          ...multiGroup,
+          labels: [{ category_id: 'cat-lang', name: 'language', value: 'polish' }],
+        },
+        singleGroup,
+      ]),
+    )
+    renderSection()
+
+    const lists = await screen.findAllByRole('list', { name: 'Labels' })
+    expect(lists).toHaveLength(1)
+    expect(lists[0]).toHaveTextContent('language: polish')
+  })
+
   it('shows a member title in place of the model name, with the model as a subtitle', async () => {
     const titledGroup = {
       ...singleGroup,

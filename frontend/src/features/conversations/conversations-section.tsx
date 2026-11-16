@@ -25,6 +25,7 @@ import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { GroupLabels } from './group-labels'
 import type {
   ConversationGroupResponse,
   ConversationResponse,
@@ -336,6 +337,11 @@ function GroupCard({
             ))}
           </ul>
         </Field>
+        {(group.labels?.length ?? 0) > 0 && (
+          <Field label="Labels" className="col-span-full">
+            <GroupLabels labels={group.labels} />
+          </Field>
+        )}
       </dl>
     </li>
   )
