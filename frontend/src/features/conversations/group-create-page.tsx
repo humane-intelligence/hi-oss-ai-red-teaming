@@ -39,7 +39,7 @@ type Row = {
   params: Record<string, string>
 }
 
-// Fixed format, not toLocaleString: the name is stored and read by members in other locales.
+// Stored once and shown to every member, so a fixed format; the clock is the creator's own.
 function startedStamp(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
