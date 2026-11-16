@@ -3156,6 +3156,29 @@ async def test_flat_deleted_listing_returns_tombstones_not_live_rows(
     assert kept.json()["id"] not in [item["id"] for item in items]
 
 
+async def test_restore_into_a_group_with_prompts_is_allowed(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    # Restore is an undo, unlike create and move: a member deleted before or after the first prompt
+    # comes back even though it missed later turns. Pins that the prompt lock stays off this path.
+    caller = await _caller(db_session, red_teamer_role, email="restore-prompted@example.com")
+    token = _token(caller)
+    evaluation = await _evaluation_for(db_session)
+    assignment = await _assignment(db_session, evaluation.id)
+    group_row = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation.id)
+    body = {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(group_row.id)}
+    kept = (await _create(auth_db_client, token, group_row.scenario_id, body)).json()["id"]
+    doomed = (await _create(auth_db_client, token, group_row.scenario_id, body)).json()["id"]
+    await auth_db_client.delete(f"/api/v1/evaluations/{evaluation.id}/conversations/{doomed}", headers=_auth(token))
+    db_session.add(Turn(conversation_id=UUID(kept), turn_index=0))
+    await db_session.flush()
+
+    response = await _restore_conversation(auth_db_client, token, evaluation.id, doomed)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert await _conversation_deleted_at(db_session, doomed) is None
+
+
 async def test_restore_conflicts_when_the_group_refilled_the_freed_slot(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
 ) -> None:
