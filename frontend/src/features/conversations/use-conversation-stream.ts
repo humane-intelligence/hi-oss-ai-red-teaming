@@ -56,6 +56,7 @@ export function useConversationStream(evaluationId: string, conversationId: stri
       setStreaming(null)
       qc.invalidateQueries({ queryKey: ['messages', conversationId] })
       qc.invalidateQueries({ queryKey: ['conversation', conversationId] })
+      qc.invalidateQueries({ queryKey: ['conversation-groups'] })
     }
     return ok
   }
