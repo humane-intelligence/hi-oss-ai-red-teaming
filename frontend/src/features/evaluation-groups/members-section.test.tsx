@@ -240,7 +240,7 @@ describe('MembersSection — RBAC gates', () => {
     expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
   })
 
-  it('in-group owner without roles:read — no Add or Edit roles, whose role list would only 403', async () => {
+  it('in-group owner without roles:read — no Invite, Add or Edit roles, whose role list would only 403', async () => {
     server.use(
       http.get('http://localhost/api/v1/organizations/org-0001-0000-0000-000000000000', () =>
         HttpResponse.json({ id: 'org-0001-0000-0000-000000000000', name: 'Andless' }),
@@ -254,8 +254,8 @@ describe('MembersSection — RBAC gates', () => {
     )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: /invite by email/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /remove member/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /invite by email/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add member/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /edit roles/i })).toBeNull()
   })
@@ -680,8 +680,8 @@ describe('MembersSection — bulk invite flow', () => {
     server.use(...baseHandlers())
 
     const user = userEvent.setup()
-    // manage_members (owner) grants invite without needing users:read
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage_members'])
+    // manage_members (owner) grants invite without needing users:read; the role picker needs roles:read
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage_members'], ['roles:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
 

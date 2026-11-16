@@ -114,8 +114,8 @@ export function MembersSection({
   const canPickUsers = hasGlobal('users:read')
   // Organization members come from `/organizations/{id}/members` (`organizations:read`).
   const canPickOrganization = hasGlobal('organizations:read') && !!organizationId
-  // Both role dialogs list roles from `/roles`, which is gated on the global `roles:read` — an in-group
-  // owner without it would open a dialog that can only 403.
+  // Every role dialog (add, edit, invite) lists roles from `/roles`, which is gated on the global
+  // `roles:read` — an in-group owner without it would open a dialog that can only 403.
   const canAssignRoles = hasGlobal('roles:read')
   const canAddExisting = canManageMembers && canAssignRoles && (canPickUsers || canPickOrganization)
   const canEditRoles = canManageMembers && canAssignRoles
@@ -130,7 +130,7 @@ export function MembersSection({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Members ({members.data?.total ?? 0})</h2>
-        {canManageMembers && (
+        {canManageMembers && canAssignRoles && (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
               <Mail className="size-4" /> Invite by email
