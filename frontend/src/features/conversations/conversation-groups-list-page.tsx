@@ -143,7 +143,10 @@ export function ConversationGroupsListPage() {
 }
 
 function GrantedInGroup({ evaluationId, children }: { evaluationId: string; children: ReactNode }) {
-  const { granted } = useGroupAuthority(evaluationId, 'conversations:delete')
+  // One read pair per evaluation on the page; a hidden button already reports the failure.
+  const { granted } = useGroupAuthority(evaluationId, 'conversations:delete', {
+    suppressErrorToast: true,
+  })
   return granted ? children : null
 }
 

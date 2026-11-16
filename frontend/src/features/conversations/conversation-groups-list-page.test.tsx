@@ -105,6 +105,7 @@ function renderPage(extraPermissions: string[] = []) {
       </QueryClientProvider>
     </Wrapper>,
   )
+  return qc
 }
 
 describe('ConversationGroupsListPage', () => {
@@ -228,6 +229,22 @@ describe('ConversationGroupsListPage', () => {
       renderPage()
 
       expect(await screen.findByRole('button', { name: DELETE_NAME })).toBeInTheDocument()
+    })
+
+    it('keeps the per-row permission reads out of the global error toast', async () => {
+      server.use(...handlers([ownRow]))
+      authorityHandlers(['conversations:delete'])
+      const qc = renderPage()
+
+      await screen.findByRole('button', { name: DELETE_NAME })
+      // The global `QueryCache.onError` reads this meta to skip its toast.
+      for (const key of [
+        ['evaluation', EVAL_ID],
+        ['evaluation-group', PARENT_GROUP_ID],
+      ])
+        expect(qc.getQueryCache().find({ queryKey: key })?.meta).toEqual({
+          suppressErrorToast: true,
+        })
     })
 
     it('hides it on an own group when neither grants delete', async () => {

@@ -112,10 +112,11 @@ export function useGroupLookup() {
   return { resolve, isPending: groups.isPending && groups.fetchStatus !== 'idle' }
 }
 
-export function useEvaluationGroup(id: string) {
+export function useEvaluationGroup(id: string, options?: { suppressErrorToast?: boolean }) {
   return useQuery({
     queryKey: ['evaluation-group', id],
     enabled: id !== '',
+    meta: options?.suppressErrorToast ? { suppressErrorToast: true } : undefined,
     queryFn: async () =>
       unwrap(
         await apiClient.GET('/api/v1/evaluation-groups/{group_id}', {
