@@ -67,7 +67,7 @@ function handlers(groups: unknown[] = []) {
 const ownRow = { ...groupRow, user_id: AUTH_USER_ID }
 const DELETE_NAME = 'Delete GPT-4o vs Claude'
 
-// Records the evaluation and parent-group reads that only the in-group permission check makes.
+// Records the evaluation reads that only the in-group permission check makes.
 function authorityHandlers(groupPermissions: string[]) {
   const reads: string[] = []
   server.use(
@@ -141,6 +141,14 @@ describe('ConversationGroupsListPage', () => {
     expect(within(abandoned).getByText('No messages')).toBeInTheDocument()
     const halfUsed = screen.getByRole('row', { name: /half used/i })
     expect(within(halfUsed).queryByText('No messages')).toBeNull()
+  })
+
+  it('marks a group whose conversations were all deleted as empty', async () => {
+    server.use(...handlers([{ ...groupRow, name: 'Emptied', conversations: [] }]))
+    renderPage()
+
+    const emptied = await screen.findByRole('row', { name: /emptied/i })
+    expect(within(emptied).getByText('No messages')).toBeInTheDocument()
   })
 
   it('opens the group page on row click', async () => {
