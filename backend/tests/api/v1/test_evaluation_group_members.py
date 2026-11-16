@@ -25,6 +25,7 @@ from app.core.auth.object_roles.registry import ObjectType
 from app.core.auth.object_roles.service import grant_roles
 from app.core.auth.object_roles.service import remove_member
 from app.core.auth.roles import Permission
+from app.core.auth.schemas import MAX_INVITE_ROWS
 from app.core.auth.services.users import create_user
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.enums import PublicationStatus
@@ -628,6 +629,22 @@ async def test_bulk_add_rejects_a_user_repeated_across_rows(
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "Duplicate user_id" in response.text
+
+
+async def test_bulk_add_takes_more_rows_than_an_invitation_bulk(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # "Add all members" sends a whole organization: this envelope keeps the platform row cap and
+    # must not be aligned with the tighter `MAX_INVITE_ROWS`, which exists because invites send mail.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    rows = [_row(str(i), uuid4(), system_roles["viewer"]) for i in range(MAX_INVITE_ROWS + 1)]
+
+    with as_user(owner):
+        response = await async_client_with_db.post(_bulk_url(group), json={"rows": rows, "dry_run": True})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total"] == MAX_INVITE_ROWS + 1
 
 
 async def test_bulk_add_on_a_hidden_group_is_404(
