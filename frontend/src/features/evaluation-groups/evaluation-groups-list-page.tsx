@@ -48,20 +48,20 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       id: 'title',
       label: 'Title',
       header: 'Title',
-      // A real link, not just its look: keyboard reach and "open in a new tab"; the row keeps its own click.
-      cell: (g) => (
-        <Link
-          to={`/evaluation-groups/${g.id}`}
-          onClick={(ev) => ev.stopPropagation()}
-          className={
-            g.title
-              ? 'text-primary font-medium underline-offset-2 hover:underline'
-              : 'text-muted-foreground underline-offset-2 hover:underline'
-          }
-        >
-          {g.title ?? 'Untitled draft'}
-        </Link>
-      ),
+      // A real link, not just its look: keyboard reach and "open in a new tab"; the row keeps its own
+      // click. Untitled drafts stay text: several links all named "Untitled draft" can't be told apart.
+      cell: (g) =>
+        g.title ? (
+          <Link
+            to={`/evaluation-groups/${g.id}`}
+            onClick={(ev) => ev.stopPropagation()}
+            className="text-primary font-medium underline-offset-2 hover:underline"
+          >
+            {g.title}
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">Untitled draft</span>
+        ),
       sortKey: 'title',
     },
     {
@@ -128,7 +128,7 @@ export function EvaluationGroupsListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Evaluation Groups"
-        description="Engagements and the evaluations inside them."
+        description="An evaluation group is one red-teaming engagement: when it runs, who takes part, and the evaluations inside it."
       />
       <Tabs tabs={TABS} value={tab} onChange={(v) => setParams(v === 'groups' ? {} : { tab: v })} />
       <div {...tabPanelProps(tab)}>
@@ -162,6 +162,7 @@ function GroupsContent() {
     all_groups: has('evaluation_groups:manage') || undefined,
   })
   const page = query.data
+  const filtered = !!view.search || Object.values(view.filters).some(Boolean)
 
   return (
     <div className="space-y-4">
@@ -212,9 +213,19 @@ function GroupsContent() {
         isError={query.isError}
         error={query.error}
         hiddenColumns={view.hiddenColumns}
-        emptyLabel="No evaluation groups yet."
+        // A search or filter that matches nothing is not a first visit: no "yet", no create prompt.
+        emptyLabel={
+          filtered
+            ? 'No evaluation groups match this search or filter.'
+            : 'No evaluation groups yet.'
+        }
+        emptyHint={
+          filtered
+            ? undefined
+            : 'Create a group to set up an engagement: its dates, who can join, and the evaluations to run.'
+        }
         emptyAction={
-          has('evaluation_groups:create') ? (
+          !filtered && has('evaluation_groups:create') ? (
             <Button onClick={() => navigate('/evaluation-groups/new')}>
               <Plus className="size-4" /> New group
             </Button>

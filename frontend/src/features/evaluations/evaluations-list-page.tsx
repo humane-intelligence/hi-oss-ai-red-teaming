@@ -33,7 +33,10 @@ const DEFAULT_FILTERS: EvaluationFilters = { status: '' }
 export function EvaluationsListPage() {
   return (
     <div className="space-y-6">
-      <PageHeader title="Evaluations" description="Red-teaming evaluations visible to you." />
+      <PageHeader
+        title="Evaluations"
+        description="An evaluation is a set of scenarios to test against chosen models, inside an evaluation group."
+      />
       <EvaluationsContent />
     </div>
   )
@@ -57,6 +60,7 @@ export function EvaluationsContent() {
     order_by: (view.orderBy ?? '-created_at') as EvaluationOrderBy,
   })
   const page = query.data
+  const filtered = !!view.search || Object.values(view.filters).some(Boolean)
 
   const columns: Column<EvaluationResponse>[] = [
     {
@@ -163,9 +167,17 @@ export function EvaluationsContent() {
         isError={query.isError}
         error={query.error}
         hiddenColumns={view.hiddenColumns}
-        emptyLabel="No evaluations yet."
+        // A search or filter that matches nothing is not a first visit: no "yet", no create prompt.
+        emptyLabel={
+          filtered ? 'No evaluations match this search or filter.' : 'No evaluations yet.'
+        }
+        emptyHint={
+          filtered
+            ? undefined
+            : 'Each evaluation sits in a group and picks the models to test and the scenarios to run.'
+        }
         emptyAction={
-          has('evaluations:create') ? (
+          !filtered && has('evaluations:create') ? (
             <Button onClick={() => navigate('/evaluations/new')}>
               <Plus className="size-4" /> New evaluation
             </Button>
