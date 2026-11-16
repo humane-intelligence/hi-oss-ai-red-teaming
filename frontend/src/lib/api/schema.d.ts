@@ -4002,20 +4002,6 @@ export interface components {
              */
             dry_run: boolean;
         };
-        /** BulkRequest[ObjectMemberCreate] */
-        BulkRequest_ObjectMemberCreate_: {
-            /**
-             * Rows
-             * @description At least one row is required.
-             */
-            rows: components["schemas"]["BulkRow_ObjectMemberCreate_"][];
-            /**
-             * Dry Run
-             * @description If true, the request is processed and rolled back instead of committed.
-             * @default false
-             */
-            dry_run: boolean;
-        };
         /** BulkRequest[UserStatusTarget] */
         BulkRequest_UserStatusTarget_: {
             /**
@@ -7183,6 +7169,27 @@ export interface components {
              * @description Token expiry for the `invited` outcome; `null` when assigned immediately.
              */
             expires_at?: string | null;
+        };
+        /**
+         * GroupMemberBulkRequest
+         * @description Bulk envelope of the group member add.
+         *
+         *     A user repeated across rows is rejected up front: the later row would 409 as
+         *     "already a member" although the user wasn't one before the request, and its
+         *     roles would be silently dropped.
+         */
+        GroupMemberBulkRequest: {
+            /**
+             * Rows
+             * @description At least one row is required.
+             */
+            rows: components["schemas"]["BulkRow_ObjectMemberCreate_"][];
+            /**
+             * Dry Run
+             * @description If true, the request is processed and rolled back instead of committed.
+             * @default false
+             */
+            dry_run: boolean;
         };
         /**
          * GroupTaskCompletionRollup
@@ -19541,7 +19548,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BulkRequest_ObjectMemberCreate_"];
+                "application/json": components["schemas"]["GroupMemberBulkRequest"];
             };
         };
         responses: {

@@ -478,9 +478,6 @@ async def test_creator_without_owner_role_loses_group_access(
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-# --- bulk add ----------------------------------------------------------------
-
-
 def _bulk_url(group: EvaluationGroup) -> str:
     return f"{_members_url(group)}/bulk"
 
@@ -529,9 +526,9 @@ async def test_bulk_add_reports_failed_rows_and_keeps_the_rest(
     # A partial failure must not silently drop the rest of an organization.
     owner = await _user(db_session, _READ)
     group = await _owned_group(db_session, system_roles, owner)
-    existing, fresh = await _user(db_session), await _user(db_session)
+    existing, refused, fresh = await _user(db_session), await _user(db_session), await _user(db_session)
     await _assign(db_session, group, existing, system_roles["viewer"])
-    existing_id, fresh_id = existing.id, fresh.id
+    existing_id, refused_id, fresh_id = existing.id, refused.id, fresh.id
 
     with as_user(owner):
         response = await async_client_with_db.post(
@@ -539,7 +536,7 @@ async def test_bulk_add_reports_failed_rows_and_keeps_the_rest(
             json={
                 "rows": [
                     _row("member", existing_id, system_roles["red_teamer"]),
-                    _row("admin-role", fresh_id, system_roles["admin"]),
+                    _row("admin-role", refused_id, system_roles["admin"]),
                     _row("ghost", uuid4(), system_roles["red_teamer"]),
                     _row("fresh", fresh_id, system_roles["red_teamer"]),
                 ]
@@ -581,6 +578,71 @@ async def test_bulk_add_dry_run_writes_nothing(
     assert (body["dry_run"], body["succeeded"]) == (True, 1)
     assert (await db_session.execute(select(ObjectRoleAssignment))).scalars().all() == []
     assert (await db_session.execute(select(AuditLog))).scalars().all() == []
+
+
+async def test_bulk_add_dry_run_records_no_audit(
+    async_client_with_db: AsyncClient,
+    db_session: AsyncSession,
+    system_roles: dict[str, Role],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The rollback would hide an audit row anyway; the bulk contract wants it never written.
+    calls: list[object] = []
+
+    async def spy(*args: object, **kwargs: object) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr("app.api.v1.evaluation_group_members.record_audit", spy)
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    target = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={"rows": [_row("a", target.id, system_roles["red_teamer"])], "dry_run": True},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["succeeded"] == 1
+    assert calls == []
+
+
+async def test_bulk_add_rejects_a_user_repeated_across_rows(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    target = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={
+                "rows": [
+                    _row("a", target.id, system_roles["red_teamer"]),
+                    _row("b", target.id, system_roles["annotator"]),
+                ]
+            },
+        )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_bulk_add_on_a_hidden_group_is_404(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    manager = await _user(db_session, permissions=[Permission.EVALUATION_GROUPS_MANAGE_MEMBERS.value, *_READ])
+    target = await _user(db_session)
+
+    with as_user(manager):
+        response = await async_client_with_db.post(
+            _bulk_url(group), json={"rows": [_row("a", target.id, system_roles["viewer"])]}
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 async def test_bulk_add_needs_manage_members(
