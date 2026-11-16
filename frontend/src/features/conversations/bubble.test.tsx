@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Bubble } from './bubble'
 
 const NONE = new Set<string>()
@@ -70,5 +71,22 @@ describe('Bubble — recorded tag context', () => {
     render(<Bubble role="assistant" content="hi" tagContext={{ env: 'prod' }} tagContextPartial />)
 
     expect(screen.getByTestId('tag-context')).toHaveTextContent('sent with the continuation only')
+  })
+})
+
+describe('Bubble — flag button', () => {
+  it('shows the flag button without hover and calls onFlag', async () => {
+    const user = userEvent.setup()
+    const onFlag = vi.fn()
+    render(<Bubble role="assistant" content="hi" onFlag={onFlag} />)
+    const flag = screen.getByRole('button', { name: 'Flag this reply for review' })
+    expect(flag.closest('.opacity-0')).toBeNull()
+    await user.click(flag)
+    expect(onFlag).toHaveBeenCalledOnce()
+  })
+
+  it('renders no flag button when flagging is not wired', () => {
+    render(<Bubble role="assistant" content="hi" />)
+    expect(screen.queryByRole('button', { name: 'Flag this reply for review' })).toBeNull()
   })
 })

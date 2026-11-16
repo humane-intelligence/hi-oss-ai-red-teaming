@@ -68,7 +68,7 @@ export function Bubble({
   }
   const isUser = role === 'user'
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex gap-2', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
           'group/bubble relative max-w-[80%] space-y-1 rounded-lg px-3 py-2 text-sm',
@@ -126,7 +126,6 @@ export function Bubble({
             )}
           </div>
         )}
-        {/* Per-message actions: copy (always) + flag (assistant, when wired), revealed on hover/focus. */}
         <div className="absolute -top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover/bubble:opacity-100 focus-within:opacity-100">
           <button
             type="button"
@@ -137,17 +136,6 @@ export function Bubble({
           >
             {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           </button>
-          {onFlag && (
-            <button
-              type="button"
-              onClick={onFlag}
-              title="Flag this reply for review"
-              aria-label="Flag this reply for review"
-              className="bg-card text-muted-foreground hover:text-foreground inline-flex size-6 items-center justify-center rounded-md border shadow-sm"
-            >
-              <Flag className="size-3" />
-            </button>
-          )}
           {onAnnotate && (
             <button
               type="button"
@@ -161,6 +149,17 @@ export function Bubble({
           )}
         </div>
       </div>
+      {onFlag && (
+        <button
+          type="button"
+          onClick={onFlag}
+          title="Flag this reply for review"
+          aria-label="Flag this reply for review"
+          className="bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 sticky top-2 inline-flex size-8 shrink-0 items-center justify-center self-start rounded-md border shadow-sm focus-visible:ring-[3px] focus-visible:outline-none"
+        >
+          <Flag className="size-4" />
+        </button>
+      )}
     </div>
   )
 }
