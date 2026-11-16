@@ -592,6 +592,41 @@ describe('ConversationGroupPage', () => {
     expect(screen.getByText(/can only be added before the first prompt/)).toBeInTheDocument()
   })
 
+  it('locks Add model when a stale page is refused because the group was prompted meanwhile', async () => {
+    // Prompted from another tab or the detail page: this page still shows no turns until refetched.
+    let prompted = false
+    server.use(
+      http.get(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${GROUP_ID}`,
+        () =>
+          HttpResponse.json(
+            group([
+              { ...conv(CONV_A, MODEL_A), turn_count: prompted ? 1 : 0 },
+              conv(CONV_B, MODEL_B),
+            ]),
+          ),
+      ),
+      http.post(`http://localhost/api/v1/scenarios/${SCEN_ID}/conversations`, () => {
+        prompted = true
+        return HttpResponse.json(
+          { detail: 'Conversation group already has prompts.' },
+          { status: 409 },
+        )
+      }),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add model/i }))
+    await user.click(await screen.findByLabelText('Model'))
+    await user.click(await screen.findByRole('option', { name: 'gpt-4o' }))
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
+
+    expect(await screen.findByText(/can only be added before the first prompt/)).toBeInTheDocument()
+  })
+
   it('offers Add model before the first prompt', async () => {
     server.use(...baseHandlers())
     renderPage()
