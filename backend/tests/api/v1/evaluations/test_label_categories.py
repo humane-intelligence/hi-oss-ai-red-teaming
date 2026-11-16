@@ -235,12 +235,43 @@ async def test_a_category_of_another_evaluation_is_404(
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-async def test_create_forbidden_without_manage_or_ownership(
-    auth_db_client: AsyncClient, db_session: AsyncSession, plain_updater_role: Role, evaluation: Evaluation
+@pytest.mark.parametrize("verb", ["post", "patch", "delete"])
+async def test_writes_forbidden_without_manage_or_ownership(
+    auth_db_client: AsyncClient, db_session: AsyncSession, plain_updater_role: Role, evaluation: Evaluation, verb: str
 ) -> None:
-    caller = await _caller(db_session, plain_updater_role, email="lc-noowner@example.com")
-    response = await auth_db_client.post(_url(evaluation), json={"name": "lang"}, headers=_auth(caller))
+    row = EvaluationLabelCategory(evaluation_id=evaluation.id, name="lang")
+    db_session.add(row)
+    await db_session.flush()
+    caller = await _caller(db_session, plain_updater_role, email=f"lc-noowner-{verb}@example.com")
+    headers = _auth(caller)
+    if verb == "post":
+        response = await auth_db_client.post(_url(evaluation), json={"name": "other"}, headers=headers)
+    elif verb == "patch":
+        response = await auth_db_client.patch(_url(evaluation, f"/{row.id}"), json={"name": "x"}, headers=headers)
+    else:
+        response = await auth_db_client.delete(_url(evaluation, f"/{row.id}"), headers=headers)
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_create_and_delete_are_audited(
+    auth_db_client: AsyncClient, db_session: AsyncSession, updater_role: Role, evaluation: Evaluation
+) -> None:
+    caller = await _caller(db_session, updater_role, email="lc-audit@example.com")
+    created = await auth_db_client.post(
+        _url(evaluation), json={"name": "language", "values": ["en"]}, headers=_auth(caller)
+    )
+    await auth_db_client.delete(_url(evaluation, f"/{created.json()['id']}"), headers=_auth(caller))
+
+    rows = {
+        row.action: row
+        for row in (
+            await db_session.execute(select(AuditLog).where(col(AuditLog.object_type) == "evaluation_label_category"))
+        ).scalars()
+    }
+    snapshot = {"name": "language", "values": ["en"]}
+    assert rows[AuditAction.EVALUATION_LABEL_CATEGORY_CREATE.value].after == snapshot
+    assert rows[AuditAction.EVALUATION_LABEL_CATEGORY_DELETE.value].before == snapshot
+    assert rows[AuditAction.EVALUATION_LABEL_CATEGORY_DELETE.value].context == {"evaluation_id": str(evaluation.id)}
 
 
 async def test_reader_can_list_but_not_create(

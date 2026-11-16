@@ -63,6 +63,7 @@ from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.models import Message
 from app.core.conversations.models import MessageImage
 from app.core.conversations.models import Turn
+from app.core.conversations.models import recorded_tag_context
 from app.core.conversations.services.generation import MASKED_ERROR_DETAIL
 from app.core.conversations.services.messages import finalize_message
 from app.core.conversations.tags import TAG_CONTEXT_PREAMBLE
@@ -1275,6 +1276,7 @@ async def test_group_labels_never_reach_the_prompt(
     provider = _FakeProvider([_chunk(content="x"), _chunk(finish_reason="stop")])
     _patch_provider(monkeypatch, provider)
     _keep_open(monkeypatch, db_session)
+    _finalize_into(monkeypatch, db_session)
 
     with as_user(user):
         response = await async_client_with_db.post(_url(conversation), json={"content": "hi"})
@@ -1283,6 +1285,10 @@ async def test_group_labels_never_reach_the_prompt(
     assert _system_prompts(provider) == []
     assert provider.received_messages is not None
     assert all("polish" not in str(m.content) for m in provider.received_messages)
+    await _refresh_after_finalize(db_session, conversation)
+    turn = (await _turns(db_session, conversation))[0]
+    assistant = next(m for m in await _messages(db_session, turn) if m.role is MessageRole.ASSISTANT)
+    assert recorded_tag_context(assistant) is None
 
 
 async def test_send_tags_appended_after_existing_system_prompt(
