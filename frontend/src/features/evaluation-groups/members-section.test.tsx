@@ -286,6 +286,8 @@ describe('MembersSection — add flow', () => {
   const ORG_ID = 'org-0001-0000-0000-000000000000'
   const annotatorRole = { ...role1, id: ROLE_ID_2, name: 'annotator', display_name: 'Annotator' }
 
+  const participantDefault = { ...role1, is_participant_default: true }
+
   function handlers(opts: { users?: (typeof user1)[]; orgMembers?: (typeof user1)[] } = {}) {
     const posted: unknown[] = []
     const userQueries: URLSearchParams[] = []
@@ -296,7 +298,12 @@ describe('MembersSection — add flow', () => {
         return HttpResponse.json({ items, total: items.length, limit: 50, offset: 0 })
       }),
       http.get('http://localhost/api/v1/roles', () =>
-        HttpResponse.json({ items: [role1, annotatorRole], total: 2, limit: 100, offset: 0 }),
+        HttpResponse.json({
+          items: [participantDefault, annotatorRole],
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
       ),
       http.get(`http://localhost/api/v1/organizations/${ORG_ID}`, () =>
         HttpResponse.json({ id: ORG_ID, name: 'Andless' }),
@@ -359,6 +366,31 @@ describe('MembersSection — add flow', () => {
       ],
     })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('starts a picked user on the participant default, whichever role carries it', async () => {
+    const { posted } = handlers({ users: [user3] })
+    server.use(
+      http.get('http://localhost/api/v1/roles', () =>
+        HttpResponse.json({
+          items: [role1, { ...annotatorRole, is_participant_default: true }],
+          total: 2,
+          limit: 100,
+          offset: 0,
+        }),
+      ),
+    )
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 1' }))
+
+    await waitFor(() => expect(posted).toHaveLength(1))
+    expect(posted[0]).toEqual({
+      dry_run: false,
+      rows: [{ row_key: USER_ID_3, data: { user_id: USER_ID_3, role_ids: [ROLE_ID_2] } }],
+    })
   })
 
   it('orders the role columns from least to most privileged', async () => {

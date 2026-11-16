@@ -18,7 +18,6 @@ import type { BulkGroupMemberResponse, UserResponse } from '@/lib/api/types'
 
 type Picked = Pick<UserResponse, 'id' | 'email' | 'first_name' | 'last_name'>
 
-const DEFAULT_ROLE = 'red_teamer'
 // Least to most privileged, as on the wireframe; any other assignable role follows.
 const ROLE_ORDER = ['viewer', 'red_teamer', 'annotator', 'owner']
 const rank = (name: string) => {
@@ -119,8 +118,9 @@ export function AddMembersDialog({
   }
 
   function toRoles() {
-    const fallback = roleList.find((r) => r.name === DEFAULT_ROLE)
-    // Keep what was set on an earlier pass through this step; a newly picked user starts as Red Teamer.
+    const fallback = roleList.find((r) => r.is_participant_default)
+    // Keep what was set on an earlier pass through this step; a newly picked user starts with the
+    // role a self-joiner would get.
     setRoleIds((prev) =>
       Object.fromEntries(
         pickedList.map((u) => [u.id, prev[u.id] ?? (fallback ? [fallback.id] : [])]),
