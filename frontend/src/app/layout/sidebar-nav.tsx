@@ -116,7 +116,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 // Conversation pages sit under `/evaluations/:id/` for their trail, but in the menu they belong to
 // Conversations, not Evaluations.
-const CONVERSATION_PAGE = /^\/evaluations\/[^/]+\/(conversations|conversation-groups)(\/|$)/
+const CONVERSATION_PAGE = /^\/evaluations\/[^/]+\/(conversations|conversation-groups)(\/|$)/i
 
 function isItemActive(to: string, pathname: string) {
   if (CONVERSATION_PAGE.test(pathname)) return to === '/conversation-groups'

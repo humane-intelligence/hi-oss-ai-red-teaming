@@ -25,6 +25,8 @@ describe('SidebarNav — active item', () => {
     '/evaluations/e1/conversations/c1',
     '/evaluations/e1/conversation-groups/g1',
     '/evaluations/e1/conversation-groups/new',
+    // Routes match case-insensitively, so the menu must too.
+    '/Evaluations/e1/Conversations/c1',
   ])('marks Conversations, not Evaluations, on %s', (path) => {
     renderAt(path)
     expect(current()).toEqual(['Conversations'])
