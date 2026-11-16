@@ -1,5 +1,6 @@
 """The "conversation-groups" CSV export — one row per `ConversationGroup` in an evaluation."""
 
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
@@ -9,6 +10,8 @@ from app.core.auth.roles import Permission
 from app.core.conversations.filters import ConversationGroupFilters
 from app.core.conversations.models import ConversationGroup
 from app.core.conversations.services.groups import list_conversation_groups
+from app.core.conversations.services.labels import label_map
+from app.core.conversations.services.labels import labels_by_group
 from app.core.csv_generator import Column
 from app.core.exports.base import CsvExport
 from app.core.exports.base import ExportScope
@@ -26,6 +29,7 @@ class ConversationGroupRow:
     evaluation_title: str | None
     owner_email: str | None
     scenario_name: str | None
+    labels: dict[str, str]
 
 
 async def _fetch_conversation_groups(session: AsyncSession, scope: ExportScope) -> AsyncIterator[ConversationGroupRow]:
@@ -53,12 +57,14 @@ async def _fetch_conversation_groups(session: AsyncSession, scope: ExportScope) 
     ):
         emails = await resolve_user_emails(session, (g.user_id for g in groups))
         scenarios = await resolve_scenario_names(session, (g.scenario_id for g in groups))
+        labels = await labels_by_group(session, [g.id for g in groups])
         for group in groups:
             yield ConversationGroupRow(
                 group=group,
                 evaluation_title=evaluation_title,
                 owner_email=emails.get(group.user_id),
                 scenario_name=scenarios.get(group.scenario_id) if group.scenario_id else None,
+                labels=label_map(labels.get(group.id, [])),
             )
 
 
@@ -75,6 +81,9 @@ _COLUMNS: list[Column[ConversationGroupRow]] = [
     # The member conversation ids, space-separated — so a group joins to the
     # `conversations` / `transcript` exports (whose `Conversation ID` column carries them).
     Column("Conversation IDs", lambda r: " ".join(str(conversation.id) for conversation in r.group.conversations)),
+    # `{category: value}` — one column whatever the evaluation's categories, so a group-wide export
+    # spanning evaluations with different categories keeps a fixed header.
+    Column("Labels", value=lambda r: r.labels, formatter=lambda v: json.dumps(v, ensure_ascii=False)),
     Column("Created", lambda r: r.group.created_at),
 ]
 
@@ -84,7 +93,7 @@ CONVERSATION_GROUPS_EXPORT: CsvExport[ConversationGroupRow] = CsvExport(
     name="Conversation groups",
     description=(
         "One row per conversation group in the evaluation — its name, evaluation (with title), scenario (with "
-        "name), owner (with email), and member conversation ids."
+        "name), owner (with email), member conversation ids, and its labels."
     ),
     permission=Permission.CONVERSATIONS_READ,
     columns=_COLUMNS,

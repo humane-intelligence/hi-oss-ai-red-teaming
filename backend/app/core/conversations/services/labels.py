@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 from sqlmodel import select
 
+from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
 from app.core.conversations.models import ConversationGroupLabel
 from app.core.evaluations.models import EvaluationLabelCategory
@@ -86,3 +87,25 @@ async def labels_by_group(session: AsyncSession, group_ids: Collection[UUID]) ->
     for group_id, category_id, name, value in result.all():
         grouped[group_id].append(GroupLabel(category_id=category_id, name=name, value=value))
     return grouped
+
+
+async def labels_by_conversation(
+    session: AsyncSession, conversation_ids: Collection[UUID]
+) -> dict[UUID, list[GroupLabel]]:
+    """The labels each conversation carries through its group — for read paths keyed by conversation."""
+    if not conversation_ids:
+        return {}
+    pairs = (
+        await session.execute(
+            select(col(Conversation.id), col(Conversation.conversation_group_id)).where(
+                col(Conversation.id).in_(conversation_ids)
+            )
+        )
+    ).all()
+    by_group = await labels_by_group(session, {group_id for _, group_id in pairs})
+    return {conversation_id: by_group.get(group_id, []) for conversation_id, group_id in pairs}
+
+
+def label_map(labels: list[GroupLabel]) -> dict[str, str]:
+    """Labels as `{category name: value}` — the shape the exports print."""
+    return {label.name: label.value for label in labels}

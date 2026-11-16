@@ -40,6 +40,7 @@ from app.core.conversations.models import TAG_CONTEXT_EXTRA_KEY
 from app.core.conversations.models import TAG_CONTEXT_PARTIAL_EXTRA_KEY
 from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
+from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.models import Message
 from app.core.conversations.models import Turn
 from app.core.csv_generator import to_csv
@@ -47,6 +48,7 @@ from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
 from app.core.evaluations.models import Task
@@ -702,6 +704,36 @@ class TestExportTemplates:
 
         assert lines[0].startswith("Group ID,Name,")
         assert len(lines) == 2  # header + the one conversation group seeded
+
+    @pytest.mark.parametrize(
+        ("template", "permission"),
+        [
+            ("conversations", Permission.CONVERSATIONS_READ),
+            ("conversation-groups", Permission.CONVERSATIONS_READ),
+            ("flags", Permission.FLAGS_READ),
+        ],
+    )
+    async def test_labels_ride_their_own_column(
+        self, db_session: AsyncSession, template: str, permission: Permission
+    ) -> None:
+        perms = [permission.value]
+        caller = await _caller(db_session, email=f"labels-{template}@example.com", permissions=perms)
+        evaluation = await _seed_evaluation(db_session, caller)
+        group = (
+            await db_session.execute(
+                select(ConversationGroup).where(col(ConversationGroup.evaluation_id) == evaluation.id)
+            )
+        ).scalar_one()
+        category = EvaluationLabelCategory(evaluation_id=evaluation.id, name="language")
+        db_session.add(category)
+        await db_session.flush()
+        db_session.add(ConversationGroupLabel(conversation_group_id=group.id, category_id=category.id, value="polish"))
+        await db_session.flush()
+
+        rows = list(csv.reader(io.StringIO(await _render_eval(db_session, caller, perms, evaluation, template))))
+
+        header, data = rows[0], rows[1]
+        assert json.loads(data[header.index("Labels")]) == {"language": "polish"}
 
     async def test_conversation_groups_filter_by_scenario_narrows(self, db_session: AsyncSession) -> None:
         # A group targets exactly one scenario, so the dimension the conversations export
