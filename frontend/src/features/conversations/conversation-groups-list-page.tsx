@@ -6,6 +6,7 @@ import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { Pagination } from '@/components/shared/pagination'
+import { Badge } from '@/components/ui/badge'
 import type { ConversationGroupResponse } from '@/lib/api/types'
 
 const PAGE_SIZE = 20
@@ -23,7 +24,14 @@ export function ConversationGroupsListPage() {
       id: 'name',
       label: 'Name',
       header: 'Name',
-      cell: (g) => <span className="font-medium">{g.name}</span>,
+      cell: (g) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{g.name}</span>
+          {(g.conversations ?? []).every((c) => c.turn_count === 0) && (
+            <Badge variant="neutral">No messages</Badge>
+          )}
+        </div>
+      ),
     },
     {
       id: 'evaluation',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -11,9 +11,10 @@ import { ConversationGroupsListPage } from './conversation-groups-list-page'
 const EVAL_ID = 'eval-0001-0000-0000-000000000000'
 const GROUP_ID = 'grp-0001-0000-0000-000000000000'
 
-function member(id: string) {
+function member(id: string, turn_count = 2) {
   return {
     id,
+    turn_count,
     user_id: 'u1',
     evaluation_id: EVAL_ID,
     evaluation_ai_model_id: 'm1',
@@ -86,6 +87,31 @@ describe('ConversationGroupsListPage', () => {
     await waitFor(() => expect(screen.getByText('GPT-4o vs Claude')).toBeInTheDocument())
     expect(screen.getByText('Jailbreak suite')).toBeInTheDocument()
     expect(screen.getByText('2 models')).toBeInTheDocument()
+  })
+
+  it('marks a group as empty only when none of its members has a turn', async () => {
+    server.use(
+      ...handlers([
+        {
+          ...groupRow,
+          id: 'grp-empty',
+          name: 'Abandoned',
+          conversations: [member('c3', 0), member('c4', 0)],
+        },
+        {
+          ...groupRow,
+          id: 'grp-half',
+          name: 'Half used',
+          conversations: [member('c5', 0), member('c6', 1)],
+        },
+      ]),
+    )
+    renderPage()
+
+    const abandoned = await screen.findByRole('row', { name: /abandoned/i })
+    expect(within(abandoned).getByText('No messages')).toBeInTheDocument()
+    const halfUsed = screen.getByRole('row', { name: /half used/i })
+    expect(within(halfUsed).queryByText('No messages')).toBeNull()
   })
 
   it('opens the group page on row click', async () => {
