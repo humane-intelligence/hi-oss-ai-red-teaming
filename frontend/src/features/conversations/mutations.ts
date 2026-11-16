@@ -245,9 +245,12 @@ export function useAddConversationToGroup(scenarioId: string, groupId: string) {
         }),
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['conversation-group', groupId] })
       qc.invalidateQueries({ queryKey: ['conversation-groups'] })
       toast.success('Model added')
+    },
+    // A 409 means the group was prompted since this page loaded; refetching it locks Add model.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['conversation-group', groupId] })
     },
   })
 }

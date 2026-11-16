@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest'
+import { render } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { SidebarNav } from './sidebar-nav'
+import { authWrapper } from '@/lib/auth/auth.testutils'
+
+function renderAt(path: string) {
+  const Wrapper = authWrapper(['evaluation_groups:read', 'evaluations:read', 'conversations:read'])
+  render(
+    <Wrapper>
+      <MemoryRouter initialEntries={[path]}>
+        <SidebarNav />
+      </MemoryRouter>
+    </Wrapper>,
+  )
+}
+
+// The whole document, not just <nav>: the logo link sits outside it and must never be marked.
+function current() {
+  return [...document.querySelectorAll('[aria-current="page"]')].map((l) => l.textContent)
+}
+
+describe('SidebarNav — active item', () => {
+  it.each([
+    '/evaluations/e1/conversations/c1',
+    '/evaluations/e1/conversation-groups/g1',
+    '/evaluations/e1/conversation-groups/new',
+    // Routes match case-insensitively, so the menu must too.
+    '/Evaluations/e1/Conversations/c1',
+  ])('marks Conversations, not Evaluations, on %s', (path) => {
+    renderAt(path)
+    expect(current()).toEqual(['Conversations'])
+  })
+
+  it.each([
+    ['/evaluations', 'Evaluations'],
+    ['/evaluations/e1', 'Evaluations'],
+    ['/evaluations/e1/edit', 'Evaluations'],
+    ['/evaluation-groups/g1', 'Evaluation Groups'],
+    ['/conversation-groups', 'Conversations'],
+  ])('marks only the matching item on %s', (path, label) => {
+    renderAt(path)
+    expect(current()).toEqual([label])
+  })
+
+  it('marks Overview only on the root', () => {
+    renderAt('/')
+    expect(current()).toEqual(['Overview'])
+  })
+})

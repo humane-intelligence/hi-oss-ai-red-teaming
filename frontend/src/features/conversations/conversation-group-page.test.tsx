@@ -579,6 +579,64 @@ describe('ConversationGroupPage', () => {
     expect(screen.getByRole('button', { name: /add model/i })).toBeDisabled()
   })
 
+  it('locks Add model once a prompt has been sent, and says why', async () => {
+    // A model added later would never see the earlier prompts; the backend refuses it (409).
+    server.use(
+      ...baseHandlers([{ ...conv(CONV_A, MODEL_A), turn_count: 1 }, conv(CONV_B, MODEL_B)]),
+    )
+    renderPage()
+
+    const add = await screen.findByRole('button', { name: /add model/i })
+    expect(add).toBeDisabled()
+    expect(add).toHaveAttribute('title', expect.stringMatching(/before the first prompt/))
+    expect(screen.getByText(/can only be added before the first prompt/)).toBeInTheDocument()
+  })
+
+  it('locks Add model when a stale page is refused because the group was prompted meanwhile', async () => {
+    // Prompted from another tab or the detail page: this page still shows no turns until refetched.
+    let prompted = false
+    server.use(
+      http.get(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversation-groups/${GROUP_ID}`,
+        () =>
+          HttpResponse.json(
+            group([
+              { ...conv(CONV_A, MODEL_A), turn_count: prompted ? 1 : 0 },
+              conv(CONV_B, MODEL_B),
+            ]),
+          ),
+      ),
+      http.post(`http://localhost/api/v1/scenarios/${SCEN_ID}/conversations`, () => {
+        prompted = true
+        return HttpResponse.json(
+          { detail: 'Conversation group already has prompts.' },
+          { status: 409 },
+        )
+      }),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add model/i }))
+    await user.click(await screen.findByLabelText('Model'))
+    await user.click(await screen.findByRole('option', { name: 'gpt-4o' }))
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
+
+    expect(await screen.findByText(/can only be added before the first prompt/)).toBeInTheDocument()
+  })
+
+  it('offers Add model before the first prompt', async () => {
+    server.use(...baseHandlers())
+    renderPage()
+
+    const add = await screen.findByRole('button', { name: /add model/i })
+    expect(add).toBeEnabled()
+    expect(add).not.toHaveAttribute('title')
+    expect(screen.queryByText(/can only be added before the first prompt/)).toBeNull()
+  })
+
   it('renames the group', async () => {
     let captured: unknown = null
     server.use(

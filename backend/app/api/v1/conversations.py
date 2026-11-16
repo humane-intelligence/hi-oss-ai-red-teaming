@@ -85,8 +85,12 @@ _CONVERSATION_NOT_FOUND = problem_response(
 )
 _GROUP_FULL = problem_response("The target group already holds the maximum number of conversations.")
 _GROUP_CONFLICT = problem_response(
-    "The target group already holds the maximum number of conversations, "
+    "The target group already holds the maximum number of conversations, already has prompts, "
     "or its scenario does not match the conversation's."
+)
+_MOVE_CONFLICT = problem_response(
+    "The target group already holds the maximum number of conversations, already has prompts, "
+    "or its scenario does not match the conversation's; or the conversation itself already has prompts."
 )
 _NOT_RESTORABLE = problem_response(
     "No restorable conversation with this id: never deleted, deleted longer than the restore window ago, "
@@ -163,7 +167,8 @@ async def create_conversation_endpoint(
     * **404 Not Found** — the scenario isn't visible, or the model assignment / group isn't part
       of its evaluation.
     * **409 Conflict** — the target group already holds the maximum number of conversations,
-      or the scenario is not the group's scenario.
+      already has prompts (models join a group only before its first prompt), or the scenario
+      is not the group's scenario.
     """
     can_manage = _can_manage(caller)
     scenario = await get_scenario_by_id(db, scenario_id, caller_id=caller.id, can_manage=can_manage)
@@ -384,7 +389,7 @@ async def list_conversation_messages_endpoint(
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _NOT_FOUND,
-        status.HTTP_409_CONFLICT: _GROUP_CONFLICT,
+        status.HTTP_409_CONFLICT: _MOVE_CONFLICT,
     },
 )
 @transactional
@@ -405,7 +410,8 @@ async def update_conversation_endpoint(
     * **404 Not Found** — no such conversation owned by the caller in this evaluation,
       or the target `conversation_group_id` is not the caller's group within this evaluation.
     * **409 Conflict** — the target group already holds the maximum number of conversations,
-      or targets a different scenario than the conversation.
+      already has prompts (models join a group only before its first prompt), or targets a
+      different scenario than the conversation; or the conversation itself already has prompts.
     """
     can_manage = _can_manage(caller)
     conversation = await get_conversation(
@@ -416,6 +422,12 @@ async def update_conversation_endpoint(
         payload.conversation_group_id is not None
         and payload.conversation_group_id != conversation.conversation_group_id
     ):
+        # The other side of the target's prompt check: history the rest of the group never saw.
+        # Before the target lookup, so a refused move takes no group row lock.
+        if conversation.turn_count > 0:
+            raise ConflictError(
+                f"Conversation {conversation_id} already has prompts; only a conversation without any can move."
+            )
         # Validate the target group is the caller's own, in this same evaluation
         # (so a move can't smuggle the conversation into another evaluation), and
         # row-lock it + enforce its size cap — the conversation row is already
