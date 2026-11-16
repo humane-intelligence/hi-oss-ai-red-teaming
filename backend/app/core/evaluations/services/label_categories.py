@@ -1,7 +1,7 @@
 """CRUD for an evaluation's conversation-label categories.
 
 Labels are metadata for organising and reporting conversations. Nothing here reaches a model
-prompt — the tag machinery in `tag_keys.py` is the only path into one.
+prompt; only conversation tags do.
 """
 
 from typing import Any
