@@ -33,7 +33,8 @@ export function useConversationGroups(evaluationId: string, options: ObjectAutho
       ),
     getNextPageParam: (last) => {
       const next = last.offset + last.items.length
-      return next < last.total ? next : undefined
+      // An empty page ends the list too: a total that shrank mid-scroll can't re-request one offset forever.
+      return last.items.length > 0 && next < last.total ? next : undefined
     },
   })
 }
