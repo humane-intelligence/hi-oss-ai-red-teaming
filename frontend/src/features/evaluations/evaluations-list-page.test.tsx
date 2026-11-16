@@ -279,3 +279,15 @@ describe('EvaluationsListPage — the Group column', () => {
     expect(seen.every((u) => u.searchParams.get('all_groups') === null)).toBe(true)
   })
 })
+
+describe('EvaluationsListPage — row cells', () => {
+  it('links the title, dates it "Mon D, YYYY" and centres the model count', async () => {
+    server.use(oneEvaluationIn(GROUP_ON_PAGE_TWO), groupsHandler())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    const title = await screen.findByRole('link', { name: 'Prompt injection' })
+    expect(title).toHaveAttribute('href', '/evaluations/ev-1')
+    expect(screen.getByText('Aug 11, 2026')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Models' })).toHaveClass('text-center')
+  })
+})

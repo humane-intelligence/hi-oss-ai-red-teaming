@@ -105,6 +105,44 @@ describe('DataTable', () => {
     expect(onRowClick).toHaveBeenCalledTimes(2)
   })
 
+  it('leaves Enter on a control inside the row to that control', async () => {
+    const user = userEvent.setup()
+    const onRowClick = vi.fn()
+    const onButton = vi.fn()
+    const withButton: Column<Row>[] = [
+      ...columns,
+      {
+        header: 'Act',
+        cell: () => (
+          // Cells stop the click themselves (the row navigates on click); the keydown is the row's job.
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onButton()
+            }}
+          >
+            Act
+          </button>
+        ),
+      },
+    ]
+    render(
+      <DataTable
+        columns={withButton}
+        rows={rows.slice(0, 1)}
+        rowKey={(r) => r.id}
+        onRowClick={onRowClick}
+      />,
+    )
+
+    screen.getByRole('button', { name: 'Act' }).focus()
+    await user.keyboard('{Enter}')
+
+    expect(onButton).toHaveBeenCalledTimes(1)
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
+
   it('does not make rows focusable without onRowClick', () => {
     render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />)
     expect(screen.getByText('Alice').closest('tr')).not.toHaveAttribute('tabindex')

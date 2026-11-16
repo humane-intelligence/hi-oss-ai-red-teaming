@@ -274,6 +274,8 @@ export function DataTable<T>({
                     onKeyDown={
                       onRowClick
                         ? (e: KeyboardEvent) => {
+                            // Only the row itself: a link or button inside it keeps its own Enter.
+                            if (e.target !== e.currentTarget) return
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault()
                               onRowClick(row)

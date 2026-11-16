@@ -186,3 +186,37 @@ describe('EvaluationGroupsListPage — status filter', () => {
     })
   })
 })
+
+describe('EvaluationGroupsListPage — row cells', () => {
+  it('links the title and dates the start "Mon D, YYYY"', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/evaluation-groups', () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: 'g1',
+              title: 'Spring jailbreak',
+              description: 'd',
+              created_by_id: 'u1',
+              status: 'published',
+              access_level: 'public',
+              organization_id: null,
+              start_date: '2026-10-28',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      ),
+      orgsHandler([]),
+    )
+    renderPage()
+
+    const title = await screen.findByRole('link', { name: 'Spring jailbreak' })
+    expect(title).toHaveAttribute('href', '/evaluation-groups/g1')
+    expect(screen.getByText('Oct 28, 2026')).toBeInTheDocument()
+  })
+})

@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { formatDate } from '@/lib/format-date'
 import { Plus } from 'lucide-react'
 import { useEvaluationGroups, type EvaluationGroupOrderBy } from './queries'
 import { PublicationStatusBadge } from './status-badge'
@@ -45,12 +46,20 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       id: 'title',
       label: 'Title',
       header: 'Title',
-      cell: (g) =>
-        g.title ? (
-          <span className="font-medium">{g.title}</span>
-        ) : (
-          <span className="text-muted-foreground">Untitled draft</span>
-        ),
+      // A real link, not just its look: keyboard reach and "open in a new tab"; the row keeps its own click.
+      cell: (g) => (
+        <Link
+          to={`/evaluation-groups/${g.id}`}
+          onClick={(ev) => ev.stopPropagation()}
+          className={
+            g.title
+              ? 'text-primary font-medium underline-offset-2 hover:underline'
+              : 'text-muted-foreground underline-offset-2 hover:underline'
+          }
+        >
+          {g.title ?? 'Untitled draft'}
+        </Link>
+      ),
       sortKey: 'title',
     },
     {
@@ -82,7 +91,11 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       label: 'Start',
       header: 'Start',
       hideBelow: 'sm',
-      cell: (g) => <span className="text-muted-foreground">{g.start_date ?? '—'}</span>,
+      cell: (g) => (
+        <span className="text-muted-foreground whitespace-nowrap">
+          {g.start_date ? formatDate(g.start_date) : '—'}
+        </span>
+      ),
       sortKey: 'start_date',
     },
     {
@@ -90,7 +103,11 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       label: 'End',
       header: 'End',
       hideBelow: 'lg',
-      cell: (g) => <span className="text-muted-foreground">{g.end_date ?? '—'}</span>,
+      cell: (g) => (
+        <span className="text-muted-foreground whitespace-nowrap">
+          {g.end_date ? formatDate(g.end_date) : '—'}
+        </span>
+      ),
       sortKey: 'end_date',
     },
   ]

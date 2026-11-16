@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useEvaluations, type EvaluationOrderBy } from './queries'
+import { formatDate } from '@/lib/format-date'
 import { EvaluationStatusBadge } from './status-badge'
 import { useGroupLookup } from '@/features/evaluation-groups/queries'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
@@ -62,7 +63,16 @@ export function EvaluationsContent() {
       id: 'title',
       label: 'Title',
       header: 'Title',
-      cell: (e) => <span className="font-medium">{e.title}</span>,
+      // A real link, not just its look: keyboard reach and "open in a new tab"; the row keeps its own click.
+      cell: (e) => (
+        <Link
+          to={`/evaluations/${e.id}`}
+          onClick={(ev) => ev.stopPropagation()}
+          className="text-primary font-medium underline-offset-2 hover:underline"
+        >
+          {e.title}
+        </Link>
+      ),
       sortKey: 'title',
     },
     {
@@ -101,6 +111,7 @@ export function EvaluationsContent() {
       label: 'Models',
       header: 'Models',
       hideBelow: 'sm',
+      className: 'text-center',
       cell: (e) => e.models?.length ?? 0,
     },
     {
@@ -109,7 +120,7 @@ export function EvaluationsContent() {
       header: 'Created',
       hideBelow: 'md',
       cell: (e) => (
-        <span className="text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</span>
+        <span className="text-muted-foreground whitespace-nowrap">{formatDate(e.created_at)}</span>
       ),
       sortKey: 'created_at',
     },
