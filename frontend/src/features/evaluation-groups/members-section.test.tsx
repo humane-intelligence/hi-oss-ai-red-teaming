@@ -1,13 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { toast } from 'sonner'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { MembersSection } from './members-section'
 import type { EvaluationGroupAccessLevel } from '@/lib/api/types'
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
 
 const GROUP_ID = 'grp-0001-0000-0000-000000000000'
 const USER_ID = 'usr-0001-0000-0000-000000000000'
@@ -100,7 +103,7 @@ function renderSection(
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const Wrapper = authWrapper(globalPermissions)
-  render(
+  return render(
     <Wrapper>
       <QueryClientProvider client={qc}>
         <MemoryRouter>
@@ -200,7 +203,10 @@ describe('MembersSection — RBAC gates', () => {
 
   it('with evaluation_groups:manage + users:read — Add member button present', async () => {
     server.use(...baseHandlers())
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage'],
+      ['users:read', 'roles:read'],
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
@@ -208,7 +214,7 @@ describe('MembersSection — RBAC gates', () => {
 
   it('with manage_members but no users:read (owner) — Invite + Edit shown, Add member hidden', async () => {
     server.use(...baseHandlers())
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage_members'])
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage_members'], ['roles:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /invite by email/i })).toBeInTheDocument()
@@ -224,18 +230,39 @@ describe('MembersSection — RBAC gates', () => {
       ),
       ...baseHandlers(),
     )
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['organizations:read'], {
-      accessLevel: 'organization',
-      organizationId: 'org-0001-0000-0000-000000000000',
-    })
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage'],
+      ['organizations:read', 'roles:read'],
+      { accessLevel: 'organization', organizationId: 'org-0001-0000-0000-000000000000' },
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
   })
 
+  it('in-group owner without roles:read — no Add or Edit roles, whose role list would only 403', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/organizations/org-0001-0000-0000-000000000000', () =>
+        HttpResponse.json({ id: 'org-0001-0000-0000-000000000000', name: 'Andless' }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage_members'],
+      ['organizations:read', 'users:read'],
+      { accessLevel: 'organization', organizationId: 'org-0001-0000-0000-000000000000' },
+    )
+
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /invite by email/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /remove member/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add member/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /edit roles/i })).toBeNull()
+  })
+
   it('with evaluation_groups:manage — Edit roles button present', async () => {
     server.use(...baseHandlers())
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'])
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['roles:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /edit roles/i })).toBeInTheDocument()
@@ -301,7 +328,7 @@ describe('MembersSection — add flow', () => {
     const user = userEvent.setup()
     renderSection(
       ['evaluation_groups:read', 'evaluation_groups:manage'],
-      globalPermissions,
+      [...globalPermissions, 'roles:read'],
       withOrg ? { accessLevel: 'organization', organizationId: ORG_ID } : {},
     )
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
@@ -544,10 +571,83 @@ describe('MembersSection — add flow', () => {
 
   it('does not request users until the dialog opens', async () => {
     const { userQueries } = handlers()
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage'],
+      ['users:read', 'roles:read'],
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(userQueries).toHaveLength(0)
+  })
+
+  it('marks a member from past the first page of the group as already a member', async () => {
+    handlers({ users: [user3, user4] })
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0)
+        const later = { ...member, user: { ...member.user, id: user4.id, email: user4.email } }
+        return HttpResponse.json({
+          items: offset === 0 ? [member] : [later],
+          total: 2,
+          limit: 100,
+          offset,
+        })
+      }),
+    )
+    const { dialog } = await openDialog(['users:read'])
+
+    const dave = await within(dialog).findByRole('checkbox', { name: /dave@example.com/ })
+    await waitFor(() => expect(dave).toBeDisabled())
+    expect(within(dialog).getByRole('checkbox', { name: /carol@example.com/ })).toBeEnabled()
+  })
+
+  it('toasts the outcome of a partly failed add when the page is gone before it lands', async () => {
+    handlers({ users: [user3] })
+    let respond: () => void = () => {}
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/bulk`, async () => {
+        await new Promise<void>((resolve) => (respond = resolve))
+        return HttpResponse.json({
+          dry_run: false,
+          total: 1,
+          succeeded: 0,
+          failed: 1,
+          results: [
+            { row_key: USER_ID_3, status: 'failed', error: { title: 'Conflict', status: 409 } },
+          ],
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    const { unmount } = renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage'],
+      ['users:read', 'roles:read'],
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /add member/i }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 1' }))
+
+    unmount()
+    respond()
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith('Added 0 of 1 members; 1 could not be added.'),
+    )
+  })
+
+  it('says when the list shows only the first page of a large group', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, () =>
+        HttpResponse.json({ items: [member], total: 150, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderSection(['evaluation_groups:read'])
+
+    expect(await screen.findByText('Showing the first 1 of 150 members.')).toBeInTheDocument()
   })
 })
 
@@ -588,12 +688,7 @@ describe('MembersSection — remove flow', () => {
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
 
-    // click the trash button (second icon button) in the member row
-    const memberRow = screen.getByText('Ada Lovelace').closest<HTMLElement>('.rounded-md')
-    expect(memberRow).not.toBeNull()
-    const trashBtn = within(memberRow!).getAllByRole('button')[1]
-    expect(trashBtn).not.toBeNull()
-    await user.click(trashBtn!)
+    await user.click(screen.getByRole('button', { name: 'Remove member' }))
 
     // confirm in the ConfirmDialog
     await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument())
@@ -636,7 +731,7 @@ describe('MembersSection — edit flow', () => {
     )
 
     const user = userEvent.setup()
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'])
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['roles:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
 

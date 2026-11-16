@@ -64,8 +64,8 @@ function EditMemberDialog({
   )
 }
 
-// Members of the owning organization can join an organization-access group themselves; without
-// this the page gave no hint of it. Public groups are open to everyone, invitation-only to nobody.
+// Only an organization-access group has a bounded set of self-joiners worth naming: a public group is
+// open to everyone, an invitation-only one to nobody.
 function EligibleToJoin({ organizationId }: { organizationId: string }) {
   const { has } = usePermissions()
   const org = useOrganization(organizationId, {
@@ -114,7 +114,11 @@ export function MembersSection({
   const canPickUsers = hasGlobal('users:read')
   // Organization members come from `/organizations/{id}/members` (`organizations:read`).
   const canPickOrganization = hasGlobal('organizations:read') && !!organizationId
-  const canAddExisting = canManageMembers && (canPickUsers || canPickOrganization)
+  // Both role dialogs list roles from `/roles`, which is gated on the global `roles:read` — an in-group
+  // owner without it would open a dialog that can only 403.
+  const canAssignRoles = hasGlobal('roles:read')
+  const canAddExisting = canManageMembers && canAssignRoles && (canPickUsers || canPickOrganization)
+  const canEditRoles = canManageMembers && canAssignRoles
   const [addOpen, setAddOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<ObjectMemberResponse | null>(null)
@@ -133,7 +137,7 @@ export function MembersSection({
             </Button>
             {canAddExisting && (
               <Button size="sm" onClick={() => setAddOpen(true)}>
-                <Plus className="size-4" /> Add member
+                <Plus className="size-4" /> Add member(s)
               </Button>
             )}
           </div>
@@ -161,14 +165,16 @@ export function MembersSection({
             </div>
             {canManageMembers && (
               <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Edit roles"
-                  onClick={() => setEditTarget(m)}
-                >
-                  <Pencil className="size-4" />
-                </Button>
+                {canEditRoles && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit roles"
+                    onClick={() => setEditTarget(m)}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -181,6 +187,11 @@ export function MembersSection({
             )}
           </div>
         ))}
+        {members.data && members.data.total > memberList.length && (
+          <p className="text-muted-foreground text-sm">
+            Showing the first {memberList.length} of {members.data.total} members.
+          </p>
+        )}
         {!members.isPending && memberList.length === 0 && (
           <p className="text-muted-foreground text-sm">
             No members yet. Add red-teamers and reviewers to give them access to this group.
@@ -196,7 +207,6 @@ export function MembersSection({
         <AddMembersDialog
           groupId={groupId}
           organizationId={organizationId}
-          currentMemberIds={memberList.map((m) => m.user.id)}
           canPickOrganization={canPickOrganization}
           canPickUsers={canPickUsers}
           open={addOpen}
@@ -204,14 +214,16 @@ export function MembersSection({
         />
       )}
       <BulkInviteDialog groupId={groupId} open={inviteOpen} onOpenChange={setInviteOpen} />
-      <EditMemberDialog
-        groupId={groupId}
-        member={editTarget}
-        open={editTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setEditTarget(null)
-        }}
-      />
+      {canEditRoles && (
+        <EditMemberDialog
+          groupId={groupId}
+          member={editTarget}
+          open={editTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setEditTarget(null)
+          }}
+        />
+      )}
       <ConfirmDialog
         open={removeTarget !== null}
         onOpenChange={(o) => {

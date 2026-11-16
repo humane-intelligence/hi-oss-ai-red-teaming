@@ -311,7 +311,7 @@ export function EvaluationGroupDetailPage() {
               <StatTile label="Evaluations" value={children.length} />
               <StatTile label="Members" value={members.data?.total ?? 0} />
               {canManageMembers && (
-                <StatTile label="Annotators" value={annotators.data?.items.length ?? 0} />
+                <StatTile label="Annotators" value={annotators.data?.total ?? 0} />
               )}
             </div>
           </header>

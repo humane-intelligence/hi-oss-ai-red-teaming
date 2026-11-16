@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useBulkAddGroupMembers } from './mutations'
+import { useAllGroupMemberIds } from './queries'
 import {
   ALL_MEMBERS_CAP,
   useAllOrganizationMembers,
@@ -49,7 +51,6 @@ function UserRow({
 export function AddMembersDialog({
   groupId,
   organizationId,
-  currentMemberIds,
   canPickOrganization,
   canPickUsers,
   open,
@@ -57,7 +58,6 @@ export function AddMembersDialog({
 }: {
   groupId: string
   organizationId: string | null | undefined
-  currentMemberIds: string[]
   canPickOrganization: boolean
   canPickUsers: boolean
   open: boolean
@@ -80,12 +80,13 @@ export function AddMembersDialog({
   const term = search.trim()
   const users = useInfiniteUsers(
     { limit: 50, search: term || undefined, order_by: 'email' },
-    { enabled: open && canPickUsers },
+    { enabled: open && canPickUsers, suppressErrorToast: true },
   )
+  const memberIds = useAllGroupMemberIds(groupId, { enabled: open })
   const roles = useRoles({ objectAssignable: true, enabled: open })
   const add = useBulkAddGroupMembers(groupId)
 
-  const members = new Set(currentMemberIds)
+  const members = new Set(memberIds.data)
   const matches = (u: Picked) => term === '' || label(u).toLowerCase().includes(term.toLowerCase())
   const orgList = orgMembers.data?.items ?? []
   const orgIds = new Set(orgList.map((u) => u.id))
@@ -158,25 +159,37 @@ export function AddMembersDialog({
 
   const missingRole = pickedList.some((u) => (roleIds[u.id] ?? []).length === 0)
 
-  function submit() {
-    add.mutate(
-      {
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  async function submit() {
+    let data: BulkGroupMemberResponse
+    try {
+      data = await add.mutateAsync({
         dry_run: false,
         rows: pickedList.map((u) => ({
           row_key: u.id,
           data: { user_id: u.id, role_ids: roleIds[u.id] ?? [] },
         })),
-      },
-      {
-        onSuccess: (data) => {
-          if (data.failed === 0) close()
-          else {
-            setResult(data)
-            setStep('result')
-          }
-        },
-      },
-    )
+      })
+    } catch {
+      return // The global mutation handler has already toasted it.
+    }
+    if (data.failed === 0) close()
+    else if (mounted.current) {
+      setResult(data)
+      setStep('result')
+    } else {
+      // The page went away mid-request, so the result step has nowhere to render.
+      toast.warning(
+        `Added ${data.succeeded} of ${data.total} members; ${data.failed} could not be added.`,
+      )
+    }
   }
 
   // Reset on close, not via `onOpen`: that runs after the first open render.
@@ -269,10 +282,14 @@ export function AddMembersDialog({
                   {users.isLoading && (
                     <p className="text-muted-foreground px-3 py-1.5 text-sm">Loading users…</p>
                   )}
-                  {users.isError && !users.isFetchNextPageError && (
-                    <p className="text-destructive px-3 py-1.5 text-sm">Couldn’t load users.</p>
+                  {users.isError && (
+                    <p className="text-destructive px-3 py-1.5 text-sm">
+                      {users.isFetchNextPageError
+                        ? 'Couldn’t load more users.'
+                        : 'Couldn’t load users.'}
+                    </p>
                   )}
-                  {users.isSuccess && others.length === 0 && (
+                  {users.isSuccess && others.length === 0 && !users.hasNextPage && (
                     <p className="text-muted-foreground px-3 py-1.5 text-sm">No matching users.</p>
                   )}
                   {others.map((u) => (
@@ -312,7 +329,10 @@ export function AddMembersDialog({
             <Button variant="outline" onClick={close}>
               Cancel
             </Button>
-            <Button disabled={picked.size === 0 || tooMany || !roles.isSuccess} onClick={toRoles}>
+            <Button
+              disabled={picked.size === 0 || tooMany || !roles.isSuccess || !memberIds.isSuccess}
+              onClick={toRoles}
+            >
               Next{picked.size > 0 && ` (${picked.size} selected)`}
             </Button>
           </div>
@@ -388,7 +408,7 @@ export function AddMembersDialog({
             <Button variant="outline" onClick={() => setStep('users')} disabled={add.isPending}>
               Back
             </Button>
-            <Button disabled={missingRole || add.isPending} onClick={submit}>
+            <Button disabled={missingRole || add.isPending} onClick={() => void submit()}>
               {add.isPending ? 'Adding…' : `Add ${pickedList.length}`}
             </Button>
           </div>

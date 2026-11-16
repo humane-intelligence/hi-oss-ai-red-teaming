@@ -87,13 +87,16 @@ export function useOrganization(
 }
 
 // The API pages at 100; adding a whole organization needs every member, so walk the pages. Capped at
-// the bulk row limit, which is all one add can take anyway.
+// the bulk row limit, which is all one add can take anyway. Mirrors the server's default
+// `bulk_max_rows`; an operator who lowers it gets the server's 422 instead of this hint.
 export const ALL_MEMBERS_CAP = 1000
 
 export function useAllOrganizationMembers(organizationId: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['organization-members', organizationId, 'all'],
     enabled: organizationId !== '' && (options?.enabled ?? true),
+    // Its one caller, the add-members dialog, reports the failure inline.
+    meta: { suppressErrorToast: true },
     queryFn: async () => {
       const items: UserResponse[] = []
       for (;;) {

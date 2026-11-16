@@ -71,11 +71,12 @@ export function useUsers(
 
 export function useInfiniteUsers(
   params: { limit: number; search?: string; order_by?: UserOrderBy },
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; suppressErrorToast?: boolean },
 ) {
   return useInfiniteQuery({
     queryKey: ['users', 'infinite', params],
     enabled: options?.enabled ?? true,
+    meta: options?.suppressErrorToast ? { suppressErrorToast: true } : undefined,
     initialPageParam: 0,
     queryFn: async ({ pageParam }) =>
       unwrap(

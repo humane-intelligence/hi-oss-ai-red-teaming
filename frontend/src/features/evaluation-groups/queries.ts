@@ -155,6 +155,27 @@ export function useGroupMembers(
   })
 }
 
+// "Already a member" in the add dialog must hold past the first page, or a large group's members
+// show as pickable and come back as failed rows.
+export function useAllGroupMemberIds(groupId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['evaluation-group-members', groupId, 'all-ids'],
+    enabled: groupId !== '' && (options?.enabled ?? true),
+    queryFn: async () => {
+      const ids: string[] = []
+      for (;;) {
+        const page = unwrap(
+          await apiClient.GET('/api/v1/evaluation-groups/{group_id}/members', {
+            params: { path: { group_id: groupId }, query: { limit: 100, offset: ids.length } },
+          }),
+        )
+        ids.push(...page.items.map((m) => m.user.id))
+        if (page.items.length === 0 || ids.length >= page.total) return ids
+      }
+    },
+  })
+}
+
 // Whole-event aggregate metrics — gated server-side by the group's configured
 // metrics-access level. The group detail injects `evaluation_groups:view_metrics` into
 // `user_permissions` whenever the caller would be admitted (full or personal scope), so callers
