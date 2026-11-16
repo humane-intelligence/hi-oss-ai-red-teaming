@@ -62,4 +62,17 @@ describe('useConversationStream.send', () => {
     expect(ok).toBe(false)
     expect(toast.error).toHaveBeenCalledWith('Connection lost. Please try again.')
   })
+
+  it("marks the evaluation's conversation list stale so its turn counts refresh", async () => {
+    mockSend()
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(['conversation-groups', 'e1'], { pages: [], pageParams: [] })
+    const { result } = renderHook(() => useConversationStream('e1', 'c1'), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    })
+    await act(async () => {
+      await result.current.send('hello')
+    })
+    expect(qc.getQueryState(['conversation-groups', 'e1'])?.isInvalidated).toBe(true)
+  })
 })
