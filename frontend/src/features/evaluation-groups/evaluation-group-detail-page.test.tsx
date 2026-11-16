@@ -514,6 +514,36 @@ describe('EvaluationGroupDetailPage — RBAC gates', () => {
   })
 })
 
+describe('EvaluationGroupDetailPage — Annotators tile', () => {
+  const manager = ['evaluation_groups:read', 'evaluation_groups:manage_members']
+
+  it('counts the pool on an organization group', async () => {
+    server.use(...makeHandlers(withPerms(publishedOrgGroup, manager)))
+    renderPage()
+
+    expect(await screen.findByText('Annotators')).toBeInTheDocument()
+  })
+
+  it('is hidden on a public group, whose pool is every annotator on the platform', async () => {
+    let fetched = false
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/annotators`, () => {
+        fetched = true
+        return HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 })
+      }),
+      ...makeHandlers(withPerms(publishedGroup, manager)),
+    )
+    renderPage()
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Test group' })).toBeInTheDocument(),
+    )
+    expect(screen.getByText('Members')).toBeInTheDocument()
+    expect(screen.queryByText('Annotators')).toBeNull()
+    expect(fetched).toBe(false)
+  })
+})
+
 describe('EvaluationGroupDetailPage — created_by resolution', () => {
   it('shows resolved email when users list includes the creator', async () => {
     const handlers = [

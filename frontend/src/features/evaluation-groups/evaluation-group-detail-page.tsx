@@ -87,8 +87,10 @@ export function EvaluationGroupDetailPage() {
   const metricsData = metrics.data
   const members = useGroupMembers(id ?? '')
   // The annotator list is manage-members-gated server-side; only fetch it when the
-  // caller can manage, so a plain member doesn't 403 (and toast) on it.
-  const annotators = useGroupAnnotators(id ?? '', { enabled: canManageMembers })
+  // caller can manage, so a plain member doesn't 403 (and toast) on it. A public group's pool is
+  // every annotator on the platform, a number that says nothing about this group.
+  const showAnnotators = canManageMembers && !!group && group.access_level !== 'public'
+  const annotators = useGroupAnnotators(id ?? '', { enabled: showAnnotators })
 
   const submit = useSubmitGroup(id ?? '')
   const publish = usePublishGroup(id ?? '')
@@ -307,10 +309,10 @@ export function EvaluationGroupDetailPage() {
               </div>
             )}
 
-            <div className={cn('grid grid-cols-2 gap-3', canManageMembers && 'sm:grid-cols-3')}>
+            <div className={cn('grid grid-cols-2 gap-3', showAnnotators && 'sm:grid-cols-3')}>
               <StatTile label="Evaluations" value={children.length} />
               <StatTile label="Members" value={members.data?.total ?? 0} />
-              {canManageMembers && (
+              {showAnnotators && (
                 <StatTile label="Annotators" value={annotators.data?.total ?? 0} />
               )}
             </div>
