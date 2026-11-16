@@ -152,7 +152,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           if (visibleItems.length === 0) return null
           return (
             <div key={group.label}>
-              <div className="text-muted-foreground mt-5 mb-1 px-3 font-mono text-[9.5px]">
+              <div className="text-muted-foreground mt-5 mb-1 px-3 font-mono text-[9.5px] tracking-[0.14em]">
                 {group.label}
               </div>
               {visibleItems.map(({ to, label, icon: Icon }) => {
