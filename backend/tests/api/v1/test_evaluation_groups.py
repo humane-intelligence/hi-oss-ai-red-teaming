@@ -35,6 +35,7 @@ from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
 from app.core.evaluations.models import EvaluationGroupAiModel
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
 from app.core.evaluations.models import Task
@@ -2328,6 +2329,50 @@ async def test_duplicate_copies_each_evaluations_tag_schema(
         .all()
     )
     assert [row.key for row in copied_keys] == ["env"]
+
+
+@pytest.mark.usefixtures("system_roles")
+async def test_duplicate_copies_each_evaluations_label_categories(
+    async_client_with_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    creator = await make_role(db_session, ["evaluation_groups:create"])
+    caller = await _user(db_session, creator)
+    source = await _group(db_session, owner=caller, access_level=EvaluationGroupAccessLevel.PUBLIC)
+    evaluation = await _evaluation(db_session, group=source, title="Labelled")
+    gone = EvaluationLabelCategory(evaluation_id=evaluation.id, name="gone")
+    db_session.add_all(
+        [EvaluationLabelCategory(evaluation_id=evaluation.id, name="language", values=["en", "pl"]), gone]
+    )
+    await db_session.flush()
+    gone.soft_delete(caller.id)
+    await db_session.flush()
+    source_id = source.id
+
+    with as_user(caller):
+        response = await async_client_with_db.post(
+            f"/api/v1/evaluation-groups/{source_id}/duplicate?include_children=true"
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    new_eval = (
+        (
+            await db_session.execute(
+                select(Evaluation).where(col(Evaluation.evaluation_group_id) == UUID(response.json()["id"]))
+            )
+        )
+        .scalars()
+        .one()
+    )
+    copied = (
+        (
+            await db_session.execute(
+                EvaluationLabelCategory.live_select().where(col(EvaluationLabelCategory.evaluation_id) == new_eval.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [(row.name, row.values) for row in copied] == [("language", ["en", "pl"])]
 
 
 @pytest.mark.usefixtures("system_roles")

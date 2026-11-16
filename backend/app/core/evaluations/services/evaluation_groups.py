@@ -46,6 +46,7 @@ from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
 from app.core.evaluations.models import EvaluationGroupAiModel
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
 from app.core.evaluations.models import Task
@@ -545,16 +546,17 @@ async def _persist_new_group(  # noqa: PLR0913 — keyword-only args mirror the 
 
 async def _load_evaluation_children(
     session: AsyncSession, evaluation_ids: list[UUID]
-) -> tuple[dict[UUID, list[Scenario]], dict[UUID, list[EvaluationTagKey]]]:
-    """Load the live scenarios (with tasks) and allowed tag keys of many evaluations, grouped by parent.
+) -> tuple[dict[UUID, list[Scenario]], dict[UUID, list[EvaluationTagKey]], dict[UUID, list[EvaluationLabelCategory]]]:
+    """Load the live scenarios (with tasks), allowed tag keys and label categories of many evaluations, by parent.
 
-    Two `IN` queries for the whole set rather than a pair per evaluation — the anti-N+1 shape the
-    group deep-copy needs. Scenarios come back in `position` order; tag keys are unordered.
+    One `IN` query per kind for the whole set rather than one per evaluation — the anti-N+1 shape
+    the group deep-copy needs. Scenarios come back in `position` order; the rest are unordered.
     """
     scenarios_by_eval: dict[UUID, list[Scenario]] = defaultdict(list)
     tag_keys_by_eval: dict[UUID, list[EvaluationTagKey]] = defaultdict(list)
+    label_categories_by_eval: dict[UUID, list[EvaluationLabelCategory]] = defaultdict(list)
     if not evaluation_ids:
-        return scenarios_by_eval, tag_keys_by_eval
+        return scenarios_by_eval, tag_keys_by_eval, label_categories_by_eval
     scenarios = (
         (
             await session.execute(
@@ -580,7 +582,12 @@ async def _load_evaluation_children(
     )
     for tag_key in tag_keys:
         tag_keys_by_eval[tag_key.evaluation_id].append(tag_key)
-    return scenarios_by_eval, tag_keys_by_eval
+    categories = await session.execute(
+        EvaluationLabelCategory.live_select().where(col(EvaluationLabelCategory.evaluation_id).in_(evaluation_ids))
+    )
+    for category in categories.scalars():
+        label_categories_by_eval[category.evaluation_id].append(category)
+    return scenarios_by_eval, tag_keys_by_eval, label_categories_by_eval
 
 
 async def duplicate_evaluation_group(
@@ -670,7 +677,7 @@ async def duplicate_evaluation_group(
     # Deep-copy children. Every PK is a client-side UUID (BaseModel.id
     # default_factory), so a new row's id is available before flush — build the
     # whole graph and let the single trailing flush insert it in FK order.
-    scenarios_by_eval, tag_keys_by_eval = await _load_evaluation_children(
+    scenarios_by_eval, tag_keys_by_eval, label_categories_by_eval = await _load_evaluation_children(
         session, [src_eval.id for src_eval in source.evaluations]
     )
 
@@ -693,6 +700,12 @@ async def duplicate_evaluation_group(
         session.add(new_eval)
         for src_tag_key in tag_keys_by_eval[src_eval.id]:
             session.add(EvaluationTagKey(evaluation_id=new_eval.id, key=src_tag_key.key))
+        for src_category in label_categories_by_eval[src_eval.id]:
+            session.add(
+                EvaluationLabelCategory(
+                    evaluation_id=new_eval.id, name=src_category.name, values=list(src_category.values)
+                )
+            )
         # Model assignments reference the same shared AiModel row; skip any whose
         # model is soft-deleted so a copy can't resurrect a dead reference.
         for src_assignment in src_eval.models:
