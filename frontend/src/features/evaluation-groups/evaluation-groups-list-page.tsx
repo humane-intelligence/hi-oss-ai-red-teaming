@@ -7,13 +7,13 @@ import { EvaluationsContent } from '@/features/evaluations/evaluations-list-page
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { Pagination } from '@/components/shared/pagination'
 import { Tabs, type TabItem } from '@/components/ui/tabs'
 import { tabPanelProps } from '@/components/ui/tab-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { FilterSelect } from '@/components/shared/filter-select'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type {
@@ -146,24 +146,13 @@ function GroupsContent() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search title/description…"
-            aria-label="Search evaluation groups"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search title/description…"
+          label="Search evaluation groups"
+        />
         <FilterSelect
           label="Status"
           value={view.filters.status}

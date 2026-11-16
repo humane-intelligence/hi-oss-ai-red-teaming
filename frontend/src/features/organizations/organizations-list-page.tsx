@@ -5,11 +5,11 @@ import { useRestoreOrganization } from './mutations'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { DeletedToggle } from '@/components/shared/deleted-toggle'
 import { Pagination } from '@/components/shared/pagination'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { OrganizationResponse } from '@/lib/api/types'
 
@@ -117,24 +117,13 @@ export function OrganizationsListPage() {
         description="Tenants that own evaluation groups and group their members."
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search by name…"
-            aria-label="Search organizations"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search by name…"
+          label="Search organizations"
+        />
         {has('organizations:delete') && (
           <DeletedToggle
             value={view.filters.deleted}

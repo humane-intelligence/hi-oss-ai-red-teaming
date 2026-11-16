@@ -6,10 +6,10 @@ import { useGroupLookup } from '@/features/evaluation-groups/queries'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { Pagination } from '@/components/shared/pagination'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { FilterSelect } from '@/components/shared/filter-select'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { EvaluationResponse, EvaluationStatus } from '@/lib/api/types'
@@ -118,24 +118,13 @@ export function EvaluationsContent() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search title/description…"
-            aria-label="Search evaluations"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search title/description…"
+          label="Search evaluations"
+        />
         <FilterSelect
           label="Status"
           value={view.filters.status}

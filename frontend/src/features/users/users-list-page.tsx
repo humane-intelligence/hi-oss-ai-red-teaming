@@ -23,12 +23,12 @@ import { PageHeader } from '@/components/shared/page-header'
 import { RowActions } from '@/components/shared/row-actions'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { StatusPill } from '@/components/shared/status-pill'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { DeletedToggle } from '@/components/shared/deleted-toggle'
 import { Pagination } from '@/components/shared/pagination'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { FilterSelect } from '@/components/shared/filter-select'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import { useAuth } from '@/lib/auth/auth-context'
@@ -389,24 +389,13 @@ export function UsersListPage() {
     <div className="space-y-6">
       <PageHeader title="Users" description="Platform user accounts." />
       <div className="flex flex-wrap gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search email…"
-            aria-label="Search users by email"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search email…"
+          label="Search users by email"
+        />
         <FilterSelect
           label="Status"
           value={view.filters.status}
