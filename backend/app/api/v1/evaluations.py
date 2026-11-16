@@ -5,6 +5,7 @@ Carries evaluation CRUD plus the model-assignment sub-resource
 """
 
 from typing import Annotated
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -32,12 +33,17 @@ from app.core.evaluations.filters import EvaluationAiModelOrderBy
 from app.core.evaluations.filters import EvaluationOrderBy
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
+from app.core.evaluations.models import EvaluationLabelCategory
+from app.core.evaluations.schemas import MAX_LABEL_CATEGORIES
 from app.core.evaluations.schemas import EvaluationAiModelAssign
 from app.core.evaluations.schemas import EvaluationAiModelResponse
 from app.core.evaluations.schemas import EvaluationAiModelUpdate
 from app.core.evaluations.schemas import EvaluationAiModelUpdateChanges
 from app.core.evaluations.schemas import EvaluationAiModelView
 from app.core.evaluations.schemas import EvaluationCreate
+from app.core.evaluations.schemas import EvaluationLabelCategoryCreate
+from app.core.evaluations.schemas import EvaluationLabelCategoryResponse
+from app.core.evaluations.schemas import EvaluationLabelCategoryUpdate
 from app.core.evaluations.schemas import EvaluationRejectRequest
 from app.core.evaluations.schemas import EvaluationResponse
 from app.core.evaluations.schemas import EvaluationTagKeyCreate
@@ -64,6 +70,11 @@ from app.core.evaluations.services.evaluations import restore_evaluation
 from app.core.evaluations.services.evaluations import soft_delete_evaluation
 from app.core.evaluations.services.evaluations import update_evaluation
 from app.core.evaluations.services.group_models import assert_model_assignable_to_group
+from app.core.evaluations.services.label_categories import create_label_category
+from app.core.evaluations.services.label_categories import delete_label_category
+from app.core.evaluations.services.label_categories import get_label_category
+from app.core.evaluations.services.label_categories import list_label_categories
+from app.core.evaluations.services.label_categories import update_label_category
 from app.core.evaluations.services.tag_keys import add_tag_key
 from app.core.evaluations.services.tag_keys import list_tag_keys
 from app.core.evaluations.services.tag_keys import remove_tag_key
@@ -685,6 +696,180 @@ async def remove_tag_key_endpoint(
         object_type="evaluation_tag_key",
         object_id=removed.id,
         before={"key": removed.key},
+        context={"evaluation_id": str(evaluation_id)},
+    )
+
+
+_LABEL_CATEGORY_NOT_FOUND = problem_response("Evaluation or label category does not exist.")
+
+
+def _label_category_snapshot(row: EvaluationLabelCategory) -> dict[str, Any]:
+    return {"name": row.name, "values": list(row.values)}
+
+
+@router.get(
+    "/{evaluation_id}/label-categories",
+    response_model=list[EvaluationLabelCategoryResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List conversation-label categories",
+    # Flat, not a `Page[T]`: capped at MAX_LABEL_CATEGORIES, and every label picker needs the whole set.
+    description=(
+        f"The evaluation's conversation-label categories (at most {MAX_LABEL_CATEGORIES}), by name "
+        "ignoring case. Labels describe a conversation for organising and reporting and are never "
+        "sent to the model."
+    ),
+    responses=COMMON_ERROR_RESPONSES
+    | {
+        status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN: _FORBIDDEN,
+        status.HTTP_404_NOT_FOUND: _EVALUATION_NOT_FOUND,
+    },
+)
+async def list_label_categories_endpoint(
+    evaluation_id: UUID,
+    caller: Annotated[SessionUser, Depends(require_permission(Permission.EVALUATIONS_READ))],
+    db: DbSession,
+) -> list[EvaluationLabelCategoryResponse]:
+    """List the evaluation's label categories (scoped to the caller's visibility)."""
+    can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
+    await get_evaluation(db, evaluation_id, caller_id=caller.id, can_manage=can_manage, with_models=False)
+    rows = await list_label_categories(db, evaluation_id)
+    return [EvaluationLabelCategoryResponse.from_model(row) for row in rows]
+
+
+@router.post(
+    "/{evaluation_id}/label-categories",
+    response_model=EvaluationLabelCategoryResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Define a conversation-label category",
+    description=(
+        "Add a label category, optionally with its allowed values (none means free text). Needs an "
+        "in-group role granting `evaluations:update`, or `evaluation_groups:manage`."
+    ),
+    responses=COMMON_ERROR_RESPONSES
+    | {
+        status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN: _FORBIDDEN,
+        status.HTTP_404_NOT_FOUND: _EVALUATION_NOT_FOUND,
+        status.HTTP_409_CONFLICT: problem_response(
+            "The name is taken on this evaluation (ignoring case), or the evaluation is at the category cap."
+        ),
+    },
+)
+@transactional
+async def create_label_category_endpoint(
+    evaluation_id: UUID,
+    payload: EvaluationLabelCategoryCreate,
+    caller: Annotated[SessionUser, Depends(require_permission(Permission.EVALUATIONS_UPDATE))],
+    db: DbSession,
+    response: Response,
+) -> EvaluationLabelCategoryResponse:
+    """Define a conversation-label category on the evaluation."""
+    can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
+    await authorize_evaluation_mutation(
+        db, evaluation_id, caller_id=caller.id, can_manage=can_manage, permission=Permission.EVALUATIONS_UPDATE
+    )
+    row = await create_label_category(db, evaluation_id=evaluation_id, name=payload.name, values=payload.values)
+    response.headers["Location"] = f"/api/v1/evaluations/{evaluation_id}/label-categories/{row.id}"
+    await record_audit(
+        db,
+        actor_id=caller.id,
+        actor_email=caller.email,
+        action=AuditAction.EVALUATION_LABEL_CATEGORY_CREATE,
+        object_type="evaluation_label_category",
+        object_id=row.id,
+        after=_label_category_snapshot(row),
+        context={"evaluation_id": str(evaluation_id)},
+    )
+    return EvaluationLabelCategoryResponse.from_model(row)
+
+
+@router.patch(
+    "/{evaluation_id}/label-categories/{category_id}",
+    response_model=EvaluationLabelCategoryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Rename a conversation-label category or replace its values",
+    description=(
+        "Omitted fields stay. Replacing `values` does not rewrite labels already set: a group keeps a "
+        "value dropped from the list. Needs `evaluations:update` or `evaluation_groups:manage`."
+    ),
+    responses=COMMON_ERROR_RESPONSES
+    | {
+        status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN: _FORBIDDEN,
+        status.HTTP_404_NOT_FOUND: _LABEL_CATEGORY_NOT_FOUND,
+        status.HTTP_409_CONFLICT: problem_response("Another category of this evaluation has the name."),
+    },
+)
+@transactional
+async def update_label_category_endpoint(
+    evaluation_id: UUID,
+    category_id: UUID,
+    payload: EvaluationLabelCategoryUpdate,
+    caller: Annotated[SessionUser, Depends(require_permission(Permission.EVALUATIONS_UPDATE))],
+    db: DbSession,
+) -> EvaluationLabelCategoryResponse:
+    """Rename a label category or replace its values."""
+    can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
+    await authorize_evaluation_mutation(
+        db, evaluation_id, caller_id=caller.id, can_manage=can_manage, permission=Permission.EVALUATIONS_UPDATE
+    )
+    row = await get_label_category(db, evaluation_id, category_id)
+    before = _label_category_snapshot(row)
+    row = await update_label_category(db, row, payload.model_dump(exclude_unset=True))
+    after = _label_category_snapshot(row)
+    if before != after:
+        await record_audit(
+            db,
+            actor_id=caller.id,
+            actor_email=caller.email,
+            action=AuditAction.EVALUATION_LABEL_CATEGORY_UPDATE,
+            object_type="evaluation_label_category",
+            object_id=row.id,
+            before=before,
+            after=after,
+            context={"evaluation_id": str(evaluation_id)},
+        )
+    return EvaluationLabelCategoryResponse.from_model(row)
+
+
+@router.delete(
+    "/{evaluation_id}/label-categories/{category_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a conversation-label category",
+    description=(
+        "Remove the category; labels set under it are no longer shown or exported. Needs "
+        "`evaluations:update` or `evaluation_groups:manage`."
+    ),
+    responses=COMMON_ERROR_RESPONSES
+    | {
+        status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN: _FORBIDDEN,
+        status.HTTP_404_NOT_FOUND: _LABEL_CATEGORY_NOT_FOUND,
+    },
+)
+@transactional
+async def delete_label_category_endpoint(
+    evaluation_id: UUID,
+    category_id: UUID,
+    caller: Annotated[SessionUser, Depends(require_permission(Permission.EVALUATIONS_UPDATE))],
+    db: DbSession,
+) -> None:
+    """Delete a conversation-label category."""
+    can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
+    await authorize_evaluation_mutation(
+        db, evaluation_id, caller_id=caller.id, can_manage=can_manage, permission=Permission.EVALUATIONS_UPDATE
+    )
+    row = await get_label_category(db, evaluation_id, category_id)
+    await delete_label_category(db, row, by_id=caller.id)
+    await record_audit(
+        db,
+        actor_id=caller.id,
+        actor_email=caller.email,
+        action=AuditAction.EVALUATION_LABEL_CATEGORY_DELETE,
+        object_type="evaluation_label_category",
+        object_id=row.id,
+        before=_label_category_snapshot(row),
         context={"evaluation_id": str(evaluation_id)},
     )
 
