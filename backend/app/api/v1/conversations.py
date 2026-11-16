@@ -422,6 +422,12 @@ async def update_conversation_endpoint(
         payload.conversation_group_id is not None
         and payload.conversation_group_id != conversation.conversation_group_id
     ):
+        # The other side of the target's prompt check: history the rest of the group never saw.
+        # Before the target lookup, so a refused move takes no group row lock.
+        if conversation.turn_count > 0:
+            raise ConflictError(
+                f"Conversation {conversation_id} already has prompts; only a conversation without any can move."
+            )
         # Validate the target group is the caller's own, in this same evaluation
         # (so a move can't smuggle the conversation into another evaluation), and
         # row-lock it + enforce its size cap — the conversation row is already
@@ -433,11 +439,6 @@ async def update_conversation_endpoint(
             raise ConflictError(
                 f"Conversation group {payload.conversation_group_id} targets a different scenario; "
                 "a conversation only moves between groups of its own scenario."
-            )
-        # The other side of the target's prompt check: history the rest of the group never saw.
-        if conversation.turn_count > 0:
-            raise ConflictError(
-                f"Conversation {conversation_id} already has prompts; only a conversation without any can move."
             )
         new_conversation_group_id = payload.conversation_group_id
     parameters = dump_inference_params(payload.parameters) if payload.parameters is not None else None
