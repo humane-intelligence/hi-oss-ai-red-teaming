@@ -165,12 +165,13 @@ export function useAllGroupMemberIds(
     queryKey: ['evaluation-group-members', groupId, 'all-ids'],
     enabled: groupId !== '' && (options?.enabled ?? true),
     meta: options?.suppressErrorToast ? { suppressErrorToast: true } : undefined,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const ids: string[] = []
       for (;;) {
         const page = unwrap(
           await apiClient.GET('/api/v1/evaluation-groups/{group_id}/members', {
             params: { path: { group_id: groupId }, query: { limit: 100, offset: ids.length } },
+            signal,
           }),
         )
         ids.push(...page.items.map((m) => m.user.id))

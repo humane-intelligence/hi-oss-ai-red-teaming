@@ -617,6 +617,33 @@ describe('MembersSection — add flow', () => {
     expect(within(dialog).getByText(/at most 1000 users/)).toBeInTheDocument()
   })
 
+  it('stops paging the organization members when the dialog is cancelled', async () => {
+    handlers({ users: [] })
+    let aborted = false
+    server.use(
+      http.get(`http://localhost/api/v1/organizations/${ORG_ID}/members`, async ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset'))
+        if (offset === 0) {
+          return HttpResponse.json({ items: [user3], total: 2, limit: 100, offset: 0 })
+        }
+        // The next page never answers on its own: only an abort ends it.
+        await new Promise<void>((resolve) =>
+          request.signal.addEventListener('abort', () => {
+            aborted = true
+            resolve()
+          }),
+        )
+        return HttpResponse.error()
+      }),
+    )
+    const { user, dialog } = await openDialog(['users:read', 'organizations:read'], true)
+
+    await within(dialog).findByText('Loading members…')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(aborted).toBe(true))
+  })
+
   it('does not request users until the dialog opens', async () => {
     const { userQueries } = handlers()
     renderSection(

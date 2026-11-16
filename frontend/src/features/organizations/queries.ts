@@ -97,7 +97,7 @@ export function useAllOrganizationMembers(organizationId: string, options?: { en
     enabled: organizationId !== '' && (options?.enabled ?? true),
     // Its one caller, the add-members dialog, reports the failure inline.
     meta: { suppressErrorToast: true },
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const items: UserResponse[] = []
       for (;;) {
         const page = unwrap(
@@ -106,6 +106,7 @@ export function useAllOrganizationMembers(organizationId: string, options?: { en
               path: { organization_id: organizationId },
               query: { limit: 100, offset: items.length },
             },
+            signal,
           }),
         )
         items.push(...page.items)

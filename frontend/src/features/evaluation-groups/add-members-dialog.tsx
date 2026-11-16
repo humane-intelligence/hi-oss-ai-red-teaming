@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useBulkAddGroupMembers } from './mutations'
 import { useAllGroupMemberIds } from './queries'
@@ -98,6 +99,7 @@ export function AddMembersDialog({
   const memberIds = useAllGroupMemberIds(groupId, { enabled: open, suppressErrorToast: true })
   const roles = useRoles({ objectAssignable: true, enabled: open })
   const add = useBulkAddGroupMembers(groupId)
+  const queryClient = useQueryClient()
 
   const members = new Set(memberIds.data)
   const matches = (u: Picked) => term === '' || label(u).toLowerCase().includes(term.toLowerCase())
@@ -219,6 +221,10 @@ export function AddMembersDialog({
 
   // Reset on close, not via `onOpen`: that runs after the first open render.
   function close() {
+    // The dialog stays mounted while closed, so nothing else stops a member walk still paging. A
+    // cancelled post-add refetch is harmless: the revert keeps the query invalidated for the next open.
+    void queryClient.cancelQueries({ queryKey: ['evaluation-group-members', groupId, 'all-ids'] })
+    void queryClient.cancelQueries({ queryKey: ['organization-members', organizationId, 'all'] })
     setStep('users')
     setSearch('')
     setServerTerm('')
