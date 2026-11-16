@@ -6,6 +6,8 @@ import type {
   EvaluationAiModelAssign,
   EvaluationAiModelUpdate,
   EvaluationCreate,
+  EvaluationLabelCategoryCreate,
+  EvaluationLabelCategoryUpdate,
   EvaluationUpdate,
 } from '@/lib/api/types'
 
@@ -247,6 +249,73 @@ export function useRemoveTagKey(evaluationId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['evaluation-tag-keys', evaluationId] })
       toast.success('Tag key removed')
+    },
+  })
+}
+
+// Group labels embed the category name, so a rename or delete also refreshes the conversation groups.
+function useInvalidateLabelCategories(evaluationId: string) {
+  const qc = useQueryClient()
+  return () => {
+    qc.invalidateQueries({ queryKey: ['evaluation-label-categories', evaluationId] })
+    qc.invalidateQueries({ queryKey: ['conversation-groups'] })
+    qc.invalidateQueries({ queryKey: ['conversation-group'] })
+  }
+}
+
+export function useCreateLabelCategory(evaluationId: string) {
+  const invalidate = useInvalidateLabelCategories(evaluationId)
+  return useMutation({
+    mutationFn: async (body: EvaluationLabelCategoryCreate) =>
+      unwrap(
+        await apiClient.POST('/api/v1/evaluations/{evaluation_id}/label-categories', {
+          params: { path: { evaluation_id: evaluationId } },
+          body,
+        }),
+      ),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Label category added')
+    },
+  })
+}
+
+export function useUpdateLabelCategory(evaluationId: string) {
+  const invalidate = useInvalidateLabelCategories(evaluationId)
+  return useMutation({
+    mutationFn: async ({
+      categoryId,
+      body,
+    }: {
+      categoryId: string
+      body: EvaluationLabelCategoryUpdate
+    }) =>
+      unwrap(
+        await apiClient.PATCH(
+          '/api/v1/evaluations/{evaluation_id}/label-categories/{category_id}',
+          { params: { path: { evaluation_id: evaluationId, category_id: categoryId } }, body },
+        ),
+      ),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Label category saved')
+    },
+  })
+}
+
+export function useDeleteLabelCategory(evaluationId: string) {
+  const invalidate = useInvalidateLabelCategories(evaluationId)
+  return useMutation({
+    mutationFn: async (categoryId: string) =>
+      unwrap(
+        await apiClient.DELETE(
+          '/api/v1/evaluations/{evaluation_id}/label-categories/{category_id}',
+          { params: { path: { evaluation_id: evaluationId, category_id: categoryId } } },
+        ),
+      ),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Label category deleted')
     },
   })
 }

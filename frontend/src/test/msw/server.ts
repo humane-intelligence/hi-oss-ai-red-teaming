@@ -68,6 +68,10 @@ const defaultHandlers = [
   http.get('http://localhost/api/v1/terms', () =>
     HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
   ),
+  // The evaluation page's Labels card reads the label categories on every render; none by default.
+  http.get('http://localhost/api/v1/evaluations/:evaluationId/label-categories', () =>
+    HttpResponse.json([]),
+  ),
   // The conversation page reads its task checklist on every render; nothing checked off by default.
   http.get('http://localhost/api/v1/conversations/:conversationId/completed-tasks', () =>
     HttpResponse.json([]),

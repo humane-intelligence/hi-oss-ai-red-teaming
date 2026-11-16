@@ -5,7 +5,13 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
 import { toast } from 'sonner'
-import { useAssignModel, useUnassignModel } from './mutations'
+import {
+  useAssignModel,
+  useCreateLabelCategory,
+  useDeleteLabelCategory,
+  useUnassignModel,
+  useUpdateLabelCategory,
+} from './mutations'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }))
 
@@ -104,5 +110,46 @@ describe('undoing a model unassign', () => {
     await act(async () => options.action.onClick())
 
     await waitFor(() => expect(restored).toBe(ASSIGN_ID))
+  })
+})
+
+// A group response embeds each label's category name, so every category write leaves the
+// conversation-group caches stale.
+describe('label category writes refresh the conversation groups', () => {
+  const base = `http://localhost/api/v1/evaluations/${EVAL_ID}/label-categories`
+  const row = { id: 'cat-1', evaluation_id: EVAL_ID, name: 'language', values: [], created_at: '' }
+
+  function expectGroupsInvalidated(spy: ReturnType<typeof withClient>['spy']) {
+    for (const queryKey of [
+      ['evaluation-label-categories', EVAL_ID],
+      ['conversation-groups'],
+      ['conversation-group'],
+    ]) {
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ queryKey }))
+    }
+  }
+
+  it('after create', async () => {
+    server.use(http.post(base, () => HttpResponse.json(row, { status: 201 })))
+    const { spy, wrapper } = withClient()
+    const { result } = renderHook(() => useCreateLabelCategory(EVAL_ID), { wrapper })
+    await act(() => result.current.mutateAsync({ name: 'language', values: [] }))
+    expectGroupsInvalidated(spy)
+  })
+
+  it('after update', async () => {
+    server.use(http.patch(`${base}/cat-1`, () => HttpResponse.json(row)))
+    const { spy, wrapper } = withClient()
+    const { result } = renderHook(() => useUpdateLabelCategory(EVAL_ID), { wrapper })
+    await act(() => result.current.mutateAsync({ categoryId: 'cat-1', body: { name: 'lang' } }))
+    expectGroupsInvalidated(spy)
+  })
+
+  it('after delete', async () => {
+    server.use(http.delete(`${base}/cat-1`, () => new HttpResponse(null, { status: 204 })))
+    const { spy, wrapper } = withClient()
+    const { result } = renderHook(() => useDeleteLabelCategory(EVAL_ID), { wrapper })
+    await act(() => result.current.mutateAsync('cat-1'))
+    expectGroupsInvalidated(spy)
   })
 })
