@@ -39,6 +39,12 @@ type Row = {
   params: Record<string, string>
 }
 
+// Fixed format, not toLocaleString: the name is stored and read by members in other locales.
+function startedStamp(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 let rowSeq = 0
 function emptyRow(modelId: string): Row {
   rowSeq += 1
@@ -119,7 +125,8 @@ export function GroupCreatePage() {
         ...(parameters ? { parameters } : {}),
       }
     })
-    const fallbackName = `Compare: ${rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')}`
+    const modelNames = rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')
+    const fallbackName = `Compare: ${modelNames} · ${startedStamp(new Date())}`
     createGroup.mutate(
       {
         scenarioId: chosenScenarioId,
@@ -171,7 +178,7 @@ export function GroupCreatePage() {
               id="group-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Auto-named from the models if left blank"
+              placeholder="Auto-named from the models and start time if left blank"
             />
           </FormField>
 
