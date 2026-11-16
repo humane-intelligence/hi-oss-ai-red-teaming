@@ -37,20 +37,27 @@ export type ListViewState<F extends Record<string, unknown>> = {
   reset: () => void
 }
 
-// `defaultFilters` MUST be a stable reference (declare it at module scope) — it
-// seeds the filters and is the fallback for apply()/reset().
+const NONE_HIDDEN: string[] = []
+
+const sameColumns = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((id) => b.includes(id))
+
+// `defaultFilters` and `defaultHiddenColumns` MUST be stable references (declare them at module
+// scope) — they seed the state and are the fallback for apply()/reset().
 export function useListViewState<F extends Record<string, unknown>>({
   defaultFilters,
   defaultOrderBy,
+  defaultHiddenColumns = NONE_HIDDEN,
 }: {
   defaultFilters: F
   defaultOrderBy?: string
+  defaultHiddenColumns?: string[]
 }): ListViewState<F> {
   const [search, setSearch] = useState('')
   const [searchDraft, setSearchDraft] = useState('')
   const [filters, setFilters] = useState<F>(defaultFilters)
   const [orderBy, setOrderByValue] = useState<string | undefined>(defaultOrderBy)
-  const [hiddenColumns, setHiddenColumns] = useState<string[]>([])
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>(defaultHiddenColumns)
   const [offset, setOffset] = useState(0)
 
   const commitSearch = useCallback(() => {
@@ -87,10 +94,12 @@ export function useListViewState<F extends Record<string, unknown>>({
       // every key; unknown stored keys are harmless (the query ignores them).
       setFilters({ ...defaultFilters, ...(state.filters as Partial<F>) } as F)
       setOrderByValue(state.order_by ?? defaultOrderBy)
-      setHiddenColumns(state.hidden_columns ?? [])
+      // The API always fills `hidden_columns`, so a view saved before a default existed keeps what
+      // its author saw; the fallback only covers a hand-built state.
+      setHiddenColumns(state.hidden_columns ?? defaultHiddenColumns)
       setOffset(0)
     },
-    [defaultFilters, defaultOrderBy],
+    [defaultFilters, defaultOrderBy, defaultHiddenColumns],
   )
 
   const reset = useCallback(() => {
@@ -98,14 +107,14 @@ export function useListViewState<F extends Record<string, unknown>>({
     setSearchDraft('')
     setFilters(defaultFilters)
     setOrderByValue(defaultOrderBy)
-    setHiddenColumns([])
+    setHiddenColumns(defaultHiddenColumns)
     setOffset(0)
-  }, [defaultFilters, defaultOrderBy])
+  }, [defaultFilters, defaultOrderBy, defaultHiddenColumns])
 
   const isDirty =
     search.trim() !== '' ||
     orderBy !== defaultOrderBy ||
-    hiddenColumns.length > 0 ||
+    !sameColumns(hiddenColumns, defaultHiddenColumns) ||
     !sameFilters(filters, defaultFilters)
 
   return {

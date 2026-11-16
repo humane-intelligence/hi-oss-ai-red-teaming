@@ -37,6 +37,8 @@ const PAGE_SIZE = 20
 
 type GroupFilters = { status: PublicationStatus | ''; accessLevel: EvaluationGroupAccessLevel | '' }
 const DEFAULT_FILTERS: GroupFilters = { status: '', accessLevel: '' }
+// Most groups have no organization; the column stays one click away under Columns.
+const DEFAULT_HIDDEN = ['organization']
 
 // Built per-render so the Organization cell can resolve `organization_id` to a
 // name via the lookup hook (only callable inside a component).
@@ -145,6 +147,7 @@ function GroupsContent() {
   const view = useListViewState<GroupFilters>({
     defaultFilters: DEFAULT_FILTERS,
     defaultOrderBy: '-created_at',
+    defaultHiddenColumns: DEFAULT_HIDDEN,
   })
 
   // A manager sees every group (incl. others' private/draft); everyone else gets
@@ -182,6 +185,7 @@ function GroupsContent() {
           value={view.filters.accessLevel}
           onChange={(v) => view.setFilter('accessLevel', v as EvaluationGroupAccessLevel | '')}
           allLabel="All access levels"
+          className="sm:w-44"
           options={[
             { value: 'public', label: 'Public' },
             { value: 'organization', label: 'Organization' },

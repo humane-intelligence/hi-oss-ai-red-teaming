@@ -97,7 +97,7 @@ describe('EvaluationGroupsListPage — access_level filter', () => {
 })
 
 describe('EvaluationGroupsListPage — organization column', () => {
-  it('resolves the owning organization id to its name', async () => {
+  it('is hidden by default and, once shown, resolves the organization id to its name', async () => {
     server.use(
       http.get('http://localhost/api/v1/evaluation-groups', () =>
         HttpResponse.json({
@@ -123,8 +123,13 @@ describe('EvaluationGroupsListPage — organization column', () => {
       orgsHandler([{ id: 'org-1', name: 'Acme Corp' }]),
     )
 
+    const user = userEvent.setup()
     renderPage()
 
+    await screen.findByText('Org group')
+    expect(screen.queryByRole('columnheader', { name: 'Organization' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Toggle columns' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Organization' }))
     expect(await screen.findByText('Acme Corp')).toBeInTheDocument()
   })
 })

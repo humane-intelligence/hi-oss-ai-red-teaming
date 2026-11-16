@@ -134,4 +134,21 @@ describe('useListViewState', () => {
     act(() => result.current.setOrderBy('title'))
     expect(result.current.isDirty).toBe(true)
   })
+
+  it('starts with and resets to the default hidden columns, and is not dirty there', () => {
+    const DEFAULT_HIDDEN = ['organization']
+    const { result } = renderHook(() =>
+      useListViewState<Filters>({
+        defaultFilters: DEFAULT_FILTERS,
+        defaultHiddenColumns: DEFAULT_HIDDEN,
+      }),
+    )
+    expect(result.current.hiddenColumns).toEqual(['organization'])
+    expect(result.current.isDirty).toBe(false)
+
+    act(() => result.current.setHiddenColumns([]))
+    expect(result.current.isDirty).toBe(true)
+    act(() => result.current.reset())
+    expect(result.current.hiddenColumns).toEqual(['organization'])
+  })
 })
