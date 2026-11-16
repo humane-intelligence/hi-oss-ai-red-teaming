@@ -4841,7 +4841,7 @@ export interface components {
             name?: string | null;
             /**
              * Labels
-             * @description Replacement label set, keyed by label category; a blank value clears that category.
+             * @description Replacement label set, keyed by label category; a blank value clears that category. A value the group already holds is accepted even after it was dropped from its category's list.
              */
             labels?: {
                 [key: string]: string;

@@ -613,7 +613,10 @@ class ConversationGroupUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255, description="New display name for the group.")
     labels: GroupLabelsInput | None = Field(
         default=None,
-        description="Replacement label set, keyed by label category; a blank value clears that category.",
+        description=(
+            "Replacement label set, keyed by label category; a blank value clears that category. "
+            "A value the group already holds is accepted even after it was dropped from its category's list."
+        ),
     )
 
     @field_validator("name", "labels", mode="before")

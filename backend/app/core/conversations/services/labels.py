@@ -39,13 +39,22 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
     """Replace the group's labels with `labels` (category id → value); a blank value clears that category.
 
     A category with values only takes one of them (matched ignoring case, stored as the category
-    spells it); one without takes any single line of text.
+    spells it), or the value the group already holds there — so dropping a value from a category's
+    list never blocks relabelling the group's other categories; one without takes any single line
+    of text.
 
     Raises:
         BadRequestError: If a category is not a live category of the group's evaluation, or a
-            value is outside its category's list.
+            value is outside its category's list and not the one the group already holds there.
     """
     categories = {row.id: row for row in await list_label_categories(session, group.evaluation_id)}
+    stored = await session.execute(
+        select(col(ConversationGroupLabel.category_id), col(ConversationGroupLabel.value)).where(
+            col(ConversationGroupLabel.conversation_group_id) == group.id
+        )
+    )
+    # Rows under a deleted category are invisible already; they don't make an unchanged set a change.
+    visible = {category_id: value for category_id, value in stored.tuples() if category_id in categories}
     rows: list[ConversationGroupLabel] = []
     for category_id, raw in labels.items():
         category = categories.get(category_id)
@@ -55,18 +64,13 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
         if not value:
             continue
         if category.values:
-            match = next((allowed for allowed in category.values if allowed.casefold() == value.casefold()), None)
+            kept = visible.get(category_id)
+            allowed_here = [*category.values, *([kept] if kept is not None else [])]
+            match = next((allowed for allowed in allowed_here if allowed.casefold() == value.casefold()), None)
             if match is None:
                 raise BadRequestError(f"{value!r} is not one of the values of label {category.name!r}.")
             value = match
         rows.append(ConversationGroupLabel(conversation_group_id=group.id, category_id=category_id, value=value))
-    stored = await session.execute(
-        select(col(ConversationGroupLabel.category_id), col(ConversationGroupLabel.value)).where(
-            col(ConversationGroupLabel.conversation_group_id) == group.id
-        )
-    )
-    # Rows under a deleted category are invisible already; they don't make an unchanged set a change.
-    visible = {category_id: value for category_id, value in stored.tuples() if category_id in categories}
     if visible == {row.category_id: row.value for row in rows}:
         return
     await session.execute(

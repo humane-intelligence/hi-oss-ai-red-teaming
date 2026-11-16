@@ -1312,6 +1312,44 @@ async def test_patch_with_unchanged_labels_keeps_updated_at(
     assert response.json()["updated_at"] == created.json()["updated_at"]
 
 
+async def test_patch_keeps_a_value_dropped_from_its_category_list(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-dropped@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["language"]: "Polish"},
+        },
+    )
+    language = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))
+    assert language is not None
+    language.values = ["English"]
+    db_session.add(language)
+    await db_session.flush()
+    url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
+
+    # The full set comes back with the dropped value untouched and another category changed.
+    kept = await auth_db_client.patch(
+        url, json={"labels": {ids["language"]: "Polish", ids["note"]: "retry"}}, headers=_auth(token)
+    )
+    # Only the value already held is let through; another value outside the list still is not.
+    refused = await auth_db_client.patch(url, json={"labels": {ids["language"]: "German"}}, headers=_auth(token))
+
+    assert kept.status_code == status.HTTP_200_OK
+    assert [(label["name"], label["value"]) for label in kept.json()["labels"]] == [
+        ("language", "Polish"),
+        ("Note", "retry"),
+    ]
+    assert refused.status_code == status.HTTP_400_BAD_REQUEST
+
+
 async def test_patch_rejects_null_labels(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
 ) -> None:

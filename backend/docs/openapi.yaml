@@ -18367,7 +18367,8 @@ components:
             maxProperties: 20
           - type: 'null'
           title: Labels
-          description: Replacement label set, keyed by label category; a blank value clears that category.
+          description: Replacement label set, keyed by label category; a blank value clears that category. A value the group
+            already holds is accepted even after it was dropped from its category's list.
       type: object
       title: ConversationGroupUpdate
       description: 'Payload for `PATCH /v1/evaluations/{evaluation_id}/conversation-groups/{id}`.
