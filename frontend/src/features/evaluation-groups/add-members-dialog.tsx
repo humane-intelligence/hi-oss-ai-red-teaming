@@ -110,7 +110,6 @@ export function AddMembersDialog({
   const orgPicked = orgJoinable.filter((u) => picked.has(u.id)).length
   const others = (users.data ?? []).filter((u) => !orgIds.has(u.id))
   const roleList = [...(roles.data?.items ?? [])].sort((a, b) => rank(a.name) - rank(b.name))
-  // The bulk route rejects a larger request whole (422), so stop it here with a reason.
 
   function toggle(user: Picked) {
     setPicked((prev) => {
@@ -308,7 +307,7 @@ export function AddMembersDialog({
                 <section aria-labelledby={showOrganization ? 'add-members-others' : undefined}>
                   {showOrganization && (
                     <p id="add-members-others" className="px-3 pt-3 pb-1 text-sm font-semibold">
-                      Other members
+                      Other users
                     </p>
                   )}
                   {users.isLoading && (

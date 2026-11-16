@@ -427,7 +427,7 @@ describe('MembersSection — add flow', () => {
     const { user, dialog } = await openDialog(['users:read', 'organizations:read'], true)
 
     const org = await within(dialog).findByRole('region', { name: 'Andless (organization)' })
-    const others = within(dialog).getByRole('region', { name: 'Other members' })
+    const others = within(dialog).getByRole('region', { name: 'Other users' })
     // Ada is a member already; Dave belongs to the organization, so he is listed once, under it.
     expect(await within(org).findByText('Already a member')).toBeInTheDocument()
     expect(within(others).queryByText(/dave@example.com/)).toBeNull()

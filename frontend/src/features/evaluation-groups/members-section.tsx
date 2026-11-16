@@ -75,7 +75,7 @@ function EligibleToJoin({ organizationId }: { organizationId: string }) {
   return (
     <section aria-labelledby="eligible-to-join" className="space-y-2">
       <h3 id="eligible-to-join" className="font-semibold">
-        Eligible to join on their own (1)
+        Eligible to join on their own
       </h3>
       <div className="bg-card rounded-md border px-3 py-2">
         <div className="font-medium">{org.data?.name ?? 'The owning organization'}</div>
