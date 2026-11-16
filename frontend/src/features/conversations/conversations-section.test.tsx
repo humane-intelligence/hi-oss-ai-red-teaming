@@ -288,7 +288,7 @@ describe('ConversationsSection — groups', () => {
     renderSection()
 
     const card = (await screen.findByText('GPT-4o vs Claude')).closest('li')!
-    expect(within(card).getByTitle(GROUP_MULTI)).toHaveTextContent(GROUP_MULTI.slice(0, 8))
+    expect(within(card).getByTitle(GROUP_MULTI).textContent).toBe(GROUP_MULTI.slice(0, 8))
     expect(within(card).getByText('Started')).toBeInTheDocument()
     expect(within(card).getByText('Prompt injection')).toBeInTheDocument()
     expect(within(card).getByText('3')).toBeInTheDocument()
@@ -321,6 +321,24 @@ describe('ConversationsSection — groups', () => {
 
     expect(await screen.findByText('Probe 12')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+  })
+
+  it('lists a group once when a new one shifts the pages between fetches', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...singleGroup,
+      id: `grp-${String(i).padStart(4, '0')}-0000-0000-000000000000`,
+      name: `Probe ${i + 1}`,
+    }))
+    server.use(groupsHandler(many))
+    const user = userEvent.setup()
+    renderSection()
+
+    expect(await screen.findByText('Probe 10')).toBeInTheDocument()
+    many.unshift({ ...singleGroup, id: 'grp-new0-0000-0000-000000000000', name: 'Newcomer' })
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Probe 12')).toBeInTheDocument()
+    expect(screen.getAllByText('Probe 10')).toHaveLength(1)
   })
 
   it('refetches every loaded page after a delete, without gaps or repeats', async () => {
