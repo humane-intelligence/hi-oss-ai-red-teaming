@@ -14,6 +14,14 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import type { BulkGroupMemberResponse, UserResponse } from '@/lib/api/types'
 
 type Picked = Pick<UserResponse, 'id' | 'email' | 'first_name' | 'last_name'>
@@ -368,63 +376,64 @@ export function AddMembersDialog({
             Choose the roles each user gets in this group.
           </p>
           <div className="max-h-96 overflow-auto rounded-md border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th
-                    scope="col"
-                    className="bg-card sticky left-0 px-3 py-2 text-left font-semibold"
-                  >
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead scope="col" className="bg-card sticky left-0">
                     User
-                  </th>
+                  </TableHead>
                   {roleList.map((r) => (
-                    <th key={r.id} scope="col" className="px-2 py-2 text-center font-semibold">
+                    <TableHead key={r.id} scope="col" className="text-center">
                       {r.display_name}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="bg-muted/60">
-                  <th
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead
                     scope="row"
-                    className="bg-muted sticky left-0 px-3 py-2 text-left font-medium"
+                    className="bg-muted text-foreground sticky left-0 font-sans text-sm"
                   >
                     Select all
-                  </th>
+                  </TableHead>
                   {roleList.map((r) => (
-                    <td key={r.id} className="px-2 py-2 text-center">
+                    <TableCell key={r.id} className="text-center">
                       <Checkbox
                         aria-label={`Select all as ${r.display_name}`}
                         checked={allHold(r.id) ? true : someHold(r.id) ? 'indeterminate' : false}
                         onCheckedChange={() => toggleRoleForAll(r.id)}
                       />
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
                 {pickedList.map((u) => (
-                  <tr key={u.id} className="border-t">
-                    <th
+                  <TableRow key={u.id}>
+                    <TableHead
                       scope="row"
-                      className="bg-card sticky left-0 max-w-56 truncate px-3 py-2 text-left font-normal"
+                      className="bg-card text-foreground sticky left-0 max-w-56 truncate font-sans text-sm font-normal"
                     >
                       {label(u)}
-                    </th>
+                    </TableHead>
                     {roleList.map((r) => (
-                      <td key={r.id} className="px-2 py-2 text-center">
+                      <TableCell key={r.id} className="text-center">
                         <Checkbox
                           aria-label={`${r.display_name} for ${label(u)}`}
                           checked={roleIds[u.id]?.includes(r.id) ?? false}
                           onCheckedChange={() => toggleRole(u.id, r.id)}
                         />
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
-          <p id="add-members-missing-role" aria-live="polite" className="text-muted-foreground text-xs">
+          <p
+            id="add-members-missing-role"
+            aria-live="polite"
+            className="text-muted-foreground text-xs"
+          >
             {missingRole ? 'Give every user at least one role.' : ''}
           </p>
           <div className="flex justify-end gap-2">
