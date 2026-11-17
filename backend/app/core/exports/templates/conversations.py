@@ -11,6 +11,8 @@ from app.core.config import get_settings
 from app.core.conversations.filters import ConversationFilters
 from app.core.conversations.models import Conversation
 from app.core.conversations.services.conversations import list_conversations
+from app.core.conversations.services.labels import label_map
+from app.core.conversations.services.labels import labels_by_group
 from app.core.csv_generator import Column
 from app.core.evaluations.services.tag_keys import load_tag_fold_policy
 from app.core.exports.base import CsvExport
@@ -33,6 +35,7 @@ class ConversationRow:
     # Keys of the conversation's stored tag map the evaluation's tagging policy currently keeps out of
     # the prompt (see `TagFoldPolicy`) — a statement about the policy now, not about past turns.
     tags_not_sent: list[str]
+    labels: dict[str, str]
 
 
 async def _fetch_conversations(session: AsyncSession, scope: ExportScope) -> AsyncIterator[ConversationRow]:
@@ -62,6 +65,7 @@ async def _fetch_conversations(session: AsyncSession, scope: ExportScope) -> Asy
     ):
         emails = await resolve_user_emails(session, (c.user_id for c in conversations))
         scenarios = await resolve_scenario_names(session, (c.scenario_id for c in conversations))
+        labels = await labels_by_group(session, {c.conversation_group_id for c in conversations})
         for conversation in conversations:
             yield ConversationRow(
                 conversation=conversation,
@@ -69,6 +73,7 @@ async def _fetch_conversations(session: AsyncSession, scope: ExportScope) -> Asy
                 owner_email=emails.get(conversation.user_id),
                 scenario_name=scenarios.get(conversation.scenario_id) if conversation.scenario_id else None,
                 tags_not_sent=fold.unsent(conversation.tags),
+                labels=label_map(labels.get(conversation.conversation_group_id, [])),
             )
 
 
@@ -97,6 +102,8 @@ _COLUMNS: list[Column[ConversationRow]] = [
         value=lambda r: r.tags_not_sent,
         formatter=lambda v: json.dumps(v, ensure_ascii=False),
     ),
+    # The group's labels, `{category: value}` — metadata, never sent to the model.
+    Column("Labels", value=lambda r: r.labels, formatter=lambda v: json.dumps(v, ensure_ascii=False)),
     Column("Created", lambda r: r.conversation.created_at),
 ]
 
@@ -109,7 +116,7 @@ CONVERSATIONS_EXPORT: CsvExport[ConversationRow] = CsvExport(
         "name), group, owner (with email), the conversation's tags as stored (with which of their keys "
         "the evaluation's tagging policy currently keeps out of the prompt) — prompt context, "
         "minus any the evaluation's tagging policy no longer allows, which stay on the row but are "
-        "not sent."
+        "not sent — and the labels of the conversation's group."
     ),
     permission=Permission.CONVERSATIONS_READ,
     columns=_COLUMNS,

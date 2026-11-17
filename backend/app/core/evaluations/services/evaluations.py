@@ -43,11 +43,13 @@ from app.core.evaluations.filters import EvaluationOrderBy
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
+from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
 from app.core.evaluations.models import Task
 from app.core.evaluations.schemas import EvaluationUpdate
 from app.core.evaluations.services.evaluation_groups import assert_group_write_access
+from app.core.evaluations.services.label_categories import list_label_categories
 from app.core.evaluations.services.loaders import evaluation_models_loader
 from app.core.exceptions import ConflictError
 from app.core.exceptions import NotFoundError
@@ -343,8 +345,9 @@ async def duplicate_evaluation(
 ) -> Evaluation:
     """Copy an evaluation into a fresh `new` row in the same group, owned by the caller.
 
-    Always copies the evaluation's own fields (title/description/mask/cover/license) and the admin
-    tag schema — both flags plus the allowed keys, since the flag alone would forbid every tag.
+    Always copies the evaluation's own fields (title/description/mask/cover/license), the admin
+    tag schema — both flags plus the allowed keys, since the flag alone would forbid every tag —
+    and the conversation-label categories, which are setup of the same kind.
     With ``include_children`` it also deep-copies the model assignments and the
     scenarios + tasks — referencing the same shared `AiModel` rows (no secrets: the
     API key lives on the `AiModel`, untouched), skipping any assignment whose model is
@@ -437,6 +440,10 @@ async def duplicate_evaluation(
     )
     for src_tag_key in source_tag_keys:
         session.add(EvaluationTagKey(evaluation_id=copy.id, key=src_tag_key.key))
+    for src_category in await list_label_categories(session, source.id):
+        session.add(
+            EvaluationLabelCategory(evaluation_id=copy.id, name=src_category.name, values=list(src_category.values))
+        )
 
     await session.flush()
     # Re-fetch with `models` (+ each assignment's `ai_model`) eager-loaded so the

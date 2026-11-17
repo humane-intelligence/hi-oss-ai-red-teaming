@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Ban as BanIcon, Flag, Pencil, Tag, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban as BanIcon, Flag, Pencil, Tag, Tags, Trash2 } from 'lucide-react'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { useGroupAuthority } from './use-group-authority'
@@ -27,7 +27,13 @@ import { WarmupBadge } from './warmup-badge'
 import { WebAccessBadge } from './web-access-badge'
 import { FlagMessageDialog } from '@/features/message-flags/flag-message-dialog'
 import { useMessageFlags } from '@/features/message-flags/queries'
-import { useEvaluation, useEvaluationTagKeys } from '@/features/evaluations/queries'
+import {
+  useEvaluation,
+  useEvaluationLabelCategories,
+  useEvaluationTagKeys,
+} from '@/features/evaluations/queries'
+import { EditLabelsDialog } from './edit-labels-dialog'
+import { GroupLabels } from './group-labels'
 import { useScenario, useScenarioTasks } from '@/features/scenarios/queries'
 import { ScenarioRail } from '@/features/scenarios/scenario-rail'
 import { Button } from '@/components/ui/button'
@@ -56,9 +62,11 @@ export function ConversationDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
+  const [labelsOpen, setLabelsOpen] = useState(false)
   const authority = useGroupAuthority(evalId, 'conversations:read')
   const { allows, canManage, groupPermissions } = authority
   const evaluation = useEvaluation(evalId)
+  const labelCategories = useEvaluationLabelCategories(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
   const conversation = useConversation(evalId, convId, { groupPermissions })
   const messages = useMessages(evalId, convId, { groupPermissions })
@@ -406,6 +414,9 @@ export function ConversationDetailPage() {
                 <WarmupBadge state={warmup.state} onRetry={warmup.warmUp} />
               )}
               {assignment?.web_access && <WebAccessBadge />}
+              {/* Labels belong to the conversation group, which this conversation shares with any
+                  models compared beside it. */}
+              <GroupLabels labels={group.data?.labels} className="pt-1" />
             </div>
             <PageActions
               secondary={[
@@ -422,6 +433,17 @@ export function ConversationDetailPage() {
                   icon: Tag,
                   onSelect: () => setTagsOpen(true),
                   when: allows('conversations:update') && canWrite && tagsEnabled,
+                },
+                {
+                  key: 'labels',
+                  label: group.data?.labels?.length ? 'Edit labels' : 'Add labels',
+                  icon: Tags,
+                  onSelect: () => setLabelsOpen(true),
+                  when:
+                    allows('conversations:update') &&
+                    canWrite &&
+                    !!group.data &&
+                    (labelCategories.data?.length ?? 0) > 0,
                 },
                 {
                   key: 'delete',
@@ -614,6 +636,15 @@ export function ConversationDetailPage() {
         open={tagsOpen}
         onOpenChange={setTagsOpen}
       />
+      {group.data && (
+        <EditLabelsDialog
+          evaluationId={evalId}
+          group={group.data}
+          categories={labelCategories.data ?? []}
+          open={labelsOpen}
+          onOpenChange={setLabelsOpen}
+        />
+      )}
     </div>
   )
 }

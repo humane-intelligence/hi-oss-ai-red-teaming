@@ -157,7 +157,7 @@ describe('EvaluationDetailPage — summary', () => {
 })
 
 describe('EvaluationDetailPage — settings row', () => {
-  it('groups models, tags and other details under Evaluation settings', async () => {
+  it('groups models, tags, labels and other details under Evaluation settings', async () => {
     server.use(...baseHandlers())
     renderPage(['evaluations:read', 'evaluations:update'])
 
@@ -165,8 +165,12 @@ describe('EvaluationDetailPage — settings row', () => {
     expect(settings.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Models (0)',
       expect.stringMatching(/^Allowed tags/),
+      expect.stringMatching(/^Labels/),
       'Other details',
     ])
+    // Four cards: two by two from lg, one row from 2xl.
+    const row = screen.getByRole('region', { name: 'Evaluation settings' }).lastElementChild
+    expect(row).toHaveClass('lg:grid-cols-2', '2xl:grid-cols-4')
     expect(settings.getByText('Models masked')).toBeInTheDocument()
     // "Date added" in the summary already says it.
     expect(settings.queryByText('Created')).toBeNull()
@@ -717,10 +721,10 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     )
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
     expect(tagKeyCalls).toBe(0)
-    // The two remaining cards take the row between them instead of leaving a gap.
+    // The three remaining cards take the row between them instead of leaving a gap.
     const settings = screen.getByRole('region', { name: 'Evaluation settings' })
-    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-2')
-    expect(settings.lastElementChild).not.toHaveClass('lg:grid-cols-3')
+    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-3')
+    expect(settings.lastElementChild).not.toHaveClass('2xl:grid-cols-4')
   })
 
   it('hides the card when the instance turns tags off', async () => {
@@ -747,7 +751,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
     expect(screen.queryByText(/allowed tags/i)).toBeNull()
     const settings = screen.getByRole('region', { name: 'Evaluation settings' })
-    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-2')
+    expect(settings.lastElementChild).toHaveClass('lg:grid-cols-3')
   })
 })
 

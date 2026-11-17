@@ -1,13 +1,19 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Pencil, Plus, Tags, Trash2 } from 'lucide-react'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { FormField } from '@/components/shared/form-field'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useGroupAuthority } from './use-group-authority'
 import { AuthorityError } from './authority-error'
-import { useEvaluation, useEvaluationTagKeys } from '@/features/evaluations/queries'
+import {
+  useEvaluation,
+  useEvaluationLabelCategories,
+  useEvaluationTagKeys,
+} from '@/features/evaluations/queries'
+import { EditLabelsDialog } from './edit-labels-dialog'
+import { GroupLabels } from './group-labels'
 import { useScenario, useScenarioTasks } from '@/features/scenarios/queries'
 import { ScenarioRail } from '@/features/scenarios/scenario-rail'
 import { useConversationGroup } from './queries'
@@ -127,6 +133,8 @@ export function ConversationGroupPage() {
   const [prompt, setPrompt] = useState('')
   const [promptNonce, setPromptNonce] = useState(0)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [labelsOpen, setLabelsOpen] = useState(false)
+  const labelCategories = useEvaluationLabelCategories(evalId)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   // Conversations whose (warmup-enabled) model is still warming. Each pane reports
@@ -221,6 +229,7 @@ export function ConversationGroupPage() {
               {prompted && allows('conversations:create') && canWrite && (
                 <p className="text-muted-foreground text-xs">{ADD_MODEL_LOCKED}</p>
               )}
+              <GroupLabels labels={group.labels} className="pt-1" />
             </div>
             <PageActions
               secondary={[
@@ -242,6 +251,16 @@ export function ConversationGroupPage() {
                   icon: Pencil,
                   onSelect: () => setRenameOpen(true),
                   when: allows('conversations:update') && canWrite,
+                },
+                {
+                  key: 'labels',
+                  label: group.labels?.length ? 'Edit labels' : 'Add labels',
+                  icon: Tags,
+                  onSelect: () => setLabelsOpen(true),
+                  when:
+                    allows('conversations:update') &&
+                    canWrite &&
+                    (labelCategories.data?.length ?? 0) > 0,
                 },
                 {
                   key: 'delete',
@@ -364,6 +383,13 @@ export function ConversationGroupPage() {
             group={group}
             open={renameOpen}
             onOpenChange={setRenameOpen}
+          />
+          <EditLabelsDialog
+            evaluationId={evalId}
+            group={group}
+            categories={labelCategories.data ?? []}
+            open={labelsOpen}
+            onOpenChange={setLabelsOpen}
           />
           <AddModelDialog
             evaluation={evaluation.data}

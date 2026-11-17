@@ -1143,6 +1143,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/{evaluation_id}/label-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List conversation-label categories
+         * @description The evaluation's conversation-label categories (at most 20), by name ignoring case. Labels describe a conversation for organising and reporting and are never sent to the model.
+         */
+        get: operations["list_label_categories_endpoint_api_v1_evaluations__evaluation_id__label_categories_get"];
+        put?: never;
+        /**
+         * Define a conversation-label category
+         * @description Add a label category, optionally with its allowed values (none means free text). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
+         */
+        post: operations["create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/{evaluation_id}/label-categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a conversation-label category
+         * @description Remove the category; labels set under it are no longer shown or exported. Needs `evaluations:update` or `evaluation_groups:manage`.
+         */
+        delete: operations["delete_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a conversation-label category or replace its values
+         * @description Omitted fields stay. Replacing `values` does not rewrite labels already set: a group keeps a value dropped from the list. Needs `evaluations:update` or `evaluation_groups:manage`.
+         */
+        patch: operations["update_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories__category_id__patch"];
+        trace?: never;
+    };
     "/api/v1/evaluations/{evaluation_id}/models/{assignment_id}": {
         parameters: {
             query?: never;
@@ -1963,7 +2011,7 @@ export interface paths {
         put?: never;
         /**
          * Create a group
-         * @description Create a group against the scenario in the path, plus one conversation per entry in `models` (at least one), all owned by the caller and sharing that scenario. The scenario carries the evaluation the group belongs to. The same model may be listed more than once — each entry becomes its own conversation. Every model assignment must belong to the scenario's evaluation. The `Location` header points at the group's read route, which stays nested under the evaluation.
+         * @description Create a group against the scenario in the path, plus one conversation per entry in `models` (at least one), all owned by the caller and sharing that scenario. The scenario carries the evaluation the group belongs to. The same model may be listed more than once — each entry becomes its own conversation. Every model assignment must belong to the scenario's evaluation. `labels` sets the group's labels under the evaluation's label categories (never sent to the model). The `Location` header points at the group's read route, which stays nested under the evaluation.
          */
         post: operations["create_conversation_group_endpoint_api_v1_scenarios__scenario_id__conversation_groups_post"];
         delete?: never;
@@ -2014,8 +2062,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Rename group
-         * @description Rename a group. The evaluation / scenario links and the member set are not editable — start a new group, or add a conversation via the conversation create endpoint.
+         * Rename group or set its labels
+         * @description Rename a group and/or replace its labels; omitted fields stay. The evaluation / scenario links and the member set are not editable — start a new group, or add a conversation via the conversation create endpoint.
          */
         patch: operations["update_conversation_group_endpoint_api_v1_evaluations__evaluation_id__conversation_groups__conversation_group_id__patch"];
         trace?: never;
@@ -4615,6 +4663,35 @@ export interface components {
              * @description One entry per conversation to open in the group.
              */
             models: components["schemas"]["ConversationGroupModelEntry"][];
+            /**
+             * Labels
+             * @description Labels, keyed by a label category of the evaluation. A category with values takes one of them; one without takes free text. Labels are never sent to the model.
+             */
+            labels?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * ConversationGroupLabelResponse
+         * @description One label on a group, under a live label category of its evaluation.
+         */
+        ConversationGroupLabelResponse: {
+            /**
+             * Category Id
+             * Format: uuid
+             * @description Label category the value is set under.
+             */
+            category_id: string;
+            /**
+             * Name
+             * @description Category name.
+             */
+            name: string;
+            /**
+             * Value
+             * @description The value.
+             */
+            value: string;
         };
         /**
          * ConversationGroupModelEntry
@@ -4639,10 +4716,10 @@ export interface components {
          * ConversationGroupResponse
          * @description Public view of a `ConversationGroup` with its member conversations embedded.
          *
-         *     Build via `ConversationGroupResponse.from_model(group, conversations, effective_license=...)`;
+         *     Build via `ConversationGroupResponse.from_model(group, conversations, effective_license=..., labels=...)`;
          *     the caller supplies the live member conversations (eager-loaded under the same
-         *     owner/visibility scope as the group itself) and the group's effective license (every member
-         *     shares the group's evaluation).
+         *     owner/visibility scope as the group itself), the group's effective license (every member
+         *     shares the group's evaluation) and its labels (`labels_by_group`, batched across a page).
          * @example {
          *       "conversations": [
          *         {
@@ -4679,6 +4756,13 @@ export interface components {
          *       "created_at": "2026-01-01T12:00:00Z",
          *       "evaluation_id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
          *       "id": "5d2e1f0a-6b7c-4d8e-9f0a-1b2c3d4e5f60",
+         *       "labels": [
+         *         {
+         *           "category_id": "6f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f",
+         *           "name": "language",
+         *           "value": "polish"
+         *         }
+         *       ],
          *       "name": "GPT-4o vs Claude",
          *       "scenario_id": "9a7b6c5d-1e2f-4a3b-8c9d-0e1f2a3b4c5d",
          *       "updated_at": "2026-01-02T09:30:00Z",
@@ -4728,6 +4812,11 @@ export interface components {
              */
             updated_at: string;
             /**
+             * Labels
+             * @description The group's labels under live categories, by category name. Never sent to the model.
+             */
+            labels?: components["schemas"]["ConversationGroupLabelResponse"][];
+            /**
              * Conversations
              * @description Member conversations of the group, oldest first, ties broken by id. Members created in one request share a creation timestamp exactly, so their relative order is stable across reads but is not creation order.
              */
@@ -4737,9 +4826,9 @@ export interface components {
          * ConversationGroupUpdate
          * @description Payload for `PATCH /v1/evaluations/{evaluation_id}/conversation-groups/{id}`.
          *
-         *     Only `name` is editable — the evaluation / scenario links and the member set
-         *     are immutable (start a new group, or add a conversation via the conversation
-         *     create endpoint).
+         *     `name` and `labels` are editable; omitted fields stay. The evaluation / scenario links and the
+         *     member set are immutable (start a new group, or add a conversation via the conversation create
+         *     endpoint).
          * @example {
          *       "name": "GPT-4o vs Claude (round 2)"
          *     }
@@ -4749,7 +4838,14 @@ export interface components {
              * Name
              * @description New display name for the group.
              */
-            name: string;
+            name?: string | null;
+            /**
+             * Labels
+             * @description Replacement label set, keyed by label category; a blank value clears that category. A value the group already holds is accepted even after it was dropped from its category's list.
+             */
+            labels?: {
+                [key: string]: string;
+            } | null;
         };
         /**
          * ConversationResponse
@@ -6297,6 +6393,96 @@ export interface components {
              * @description Replace the group's allowed-model subset (declarative set). Omit to leave unchanged; must be non-empty and each id must be live. A model still assigned to an evaluation in the group cannot be removed.
              */
             allowed_model_ids?: string[] | null;
+        };
+        /**
+         * EvaluationLabelCategoryCreate
+         * @description Payload to define a conversation-label category on an evaluation.
+         * @example {
+         *       "name": "language",
+         *       "values": [
+         *         "english",
+         *         "polish"
+         *       ]
+         *     }
+         */
+        EvaluationLabelCategoryCreate: {
+            /**
+             * Name
+             * @description Category name, unique per evaluation ignoring case (≤64 chars).
+             */
+            name: string;
+            /**
+             * Values
+             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free text.
+             */
+            values?: string[];
+        };
+        /**
+         * EvaluationLabelCategoryResponse
+         * @description Public view of one conversation-label category.
+         * @example {
+         *       "created_at": "2026-01-01T12:00:00Z",
+         *       "evaluation_id": "3f2a0000-0000-0000-0000-000000000000",
+         *       "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+         *       "name": "language",
+         *       "values": [
+         *         "english",
+         *         "polish"
+         *       ]
+         *     }
+         */
+        EvaluationLabelCategoryResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Server-assigned identifier.
+             */
+            id: string;
+            /**
+             * Evaluation Id
+             * Format: uuid
+             * @description Evaluation the category belongs to.
+             */
+            evaluation_id: string;
+            /**
+             * Name
+             * @description Category name.
+             */
+            name: string;
+            /**
+             * Values
+             * @description Allowed values, in the order defined; empty means free text.
+             */
+            values: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description UTC timestamp the category was created.
+             */
+            created_at: string;
+        };
+        /**
+         * EvaluationLabelCategoryUpdate
+         * @description Payload to rename a label category or replace its values; omitted fields stay.
+         * @example {
+         *       "values": [
+         *         "english",
+         *         "polish",
+         *         "spanish"
+         *       ]
+         *     }
+         */
+        EvaluationLabelCategoryUpdate: {
+            /**
+             * Name
+             * @description New category name.
+             */
+            name?: string | null;
+            /**
+             * Values
+             * @description Replacement value list. Labels already set keep their value even if it is dropped here.
+             */
+            values?: string[] | null;
         };
         /**
          * EvaluationMetrics
@@ -17110,6 +17296,322 @@ export interface operations {
             };
         };
     };
+    list_label_categories_endpoint_api_v1_evaluations__evaluation_id__label_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationLabelCategoryResponse"][];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationLabelCategoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationLabelCategoryResponse"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken on this evaluation (ignoring case), or the evaluation is at the category cap. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation or label category does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationLabelCategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationLabelCategoryResponse"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation or label category does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another category of this evaluation has the name. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_assignment_endpoint_api_v1_evaluations__evaluation_id__models__assignment_id__get: {
         parameters: {
             query?: never;
@@ -21230,6 +21732,16 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationGroupResponse"];
                 };
             };
+            /** @description A label category is not defined on the evaluation, or a value is outside its list. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Missing or invalid bearer token. */
             401: {
                 headers: {
@@ -21528,6 +22040,16 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationGroupResponse"];
+                };
+            };
+            /** @description A label category is not defined on the evaluation, or a value is outside its list. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
             /** @description Missing or invalid bearer token. */

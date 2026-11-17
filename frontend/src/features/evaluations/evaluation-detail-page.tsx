@@ -21,6 +21,7 @@ import { EvaluationStatusBadge } from './status-badge'
 import { EvaluationMetricsPanel } from './metrics-section'
 import { AssignModelDialog } from './assign-model-dialog'
 import { AllowedTagsCard } from './allowed-tags-card'
+import { LabelsCard } from './labels-card'
 import { ScenariosSection } from '@/features/scenarios/scenarios-section'
 import { useEvaluationScenarios, useTaskCount } from '@/features/scenarios/queries'
 import { ConversationsSection } from '@/features/conversations/conversations-section'
@@ -303,8 +304,8 @@ export function EvaluationDetailPage() {
                   className={cn(
                     'grid grid-cols-[minmax(0,1fr)] items-start gap-4',
                     conversationTagsEnabled && evaluation.tags_enabled
-                      ? 'lg:grid-cols-3'
-                      : 'lg:grid-cols-2',
+                      ? 'lg:grid-cols-2 2xl:grid-cols-4'
+                      : 'lg:grid-cols-3',
                   )}
                 >
                   <Card>
@@ -382,6 +383,8 @@ export function EvaluationDetailPage() {
                       canManage={has('evaluations:update')}
                     />
                   )}
+
+                  <LabelsCard evaluationId={evaluation.id} canManage={has('evaluations:update')} />
 
                   <Card>
                     <CardHeader>

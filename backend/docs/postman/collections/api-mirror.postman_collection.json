@@ -2464,6 +2464,162 @@
           "response": []
         },
         {
+          "name": "List conversation-label categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/:evaluation_id/label-categories",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                ":evaluation_id",
+                "label-categories"
+              ],
+              "variable": [
+                {
+                  "key": "evaluation_id",
+                  "value": "{{evaluation_id}}",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "The evaluation's conversation-label categories (at most 20), by name ignoring case. Labels describe a conversation for organising and reporting and are never sent to the model.\n\n**Requires permission:** `evaluations:read`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `evaluation_id` (string<uuid>, required)\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Evaluation does not exist. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+          },
+          "response": []
+        },
+        {
+          "name": "Define a conversation-label category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/:evaluation_id/label-categories",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                ":evaluation_id",
+                "label-categories"
+              ],
+              "variable": [
+                {
+                  "key": "evaluation_id",
+                  "value": "{{evaluation_id}}",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Add a label category, optionally with its allowed values (none means free text). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.\n\n**Requires permission:** `evaluations:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `evaluation_id` (string<uuid>, required)\n\n**Request body** — `EvaluationLabelCategoryCreate`\n- `name` (string, required) _[maxLen 64]_ — Category name, unique per evaluation ignoring case (≤64 chars).\n- `values` (array<string>, optional) — Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free text.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 201 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Evaluation does not exist. |\n| 409 | The name is taken on this evaluation (ignoring case), or the evaluation is at the category cap. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"language\",\n  \"values\": [\n    \"english\",\n    \"polish\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Rename a conversation-label category or replace its values",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/:evaluation_id/label-categories/:category_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                ":evaluation_id",
+                "label-categories",
+                ":category_id"
+              ],
+              "variable": [
+                {
+                  "key": "evaluation_id",
+                  "value": "{{evaluation_id}}",
+                  "description": ""
+                },
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Omitted fields stay. Replacing `values` does not rewrite labels already set: a group keeps a value dropped from the list. Needs `evaluations:update` or `evaluation_groups:manage`.\n\n**Requires permission:** `evaluations:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `evaluation_id` (string<uuid>, required)\n- `category_id` (string<uuid>, required)\n\n**Request body** — `EvaluationLabelCategoryUpdate`\n- `name` (string | null, optional) — New category name.\n- `values` (array<string> | null, optional) — Replacement value list. Labels already set keep their value even if it is dropped here.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Evaluation or label category does not exist. |\n| 409 | Another category of this evaluation has the name. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"values\": [\n    \"english\",\n    \"polish\",\n    \"spanish\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete a conversation-label category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluations/:evaluation_id/label-categories/:category_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluations",
+                ":evaluation_id",
+                "label-categories",
+                ":category_id"
+              ],
+              "variable": [
+                {
+                  "key": "evaluation_id",
+                  "value": "{{evaluation_id}}",
+                  "description": ""
+                },
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Remove the category; labels set under it are no longer shown or exported. Needs `evaluations:update` or `evaluation_groups:manage`.\n\n**Requires permission:** `evaluations:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `evaluation_id` (string<uuid>, required)\n- `category_id` (string<uuid>, required)\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 204 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Evaluation or label category does not exist. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+          },
+          "response": []
+        },
+        {
           "name": "List models assigned to an evaluation",
           "request": {
             "method": "GET",
@@ -4730,7 +4886,7 @@
           "response": []
         },
         {
-          "name": "Rename group",
+          "name": "Rename group or set its labels",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4765,7 +4921,7 @@
                 }
               ]
             },
-            "description": "Rename a group. The evaluation / scenario links and the member set are not editable — start a new group, or add a conversation via the conversation create endpoint.\n\n**Requires permission:** `conversations:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `evaluation_id` (string<uuid>, required)\n- `conversation_group_id` (string<uuid>, required)\n\n**Request body** — `ConversationGroupUpdate`\n- `name` (string, required) _[maxLen 255, minLen 1]_ — New display name for the group.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Group does not exist in the evaluation (or is outside the caller's scope / not visible). |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
+            "description": "Rename a group and/or replace its labels; omitted fields stay. The evaluation / scenario links and the member set are not editable — start a new group, or add a conversation via the conversation create endpoint.\n\n**Requires permission:** `conversations:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `evaluation_id` (string<uuid>, required)\n- `conversation_group_id` (string<uuid>, required)\n\n**Request body** — `ConversationGroupUpdate`\n- `name` (string | null, optional) — New display name for the group.\n- `labels` (object | null, optional) — Replacement label set, keyed by label category; a blank value clears that category. A value the group already holds is accepted even after it was dropped from its category's list.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 400 | A label category is not defined on the evaluation, or a value is outside its list. |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Group does not exist in the evaluation (or is outside the caller's scope / not visible). |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"GPT-4o vs Claude (round 2)\"\n}",
@@ -5287,7 +5443,7 @@
                 }
               ]
             },
-            "description": "Create a group against the scenario in the path, plus one conversation per entry in `models` (at least one), all owned by the caller and sharing that scenario. The scenario carries the evaluation the group belongs to. The same model may be listed more than once — each entry becomes its own conversation. Every model assignment must belong to the scenario's evaluation. The `Location` header points at the group's read route, which stays nested under the evaluation.\n\n**Requires permission:** `conversations:create`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `scenario_id` (string<uuid>, required)\n\n**Request body** — `ConversationGroupCreate`\n- `name` (string, required) _[maxLen 255, minLen 1]_ — Display name for the group.\n- `models` (array<ConversationGroupModelEntry>, required) — One entry per conversation to open in the group.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 201 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | The path scenario does not exist (or is outside the caller's scope / not visible), or a model assignment is not part of its evaluation. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
+            "description": "Create a group against the scenario in the path, plus one conversation per entry in `models` (at least one), all owned by the caller and sharing that scenario. The scenario carries the evaluation the group belongs to. The same model may be listed more than once — each entry becomes its own conversation. Every model assignment must belong to the scenario's evaluation. `labels` sets the group's labels under the evaluation's label categories (never sent to the model). The `Location` header points at the group's read route, which stays nested under the evaluation.\n\n**Requires permission:** `conversations:create`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `scenario_id` (string<uuid>, required)\n\n**Request body** — `ConversationGroupCreate`\n- `name` (string, required) _[maxLen 255, minLen 1]_ — Display name for the group.\n- `models` (array<ConversationGroupModelEntry>, required) — One entry per conversation to open in the group.\n- `labels` (object, optional) — Labels, keyed by a label category of the evaluation. A category with values takes one of them; one without takes free text. Labels are never sent to the model.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 201 | Successful Response |\n| 400 | A label category is not defined on the evaluation, or a value is outside its list. |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | The path scenario does not exist (or is outside the caller's scope / not visible), or a model assignment is not part of its evaluation. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"models\": [\n    {\n      \"evaluation_ai_model_id\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\",\n      \"title\": \"Direct ask\"\n    },\n    {\n      \"evaluation_ai_model_id\": \"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed\",\n      \"parameters\": {\n        \"temperature\": 0.9\n      },\n      \"title\": \"Roleplay framing\"\n    }\n  ],\n  \"name\": \"GPT-4o vs Claude\"\n}",

@@ -16,6 +16,8 @@ from app.core.annotations.models import MessageFlag
 from app.core.annotations.services.message_flags import list_flags
 from app.core.auth.roles import Permission
 from app.core.config import get_settings
+from app.core.conversations.services.labels import label_map
+from app.core.conversations.services.labels import labels_by_conversation
 from app.core.csv_generator import Column
 from app.core.exports.base import CsvExport
 from app.core.exports.base import ExportScope
@@ -41,6 +43,7 @@ class FlagRow:
     # Raw flagged-message list (not pre-serialized): the CSV column's `formatter` JSON-encodes it to
     # a string cell, while the JSON export emits it as a real nested array via the column's `value`.
     messages: list[dict[str, str | dict[str, str] | None]]
+    labels: dict[str, str]
 
 
 async def _fetch_flags(session: AsyncSession, scope: ExportScope) -> AsyncIterator[FlagRow]:
@@ -76,6 +79,7 @@ async def _fetch_flags(session: AsyncSession, scope: ExportScope) -> AsyncIterat
         emails = await resolve_user_emails(session, (flag.created_by_id for flag in flags))
         scenarios = await resolve_scenario_names(session, (flag.scenario_id for flag in flags))
         tasks = await resolve_task_names(session, (flag.task_id for flag in flags))
+        labels = await labels_by_conversation(session, {flag.conversation_id for flag in flags})
         for flag in flags:
             yield FlagRow(
                 flag=flag,
@@ -84,6 +88,7 @@ async def _fetch_flags(session: AsyncSession, scope: ExportScope) -> AsyncIterat
                 scenario_name=scenarios.get(flag.scenario_id) if flag.scenario_id else None,
                 task_name=tasks.get(flag.task_id) if flag.task_id else None,
                 messages=message_dicts(flag.messages, settings=get_settings()),
+                labels=label_map(labels.get(flag.conversation_id, [])),
             )
 
 
@@ -113,6 +118,7 @@ _COLUMNS: list[Column[FlagRow]] = [
     # the JSON export, JSON-encoded to one string cell in CSV — so every selected message's content
     # is exported and each id stays paired with its text.
     Column("Flagged messages", value=lambda r: r.messages, formatter=lambda v: json.dumps(v, ensure_ascii=False)),
+    Column("Labels", value=lambda r: r.labels, formatter=lambda v: json.dumps(v, ensure_ascii=False)),
     Column("Created", lambda r: r.flag.created_at),
 ]
 
@@ -125,7 +131,7 @@ FLAGS_EXPORT: CsvExport[FlagRow] = CsvExport(
         "scenario/task/author names), the flagged message/turn ids (so a flag joins back to the transcript / "
         "engagement-report exports), and the flagged messages themselves (id + content + tags) as a JSON "
         "cell — the tags as stored, with no policy column: use the transcript export to see which keys "
-        "the evaluation keeps out of the prompt."
+        "the evaluation keeps out of the prompt — and the flagged conversation's labels."
     ),
     permission=Permission.FLAGS_READ,
     columns=_COLUMNS,

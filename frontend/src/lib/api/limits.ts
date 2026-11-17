@@ -11,3 +11,12 @@ export const MAX_INVITE_ROWS = 100
 export const MAX_TAGS = 16
 export const MAX_TAG_KEY_LEN = 64
 export const MAX_TAG_VALUE_LEN = 512
+
+// The label-category edges the API enforces (`EvaluationLabelCategoryCreate`); like the tag limits,
+// openapi-typescript drops `maxLength`/`maxItems`, so the dialog carries the numbers.
+export const MAX_LABEL_CATEGORIES = 20
+export const MAX_LABEL_VALUES = 50
+export const MAX_LABEL_CATEGORY_NAME_LEN = 64
+export const MAX_LABEL_VALUE_LEN = 100
+// A free-text label value on a conversation group (`GroupLabelsInput`).
+export const MAX_GROUP_LABEL_VALUE_LEN = 200

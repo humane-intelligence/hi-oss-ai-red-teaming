@@ -5186,6 +5186,319 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/evaluations/{evaluation_id}/label-categories:
+    get:
+      tags:
+      - evaluations
+      summary: List conversation-label categories
+      description: The evaluation's conversation-label categories (at most 20), by name ignoring case. Labels describe a conversation
+        for organising and reporting and are never sent to the model.
+      operationId: list_label_categories_endpoint_api_v1_evaluations__evaluation_id__label_categories_get
+      parameters:
+      - name: evaluation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evaluation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvaluationLabelCategoryResponse'
+                title: Response List Label Categories Endpoint Api V1 Evaluations  Evaluation Id  Label Categories Get
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks the required permission.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - evaluations
+      summary: Define a conversation-label category
+      description: Add a label category, optionally with its allowed values (none means free text). Needs an in-group role
+        granting `evaluations:update`, or `evaluation_groups:manage`.
+      operationId: create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post
+      parameters:
+      - name: evaluation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evaluation Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationLabelCategoryCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationLabelCategoryResponse'
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks the required permission.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The name is taken on this evaluation (ignoring case), or the evaluation is at the category cap.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/evaluations/{evaluation_id}/label-categories/{category_id}:
+    patch:
+      tags:
+      - evaluations
+      summary: Rename a conversation-label category or replace its values
+      description: 'Omitted fields stay. Replacing `values` does not rewrite labels already set: a group keeps a value dropped
+        from the list. Needs `evaluations:update` or `evaluation_groups:manage`.'
+      operationId: update_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories__category_id__patch
+      parameters:
+      - name: evaluation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evaluation Id
+      - name: category_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Category Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationLabelCategoryUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationLabelCategoryResponse'
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks the required permission.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation or label category does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Another category of this evaluation has the name.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    delete:
+      tags:
+      - evaluations
+      summary: Delete a conversation-label category
+      description: Remove the category; labels set under it are no longer shown or exported. Needs `evaluations:update` or
+        `evaluation_groups:manage`.
+      operationId: delete_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories__category_id__delete
+      parameters:
+      - name: evaluation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evaluation Id
+      - name: category_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Category Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks the required permission.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation or label category does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/evaluations/{evaluation_id}/models/{assignment_id}:
     get:
       tags:
@@ -9682,8 +9995,8 @@ paths:
       description: Create a group against the scenario in the path, plus one conversation per entry in `models` (at least
         one), all owned by the caller and sharing that scenario. The scenario carries the evaluation the group belongs to.
         The same model may be listed more than once — each entry becomes its own conversation. Every model assignment must
-        belong to the scenario's evaluation. The `Location` header points at the group's read route, which stays nested under
-        the evaluation.
+        belong to the scenario's evaluation. `labels` sets the group's labels under the evaluation's label categories (never
+        sent to the model). The `Location` header points at the group's read route, which stays nested under the evaluation.
       operationId: create_conversation_group_endpoint_api_v1_scenarios__scenario_id__conversation_groups_post
       parameters:
       - name: scenario_id
@@ -9717,6 +10030,15 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '500':
           description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '400':
+          description: A label category is not defined on the evaluation, or a value is outside its list.
           content:
             application/problem+json:
               schema:
@@ -9940,9 +10262,9 @@ paths:
     patch:
       tags:
       - conversations
-      summary: Rename group
-      description: Rename a group. The evaluation / scenario links and the member set are not editable — start a new group,
-        or add a conversation via the conversation create endpoint.
+      summary: Rename group or set its labels
+      description: Rename a group and/or replace its labels; omitted fields stay. The evaluation / scenario links and the
+        member set are not editable — start a new group, or add a conversation via the conversation create endpoint.
       operationId: update_conversation_group_endpoint_api_v1_evaluations__evaluation_id__conversation_groups__conversation_group_id__patch
       parameters:
       - name: evaluation_id
@@ -9983,6 +10305,15 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '500':
           description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '400':
+          description: A label category is not defined on the evaluation, or a value is outside its list.
           content:
             application/problem+json:
               schema:
@@ -17823,6 +18154,17 @@ components:
           minItems: 1
           title: Models
           description: One entry per conversation to open in the group.
+        labels:
+          additionalProperties:
+            type: string
+            maxLength: 200
+          propertyNames:
+            format: uuid
+          type: object
+          maxProperties: 20
+          title: Labels
+          description: Labels, keyed by a label category of the evaluation. A category with values takes one of them; one
+            without takes free text. Labels are never sent to the model.
       additionalProperties: false
       type: object
       required:
@@ -17852,6 +18194,28 @@ components:
             temperature: 0.9
           title: Roleplay framing
         name: GPT-4o vs Claude
+    ConversationGroupLabelResponse:
+      properties:
+        category_id:
+          type: string
+          format: uuid
+          title: Category Id
+          description: Label category the value is set under.
+        name:
+          type: string
+          title: Name
+          description: Category name.
+        value:
+          type: string
+          title: Value
+          description: The value.
+      type: object
+      required:
+      - category_id
+      - name
+      - value
+      title: ConversationGroupLabelResponse
+      description: One label on a group, under a live label category of its evaluation.
     ConversationGroupModelEntry:
       properties:
         evaluation_ai_model_id:
@@ -17910,6 +18274,12 @@ components:
           format: date-time
           title: Updated At
           description: UTC timestamp of the last update.
+        labels:
+          items:
+            $ref: '#/components/schemas/ConversationGroupLabelResponse'
+          type: array
+          title: Labels
+          description: The group's labels under live categories, by category name. Never sent to the model.
         conversations:
           items:
             $ref: '#/components/schemas/ConversationResponse'
@@ -17930,13 +18300,13 @@ components:
       description: 'Public view of a `ConversationGroup` with its member conversations embedded.
 
 
-        Build via `ConversationGroupResponse.from_model(group, conversations, effective_license=...)`;
+        Build via `ConversationGroupResponse.from_model(group, conversations, effective_license=..., labels=...)`;
 
         the caller supplies the live member conversations (eager-loaded under the same
 
-        owner/visibility scope as the group itself) and the group''s effective license (every member
+        owner/visibility scope as the group itself), the group''s effective license (every member
 
-        shares the group''s evaluation).'
+        shares the group''s evaluation) and its labels (`labels_by_group`, batched across a page).'
       example:
         conversations:
         - content_protected: false
@@ -17968,6 +18338,10 @@ components:
         created_at: '2026-01-01T12:00:00Z'
         evaluation_id: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
         id: 5d2e1f0a-6b7c-4d8e-9f0a-1b2c3d4e5f60
+        labels:
+        - category_id: 6f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f
+          name: language
+          value: polish
         name: GPT-4o vs Claude
         scenario_id: 9a7b6c5d-1e2f-4a3b-8c9d-0e1f2a3b4c5d
         updated_at: '2026-01-02T09:30:00Z'
@@ -17975,23 +18349,36 @@ components:
     ConversationGroupUpdate:
       properties:
         name:
-          type: string
-          maxLength: 255
-          minLength: 1
+          anyOf:
+          - type: string
+            maxLength: 255
+            minLength: 1
+          - type: 'null'
           title: Name
           description: New display name for the group.
+        labels:
+          anyOf:
+          - additionalProperties:
+              type: string
+              maxLength: 200
+            propertyNames:
+              format: uuid
+            type: object
+            maxProperties: 20
+          - type: 'null'
+          title: Labels
+          description: Replacement label set, keyed by label category; a blank value clears that category. A value the group
+            already holds is accepted even after it was dropped from its category's list.
       type: object
-      required:
-      - name
       title: ConversationGroupUpdate
       description: 'Payload for `PATCH /v1/evaluations/{evaluation_id}/conversation-groups/{id}`.
 
 
-        Only `name` is editable — the evaluation / scenario links and the member set
+        `name` and `labels` are editable; omitted fields stay. The evaluation / scenario links and the
 
-        are immutable (start a new group, or add a conversation via the conversation
+        member set are immutable (start a new group, or add a conversation via the conversation create
 
-        create endpoint).'
+        endpoint).'
       example:
         name: GPT-4o vs Claude (round 2)
     ConversationResponse:
@@ -19808,6 +20195,103 @@ components:
         `start_date` is allowed on edit.'
       example:
         title: Spring 2026 jailbreak challenge (rev. 2)
+    EvaluationLabelCategoryCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 64
+          title: Name
+          description: Category name, unique per evaluation ignoring case (≤64 chars).
+        values:
+          items:
+            type: string
+            maxLength: 100
+          type: array
+          maxItems: 50
+          title: Values
+          description: Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free
+            text.
+      type: object
+      required:
+      - name
+      title: EvaluationLabelCategoryCreate
+      description: Payload to define a conversation-label category on an evaluation.
+      example:
+        name: language
+        values:
+        - english
+        - polish
+    EvaluationLabelCategoryResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+          description: Server-assigned identifier.
+        evaluation_id:
+          type: string
+          format: uuid
+          title: Evaluation Id
+          description: Evaluation the category belongs to.
+        name:
+          type: string
+          title: Name
+          description: Category name.
+        values:
+          items:
+            type: string
+          type: array
+          title: Values
+          description: Allowed values, in the order defined; empty means free text.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: UTC timestamp the category was created.
+      type: object
+      required:
+      - id
+      - evaluation_id
+      - name
+      - values
+      - created_at
+      title: EvaluationLabelCategoryResponse
+      description: Public view of one conversation-label category.
+      example:
+        created_at: '2026-01-01T12:00:00Z'
+        evaluation_id: 3f2a0000-0000-0000-0000-000000000000
+        id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        name: language
+        values:
+        - english
+        - polish
+    EvaluationLabelCategoryUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Name
+          description: New category name.
+        values:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 100
+            type: array
+            maxItems: 50
+          - type: 'null'
+          title: Values
+          description: Replacement value list. Labels already set keep their value even if it is dropped here.
+      type: object
+      title: EvaluationLabelCategoryUpdate
+      description: Payload to rename a label category or replace its values; omitted fields stay.
+      example:
+        values:
+        - english
+        - polish
+        - spanish
     EvaluationMetrics:
       properties:
         evaluation_id:

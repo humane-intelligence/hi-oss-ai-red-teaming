@@ -38,6 +38,7 @@ from app.core.evaluations.enums import MetricsAccessLevel
 from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import EvaluationGroup
 from app.core.evaluations.models import Task
+from app.core.helpers import sanitise_single_line
 from app.core.licenses.catalog import effective_license
 from app.core.licenses.models import DataLicense
 from app.core.licenses.schemas import DataLicenseSummary
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
     from app.core.evaluations.models import Evaluation
     from app.core.evaluations.models import EvaluationAiModel
     from app.core.evaluations.models import EvaluationGroupAiModel
+    from app.core.evaluations.models import EvaluationLabelCategory
     from app.core.evaluations.models import EvaluationTagKey
     from app.core.evaluations.models import Scenario
     from app.core.evaluations.services.group_invitations import GroupInvitationResult
@@ -1523,3 +1525,97 @@ class EvaluationTagKeyResponse(BaseModel):
     def from_model(cls, row: EvaluationTagKey) -> EvaluationTagKeyResponse:
         """Project an `EvaluationTagKey` row into the public shape."""
         return cls(id=row.id, evaluation_id=row.evaluation_id, key=row.key, created_at=row.created_at)
+
+
+MAX_LABEL_CATEGORIES = 20
+MAX_LABEL_VALUES = 50
+
+
+def _label_text(value: str) -> str:
+    cleaned = sanitise_single_line(value)
+    if not cleaned:
+        raise ValueError("must not be blank")
+    return cleaned
+
+
+def _unique_label_values(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    for value in values:
+        if value.casefold() in seen:
+            raise ValueError(f"duplicate value: {value!r}")
+        seen.add(value.casefold())
+    return values
+
+
+LabelCategoryName = Annotated[str, Field(max_length=64), AfterValidator(_label_text)]
+LabelValue = Annotated[str, Field(max_length=100), AfterValidator(_label_text)]
+LabelValues = Annotated[
+    list[LabelValue],
+    Field(max_length=MAX_LABEL_VALUES),
+    AfterValidator(_unique_label_values),
+]
+
+
+class EvaluationLabelCategoryCreate(BaseModel):
+    """Payload to define a conversation-label category on an evaluation."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"name": "language", "values": ["english", "polish"]}})
+
+    name: LabelCategoryName = Field(description="Category name, unique per evaluation ignoring case (≤64 chars).")
+    values: LabelValues = Field(
+        default_factory=list,
+        description=f"Allowed values (each ≤100 chars, at most {MAX_LABEL_VALUES}, unique ignoring case). "
+        "Empty means the label takes free text.",
+    )
+
+
+class EvaluationLabelCategoryUpdate(BaseModel):
+    """Payload to rename a label category or replace its values; omitted fields stay."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"values": ["english", "polish", "spanish"]}})
+
+    name: LabelCategoryName | None = Field(default=None, description="New category name.")
+    values: LabelValues | None = Field(
+        default=None,
+        description="Replacement value list. Labels already set keep their value even if it is dropped here.",
+    )
+
+    @field_validator("name", "values", mode="before")
+    @classmethod
+    def _reject_explicit_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("must not be null; omit the field to leave it unchanged")
+        return value
+
+
+class EvaluationLabelCategoryResponse(BaseModel):
+    """Public view of one conversation-label category."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                "evaluation_id": "3f2a0000-0000-0000-0000-000000000000",
+                "name": "language",
+                "values": ["english", "polish"],
+                "created_at": "2026-01-01T12:00:00Z",
+            }
+        }
+    )
+
+    id: UUID = Field(description="Server-assigned identifier.")
+    evaluation_id: UUID = Field(description="Evaluation the category belongs to.")
+    name: str = Field(description="Category name.")
+    values: list[str] = Field(description="Allowed values, in the order defined; empty means free text.")
+    created_at: datetime = Field(description="UTC timestamp the category was created.")
+
+    @classmethod
+    def from_model(cls, row: EvaluationLabelCategory) -> EvaluationLabelCategoryResponse:
+        """Project an `EvaluationLabelCategory` row into the public shape."""
+        return cls(
+            id=row.id,
+            evaluation_id=row.evaluation_id,
+            name=row.name,
+            values=list(row.values),
+            created_at=row.created_at,
+        )

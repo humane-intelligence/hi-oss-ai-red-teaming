@@ -107,6 +107,19 @@ export function useAssignment(evaluationId: string, assignmentId: string) {
   })
 }
 
+export function useEvaluationLabelCategories(evaluationId: string) {
+  return useQuery({
+    queryKey: ['evaluation-label-categories', evaluationId],
+    queryFn: async () =>
+      unwrap(
+        await apiClient.GET('/api/v1/evaluations/{evaluation_id}/label-categories', {
+          params: { path: { evaluation_id: evaluationId } },
+        }),
+      ),
+    enabled: !!evaluationId,
+  })
+}
+
 export function useEvaluationTagKeys(evaluationId: string) {
   return useQuery({
     queryKey: ['evaluation-tag-keys', evaluationId],
