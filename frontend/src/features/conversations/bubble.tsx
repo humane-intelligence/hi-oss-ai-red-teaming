@@ -68,6 +68,8 @@ export function Bubble({
     )
   }
   const isUser = role === 'user'
+  // A placeholder still streaming (or left so by a reload) and a failed reply have nothing to flag.
+  const flaggable = !!onFlag && !isUser && status !== 'streaming' && status !== 'error'
   return (
     <div className={cn('flex gap-2', isUser ? 'justify-end' : 'justify-start')}>
       <div
@@ -150,7 +152,7 @@ export function Bubble({
           )}
         </div>
       </div>
-      {onFlag && (
+      {flaggable && (
         <Button
           type="button"
           variant="outline"

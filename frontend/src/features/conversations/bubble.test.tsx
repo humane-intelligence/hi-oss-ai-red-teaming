@@ -85,6 +85,21 @@ describe('Bubble — flag button', () => {
     expect(onFlag).toHaveBeenCalledOnce()
   })
 
+  it.each(['streaming', 'error'] as const)('offers no flag on a %s reply', (status) => {
+    render(<Bubble role="assistant" content="x" status={status} onFlag={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Flag this reply for review' })).toBeNull()
+  })
+
+  it('still offers the flag on an interrupted reply, which keeps its partial text', () => {
+    render(<Bubble role="assistant" content="partial" status="interrupted" onFlag={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Flag this reply for review' })).toBeInTheDocument()
+  })
+
+  it('never offers the flag on a user message', () => {
+    render(<Bubble role="user" content="hi" onFlag={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Flag this reply for review' })).toBeNull()
+  })
+
   it('renders no flag button when flagging is not wired', () => {
     render(<Bubble role="assistant" content="hi" />)
     expect(screen.queryByRole('button', { name: 'Flag this reply for review' })).toBeNull()
