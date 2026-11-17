@@ -272,12 +272,15 @@ describe('ConversationGroupsListPage', () => {
 
     it('hides it on an own group when neither grants delete', async () => {
       server.use(...handlers([ownRow]))
-      const reads = authorityHandlers([])
-      renderPage()
+      authorityHandlers([])
+      const qc = renderPage()
 
-      await screen.findByText('GPT-4o vs Claude')
-      await waitFor(() => expect(reads).toHaveLength(1))
-      expect(screen.queryByRole('button', { name: DELETE_NAME })).toBeNull()
+      await waitFor(() =>
+        expect(qc.getQueryState(['evaluation-group', PARENT_GROUP_ID])?.status).toBe('success'),
+      )
+      await expect(
+        screen.findByRole('button', { name: DELETE_NAME }, { timeout: 200 }),
+      ).rejects.toThrow()
     })
   })
 })
