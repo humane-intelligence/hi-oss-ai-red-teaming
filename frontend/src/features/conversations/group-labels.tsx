@@ -14,8 +14,11 @@ export function GroupLabels({
     <ul aria-label="Labels" className={cn('flex flex-wrap gap-1.5', className)}>
       {labels.map((label) => (
         <li key={label.category_id}>
-          <Badge variant="tag">
-            {label.name}: {label.value}
+          {/* Capped and titled because a free-text value runs to 200 chars. */}
+          <Badge variant="tag" className="max-w-[18rem]" title={`${label.name}: ${label.value}`}>
+            <span className="truncate">
+              {label.name}: {label.value}
+            </span>
           </Badge>
         </li>
       ))}

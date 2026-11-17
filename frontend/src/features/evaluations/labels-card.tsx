@@ -104,8 +104,8 @@ export function LabelsCard({
               {row.values.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
                   {row.values.map((value) => (
-                    <Badge key={value} variant="tag">
-                      {value}
+                    <Badge key={value} variant="tag" className="max-w-[18rem]" title={value}>
+                      <span className="truncate">{value}</span>
                     </Badge>
                   ))}
                 </div>
