@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/table'
 import type { BulkGroupMemberResponse, UserResponse } from '@/lib/api/types'
 
-type Picked = Pick<UserResponse, 'id' | 'email' | 'first_name' | 'last_name'>
+type Picked = Pick<UserResponse, 'id' | 'email' | 'first_name' | 'last_name' | 'status'>
 
 // Least to most privileged, as on the wireframe; any other assignable role follows.
 const ROLE_ORDER = ['viewer', 'red_teamer', 'annotator', 'owner']
@@ -47,11 +47,17 @@ function UserRow({
   checked: boolean
   onToggle: () => void
 }) {
+  const inactive = user.status === 'inactive'
+  const hint = isMember ? 'Already a member' : inactive ? 'Deactivated' : null
   return (
     <label className="flex items-center gap-2 px-3 py-1.5 text-sm">
-      <Checkbox checked={checked || isMember} disabled={isMember} onCheckedChange={onToggle} />
+      <Checkbox
+        checked={checked || isMember}
+        disabled={isMember || inactive}
+        onCheckedChange={onToggle}
+      />
       <span className="min-w-0 flex-1 truncate">{label(user)}</span>
-      {isMember && <span className="text-muted-foreground text-xs">Already a member</span>}
+      {hint && <span className="text-muted-foreground text-xs">{hint}</span>}
     </label>
   )
 }
@@ -106,7 +112,7 @@ export function AddMembersDialog({
   const orgList = orgMembers.data?.items ?? []
   const orgIds = new Set(orgList.map((u) => u.id))
   const orgVisible = orgList.filter(matches)
-  const orgJoinable = orgList.filter((u) => !members.has(u.id))
+  const orgJoinable = orgList.filter((u) => !members.has(u.id) && u.status !== 'inactive')
   const orgPicked = orgJoinable.filter((u) => picked.has(u.id)).length
   const others = (users.data ?? []).filter((u) => !orgIds.has(u.id))
   const roleList = [...(roles.data?.items ?? [])].sort((a, b) => rank(a.name) - rank(b.name))
@@ -470,7 +476,7 @@ export function AddMembersDialog({
                     <span className="font-medium">{picked.get(r.row_key)?.email ?? r.row_key}</span>
                     {' — '}
                     <span className="text-muted-foreground">
-                      {/* The 409 detail is the object-role layer's wording; say it as step 1 does. */}
+                      {/* Deactivated users can't be picked, so a 409 is an existing membership; say it as step 1 does. */}
                       {r.error?.status === 409
                         ? 'Already a member'
                         : (r.error?.detail ?? r.error?.title ?? 'Unknown error')}

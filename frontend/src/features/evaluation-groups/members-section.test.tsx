@@ -443,6 +443,33 @@ describe('MembersSection — add flow', () => {
     ).toBeNull()
   })
 
+  it('shows deactivated users but leaves them out of the pick, Add all included', async () => {
+    const carol = { ...user3, status: 'inactive' }
+    const erin = {
+      ...user3,
+      id: 'usr-0009-0000-0000-000000000000',
+      email: 'erin@example.com',
+      first_name: 'Erin',
+      status: 'inactive',
+    }
+    handlers({ users: [erin], orgMembers: [carol, user4] })
+    const { user, dialog } = await openDialog(['users:read', 'organizations:read'], true)
+
+    const org = await within(dialog).findByRole('region', { name: 'Andless (organization)' })
+    const others = within(dialog).getByRole('region', { name: 'Other users' })
+    expect(await within(org).findByLabelText(/carol@example.com/)).toBeDisabled()
+    expect(within(org).getByText('Deactivated')).toBeInTheDocument()
+    expect(await within(others).findByLabelText(/erin@example.com/)).toBeDisabled()
+    expect(within(others).getByText('Deactivated')).toBeInTheDocument()
+
+    await user.click(within(org).getByLabelText('Add all members'))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+
+    expect(
+      within(dialog).getByRole('rowheader', { name: 'Dave Bowman · dave@example.com' }),
+    ).toBeInTheDocument()
+  })
+
   it('sets a role for everyone from its column, and needs a role for each user', async () => {
     handlers({ users: [user3, user4] })
     const { user, dialog } = await openDialog(['users:read'])
