@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { delay, http, HttpResponse } from 'msw'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -409,26 +409,69 @@ describe('SystemPreferencesPage — client logo', () => {
     })
   }
 
+  function uploadHandler() {
+    return http.post('http://localhost/api/v1/images', () =>
+      HttpResponse.json(
+        {
+          id: 'a0000000-0000-0000-0000-000000000001',
+          key: LOGO_KEY,
+          url: `/api/v1/images/${LOGO_KEY}`,
+          content_type: 'image/png',
+          width: 10,
+          height: 10,
+          size_bytes: 68,
+          is_private: false,
+          created_at: '2026-11-17T00:00:00Z',
+        },
+        { status: 201 },
+      ),
+    )
+  }
+
+  // Asserted synchronously after the pick: holding the response open trips undici on jsdom's File body.
+  function pickLightLogo() {
+    fireEvent.change(document.querySelectorAll('input[type="file"]')[0]!, {
+      target: { files: [new File(['x'], 'logo.png', { type: 'image/png' })] },
+    })
+  }
+
+  it('keeps Save disabled while an upload runs', async () => {
+    mockReads(settings())
+    server.use(uploadHandler())
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('checkbox', { name: /invite-only mode/i }))
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+    pickLightLogo()
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled())
+  })
+
+  it('guards an untouched form against unload while an upload runs', async () => {
+    mockReads(settings())
+    server.use(uploadHandler())
+    renderPage()
+    const unload = () => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+
+    await screen.findByRole('group', { name: 'Light theme' })
+    expect(unload()).toBe(false)
+    pickLightLogo()
+
+    expect(unload()).toBe(true)
+    await screen.findByRole('img', { name: 'Light theme logo' })
+  })
+
   it('uploads a light-theme logo and saves only that key', async () => {
     mockReads(settings())
     let captured: Record<string, unknown> | null = null
     server.use(
-      http.post('http://localhost/api/v1/images', () =>
-        HttpResponse.json(
-          {
-            id: 'a0000000-0000-0000-0000-000000000001',
-            key: LOGO_KEY,
-            url: `/api/v1/images/${LOGO_KEY}`,
-            content_type: 'image/png',
-            width: 10,
-            height: 10,
-            size_bytes: 68,
-            is_private: false,
-            created_at: '2026-11-17T00:00:00Z',
-          },
-          { status: 201 },
-        ),
-      ),
+      uploadHandler(),
       capturePatch((b) => (captured = b)),
     )
     const user = userEvent.setup()

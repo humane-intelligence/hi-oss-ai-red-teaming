@@ -159,7 +159,7 @@ export function SystemPreferencesPage() {
     })
   }, [settings.data, isDirty, reset])
 
-  useUnsavedGuard(isDirty)
+  useUnsavedGuard(isDirty || uploads > 0)
 
   const onSubmit = handleSubmit(async (values) => {
     // Only the touched knobs: the singleton is shared, so a full snapshot would silently revert
