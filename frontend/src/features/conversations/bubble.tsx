@@ -5,6 +5,7 @@ import { copyText } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/shared/markdown'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { MessageAttachments } from '@/components/shared/message-attachments'
 import { MessageMeta } from '@/components/shared/message-meta'
 import { TagContext } from '@/components/shared/tag-context'
@@ -18,7 +19,7 @@ export type BubbleTagProps =
   | { tags: MessageResponse['tags']; unsentTags: Set<string> }
 
 // Shared chat bubble for both the single-conversation view and the side-by-side panes.
-// The optional flag/meta props are the superset the detail view uses; a pane just omits them.
+// The optional props are the superset the detail view uses; a pane omits only `extra` (the meta line).
 export function Bubble({
   messageId,
   role,
@@ -67,8 +68,10 @@ export function Bubble({
     )
   }
   const isUser = role === 'user'
+  // A placeholder still streaming (or left so by a reload) and a failed reply have nothing to flag.
+  const flaggable = !!onFlag && !isUser && status !== 'streaming' && status !== 'error'
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex gap-2', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
           'group/bubble relative max-w-[80%] space-y-1 rounded-lg px-3 py-2 text-sm',
@@ -126,7 +129,6 @@ export function Bubble({
             )}
           </div>
         )}
-        {/* Per-message actions: copy (always) + flag (assistant, when wired), revealed on hover/focus. */}
         <div className="absolute -top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover/bubble:opacity-100 focus-within:opacity-100">
           <button
             type="button"
@@ -137,17 +139,6 @@ export function Bubble({
           >
             {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           </button>
-          {onFlag && (
-            <button
-              type="button"
-              onClick={onFlag}
-              title="Flag this reply for review"
-              aria-label="Flag this reply for review"
-              className="bg-card text-muted-foreground hover:text-foreground inline-flex size-6 items-center justify-center rounded-md border shadow-sm"
-            >
-              <Flag className="size-3" />
-            </button>
-          )}
           {onAnnotate && (
             <button
               type="button"
@@ -161,6 +152,19 @@ export function Bubble({
           )}
         </div>
       </div>
+      {flaggable && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          onClick={onFlag}
+          title="Flag this reply for review"
+          aria-label="Flag this reply for review"
+          className="text-muted-foreground hover:text-foreground sticky top-2 self-start"
+        >
+          <Flag className="size-4" />
+        </Button>
+      )}
     </div>
   )
 }
