@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { delay, http, HttpResponse } from 'msw'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
 import { AuthShell } from './auth-shell'
@@ -123,6 +123,50 @@ describe('AuthShell — client logo', () => {
 
     const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!
     expect(column).toHaveClass('invisible')
+  })
+
+  it('holds the form until both logo images have loaded', async () => {
+    server.use(
+      publicSettingsHandler({
+        logo_light_key: '2026/11/17/light.png',
+        logo_dark_key: '2026/11/17/dark.png',
+      }),
+    )
+    renderShell()
+    const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!
+
+    const logos = await waitFor(() => {
+      const found = [...document.querySelectorAll('img[src*="/api/v1/images/"]')]
+      expect(found).toHaveLength(2)
+      return found
+    })
+    expect(column).toHaveClass('invisible')
+    fireEvent.load(logos[0]!)
+    expect(column).toHaveClass('invisible')
+    fireEvent.load(logos[1]!)
+
+    await waitFor(() => expect(column).not.toHaveClass('invisible'))
+  })
+
+  it('shows the form after the deadline even if the settings never arrive', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(
+        http.get('http://localhost/api/v1/platform-settings/public', async () => {
+          await delay('infinite')
+          return HttpResponse.json({})
+        }),
+      )
+      renderShell()
+      const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!
+      expect(column).toHaveClass('invisible')
+
+      act(() => vi.advanceTimersByTime(5_000))
+
+      expect(column).not.toHaveClass('invisible')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows no logo when none is set', async () => {

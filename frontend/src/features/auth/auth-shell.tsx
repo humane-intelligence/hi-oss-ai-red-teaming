@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useVersion } from '@/features/status/queries'
 import type { VersionResponse } from '@/lib/api/types'
 import { cn } from '@/lib/utils'
@@ -36,6 +36,10 @@ function VersionNote({ version }: { version: VersionResponse }) {
   )
 }
 
+// One deadline over the whole hold: the settings read alone can take twice its own timeout (one
+// retry), and an image can hang too, so a dead endpoint must not keep the form blank for longer.
+const REVEAL_DEADLINE_MS = 5_000
+
 export function AuthShell({
   title,
   subtitle,
@@ -49,6 +53,15 @@ export function AuthShell({
 }) {
   const { data: version } = useVersion()
   const logo = useClientLogo()
+  const hasLogo = !!(logo.light && logo.dark)
+  const [logoReady, setLogoReady] = useState(false)
+  const markLogoReady = useCallback(() => setLogoReady(true), [])
+  const [pastDeadline, setPastDeadline] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setPastDeadline(true), REVEAL_DEADLINE_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  const holding = !pastDeadline && (logo.pending || (hasLogo && !logoReady))
   const shownVersion = version && version.environment !== 'prod' ? version : undefined
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
@@ -58,9 +71,10 @@ export function AuthShell({
       </aside>
 
       <main className="grid place-items-center p-6">
-        {/* Held invisible until the public settings settle: a logo arriving after the form painted
-            would push the fields down under a user who is already typing. */}
-        <div className={cn('w-full max-w-sm', logo.pending && 'invisible')}>
+        {/* Held invisible until the logo's size is final (settings read, image loaded or failed):
+            a logo arriving after the form painted would push the fields down under a user who is
+            already typing. */}
+        <div className={cn('w-full max-w-sm', holding && 'invisible')}>
           {/* Below lg the decorative aside is gone; keep the brand above the form and the version
               below it so both stay visible on mobile. */}
           <Wordmark className="mb-8 text-xl lg:hidden" />
@@ -69,6 +83,7 @@ export function AuthShell({
               light={logo.light}
               dark={logo.dark}
               alt=""
+              onReady={markLogoReady}
               className="mb-6 max-h-[100px] max-w-[200px]"
             />
           )}
