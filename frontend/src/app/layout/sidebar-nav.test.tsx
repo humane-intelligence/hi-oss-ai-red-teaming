@@ -11,7 +11,9 @@ function renderAt(path: string) {
   const Wrapper = authWrapper(['evaluation_groups:read', 'evaluations:read', 'conversations:read'])
   render(
     <Wrapper>
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
         <MemoryRouter initialEntries={[path]}>
           <SidebarNav />
         </MemoryRouter>
