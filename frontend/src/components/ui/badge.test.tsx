@@ -34,6 +34,8 @@ describe('Badge variants', () => {
     ['warn', 'bg-warn-surface', 'text-warn'],
     ['new', 'bg-new-surface', 'text-new'],
     ['err', 'bg-err-surface', 'text-err'],
+    ['approved', 'bg-approved-surface', 'text-approved'],
+    ['changes', 'bg-changes-surface', 'text-changes'],
   ] as const)('pairs the %s tone with its own surface', (variant, surface, ink) => {
     // A tint fallback like `bg-ok/15` would look close enough to pass a glance, so pin both halves.
     render(<Badge variant={variant}>status</Badge>)
