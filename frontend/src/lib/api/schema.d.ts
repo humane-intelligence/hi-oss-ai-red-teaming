@@ -2918,7 +2918,7 @@ export interface paths {
         };
         /**
          * Get platform settings
-         * @description Return every platform-wide setting — data licensing, registration, password policy, password-reset throttling. Before any admin override, this reflects the shipped defaults with `updated_at: null`.
+         * @description Return every platform-wide setting — data licensing, registration, password policy, password-reset throttling, client logo. Before any admin override, this reflects the shipped defaults with `updated_at: null`.
          */
         get: operations["get_platform_settings_endpoint_api_v1_platform_settings_get"];
         put?: never;
@@ -2928,7 +2928,7 @@ export interface paths {
         head?: never;
         /**
          * Update platform settings
-         * @description Override platform-wide settings — any subset of the knobs in the request schema; omitted fields stay unchanged. `default_license_id` must reference a live licence (`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. Materializes the singleton row on the first effective write; a no-op PATCH writes (and audits) nothing.
+         * @description Override platform-wide settings — any subset of the knobs in the request schema; omitted fields stay unchanged. `default_license_id` must reference a live licence (`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. `logo_light_key` / `logo_dark_key` must name a live public image the caller uploaded (`POST /api/v1/images`); `null` removes one. Materializes the singleton row on the first effective write; a no-op PATCH writes (and audits) nothing.
          */
         patch: operations["update_platform_settings_endpoint_api_v1_platform_settings_patch"];
         trace?: never;
@@ -2942,7 +2942,7 @@ export interface paths {
         };
         /**
          * Get public platform settings
-         * @description Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy, plus whether conversation tags are in use on this instance.
+         * @description Unauthenticated subset of platform settings for the login/registration screens — whether open self-signup is enabled (the inverse of invite-only mode) and the password rules every set-password screen must satisfy, plus whether conversation tags are in use on this instance and the client logo the sign-in page shows.
          */
         get: operations["get_public_platform_settings_endpoint_api_v1_platform_settings_public_get"];
         put?: never;
@@ -9894,11 +9894,12 @@ export interface components {
         };
         /**
          * PlatformSettingsResponse
-         * @description Platform-wide settings — data licensing, registration, password policy, reset throttling.
+         * @description Platform-wide settings — data licensing, registration, password policy, reset throttling, client logo.
          * @example {
          *       "default_license_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
          *       "email_verification_ttl_hours": 24,
          *       "invite_only": false,
+         *       "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
          *       "password_min_length": 8,
          *       "password_require_digit": false,
          *       "password_require_symbol": false,
@@ -9956,6 +9957,16 @@ export interface components {
              */
             password_reset_max_per_day: number;
             /**
+             * Logo Light Key
+             * @description Image key of the client logo for the light theme (`GET /api/v1/images/{key}`); `null` when unset.
+             */
+            logo_light_key: string | null;
+            /**
+             * Logo Dark Key
+             * @description Image key of the client logo for the dark theme; `null` when unset.
+             */
+            logo_dark_key: string | null;
+            /**
              * Updated At
              * @description When the settings were last overridden; `null` means they are still the shipped defaults.
              */
@@ -10011,6 +10022,16 @@ export interface components {
              * @description Self-service reset requests one account can make per rolling 24 hours (1-100). Admin-triggered sends are not bound by the cap but consume it. Omit to leave unchanged.
              */
             password_reset_max_per_day?: number | null;
+            /**
+             * Logo Light Key
+             * @description Image key (from `POST /api/v1/images`, public, uploaded by the caller) of the light-theme client logo; explicit `null` removes it. Omit to leave unchanged.
+             */
+            logo_light_key?: string | null;
+            /**
+             * Logo Dark Key
+             * @description Image key of the dark-theme client logo, same rules as `logo_light_key`; explicit `null` removes it. Omit to leave unchanged.
+             */
+            logo_dark_key?: string | null;
         };
         /**
          * Problem
@@ -10143,6 +10164,7 @@ export interface components {
          * @description Unauthenticated subset of platform settings — safe to expose to anonymous clients.
          * @example {
          *       "conversation_tags_enabled": true,
+         *       "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
          *       "password_policy": {
          *         "min_length": 8,
          *         "require_digit": false,
@@ -10165,6 +10187,16 @@ export interface components {
              * @description Whether conversation tags are in use on this instance. When false every evaluation behaves as if tagging were off and the console shows no tags; set by the deployment (`CONVERSATION_TAGS_ENABLED`), not by the platform-settings singleton.
              */
             conversation_tags_enabled: boolean;
+            /**
+             * Logo Light Key
+             * @description Image key of the instance's client logo for the light theme, served without a session at `GET /api/v1/images/{key}`; `null` when unset. A client shows the other theme's logo when only one is set.
+             */
+            logo_light_key: string | null;
+            /**
+             * Logo Dark Key
+             * @description Image key of the client logo for the dark theme; `null` when unset.
+             */
+            logo_dark_key: string | null;
         };
         /**
          * PublicationStatus
@@ -26427,7 +26459,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlatformSettingsResponse"];
                 };
             };
-            /** @description `default_license_id` — requested, or the shipped default on the row-materializing first write — does not reference a live licence, or is the `No license` entry. */
+            /** @description `default_license_id` — requested, or the shipped default on the row-materializing first write — does not reference a live licence, or is the `No license` entry; or a logo key does not name a live public image the caller uploaded. */
             400: {
                 headers: {
                     [name: string]: unknown;

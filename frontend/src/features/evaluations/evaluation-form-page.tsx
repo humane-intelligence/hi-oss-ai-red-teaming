@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useEvaluation } from './queries'
-import { CoverImageField } from './cover-image-field'
+import { ImageUploadField } from '@/components/shared/image-upload-field'
 import { useCreateEvaluation, useUpdateEvaluation } from './mutations'
 import { useEvaluationGroup, useEvaluationGroups } from '@/features/evaluation-groups/queries'
 import {
@@ -351,7 +351,10 @@ export function EvaluationFormPage() {
               labelId={coverLabelId}
               error={formState.errors.cover_image?.message}
             >
-              <CoverImageField
+              <ImageUploadField
+                alt="Cover image"
+                noun="cover"
+                previewClassName="h-32 w-56 object-cover"
                 labelId={coverLabelId}
                 value={coverImage}
                 onChange={(key) => setValue('cover_image', key, { shouldDirty: true })}

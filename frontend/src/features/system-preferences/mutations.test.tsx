@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
+import { apiClient } from '@/lib/api/client'
 import { useUpdatePlatformSettings } from './mutations'
 
 // Real keys as the feature hooks spell them, not the mutation's own list — a prefix that misses
@@ -69,5 +70,95 @@ describe('platform-settings update invalidates every license-derived read', () =
     expect(qc.getQueryState(['users', { limit: 20 }])?.isInvalidated).toBe(false)
     // The member list shares a prefix word with ['evaluation-group'] but not its first element.
     expect(qc.getQueryState(['evaluation-group-members', 'grp-1'])?.isInvalidated).toBe(false)
+  })
+})
+
+describe('platform-settings update and the public read', () => {
+  it('writes the saved values into the public read instead of refetching a cached copy', async () => {
+    server.use(
+      http.patch('http://localhost/api/v1/platform-settings', () =>
+        HttpResponse.json({
+          default_license_id: 'lic-0001-0000-0000-000000000000',
+          invite_only: true,
+          password_min_length: 12,
+          password_require_uppercase: false,
+          password_require_digit: true,
+          password_require_symbol: false,
+          logo_light_key: '2026/11/17/light.png',
+          logo_dark_key: null,
+          updated_at: '2026-11-17T10:00:00Z',
+        }),
+      ),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(['platform-settings', 'public'], {
+      signup_enabled: true,
+      password_policy: {
+        min_length: 8,
+        require_uppercase: false,
+        require_digit: false,
+        require_symbol: false,
+      },
+      conversation_tags_enabled: true,
+      logo_light_key: null,
+      logo_dark_key: null,
+    })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useUpdatePlatformSettings(), { wrapper })
+
+    await act(() => result.current.mutateAsync({ logo_light_key: '2026/11/17/light.png' }))
+
+    expect(qc.getQueryData(['platform-settings', 'public'])).toEqual({
+      signup_enabled: false,
+      password_policy: {
+        min_length: 12,
+        require_uppercase: false,
+        require_digit: true,
+        require_symbol: false,
+      },
+      conversation_tags_enabled: true,
+      logo_light_key: '2026/11/17/light.png',
+      logo_dark_key: null,
+    })
+    expect(qc.getQueryState(['platform-settings', 'public'])?.isInvalidated).toBe(false)
+  })
+
+  it('replaces the browser-cached public read, so a reload shows the save', async () => {
+    server.use(
+      http.patch('http://localhost/api/v1/platform-settings', () =>
+        HttpResponse.json({ invite_only: true, updated_at: '2026-11-17T10:00:00Z' }),
+      ),
+    )
+    // msw rebuilds the request and drops `cache`, so the option is checked where it is passed.
+    const get = vi.spyOn(apiClient, 'GET')
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useUpdatePlatformSettings(), { wrapper })
+
+    await act(() => result.current.mutateAsync({ invite_only: true }))
+
+    expect(get).toHaveBeenCalledWith('/api/v1/platform-settings/public', { cache: 'reload' })
+    get.mockRestore()
+  })
+
+  it('creates no public entry when the public read was never loaded', async () => {
+    server.use(
+      http.patch('http://localhost/api/v1/platform-settings', () =>
+        HttpResponse.json({ invite_only: true, updated_at: '2026-11-17T10:00:00Z' }),
+      ),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useUpdatePlatformSettings(), { wrapper })
+
+    await act(() => result.current.mutateAsync({ invite_only: true }))
+
+    expect(qc.getQueryData(['platform-settings', 'public'])).toBeUndefined()
   })
 })

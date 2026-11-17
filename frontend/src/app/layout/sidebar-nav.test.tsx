@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SidebarNav } from './sidebar-nav'
 import { authWrapper } from '@/lib/auth/auth.testutils'
+import { server } from '@/test/msw/server'
+import { publicSettingsHandler } from '@/test/msw/public-settings'
 
 function renderAt(path: string) {
   const Wrapper = authWrapper(['evaluation_groups:read', 'evaluations:read', 'conversations:read'])
   render(
     <Wrapper>
-      <MemoryRouter initialEntries={[path]}>
-        <SidebarNav />
-      </MemoryRouter>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <MemoryRouter initialEntries={[path]}>
+          <SidebarNav />
+        </MemoryRouter>
+      </QueryClientProvider>
     </Wrapper>,
   )
 }
@@ -46,5 +53,24 @@ describe('SidebarNav — active item', () => {
   it('marks Overview only on the root', () => {
     renderAt('/')
     expect(current()).toEqual(['Overview'])
+  })
+})
+
+describe('SidebarNav — logo', () => {
+  it('shows the default brand when the instance has no client logo', async () => {
+    renderAt('/')
+    expect(await screen.findByText('console')).toBeInTheDocument()
+  })
+
+  it('replaces the brand with the client logo, using the light one in both themes when it is the only one', async () => {
+    server.use(publicSettingsHandler({ logo_light_key: '2026/11/17/light.png' }))
+    renderAt('/')
+
+    const logos = await screen.findAllByRole('img', { name: 'Home' })
+    expect(logos.map((l) => l.getAttribute('src'))).toEqual([
+      'http://localhost/api/v1/images/2026/11/17/light.png',
+      'http://localhost/api/v1/images/2026/11/17/light.png',
+    ])
+    expect(screen.queryByText('console')).toBeNull()
   })
 })

@@ -294,6 +294,8 @@ erDiagram
         password_require_symbol BOOLEAN
         password_reset_cooldown_seconds INTEGER
         password_reset_max_per_day INTEGER
+        logo_light_key VARCHAR(1024)
+        logo_dark_key VARCHAR(1024)
     }
     evaluation_group_ai_models {
         id UUID PK

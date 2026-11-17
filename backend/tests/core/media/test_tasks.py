@@ -41,10 +41,13 @@ from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
 from app.core.evaluations.models import Scenario
+from app.core.licenses.catalog import curated_license_id
 from app.core.media import tasks as tasks_module
 from app.core.media.models import MediaAsset
 from app.core.media.storage.local import LocalMediaStorage
 from app.core.media.tasks import reap_orphaned_media
+from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
+from app.core.platform_settings.models import PlatformSettings
 from app.workers.celery_app import app as celery_app
 
 
@@ -62,6 +65,7 @@ def test_reaper_is_scheduled() -> None:
 
 # Reverse-FK order for per-test cleanup (sync commits are real, not rolled back).
 _CLEANUP_MODELS = (
+    PlatformSettings,
     MessageImage,
     Message,
     Turn,
@@ -267,3 +271,52 @@ def test_reaper_keeps_attachment_of_soft_deleted_message(
     sync_session.expire_all()
     assert _deleted_at(sync_session, attach_ref.id) is None
     assert media_storage.exists(attach_ref.key)
+
+
+@pytest.mark.integration
+def test_reaper_keeps_the_client_logos(sync_session: Session, media_storage: LocalMediaStorage) -> None:
+    user = _user(sync_session)
+    light = _asset(sync_session, user, created_at=_OLD)
+    dark = _asset(sync_session, user, created_at=_OLD)
+    sync_session.add(
+        PlatformSettings(
+            id=PLATFORM_SETTINGS_ID,
+            default_license_id=curated_license_id("CC-BY-4.0"),
+            logo_light_key=light.key,
+            logo_dark_key=dark.key,
+        )
+    )
+    sync_session.commit()
+
+    result = reap_orphaned_media()
+
+    assert result == {"reaped": 0, "blob_failures": 0}
+    sync_session.expire_all()
+    assert _deleted_at(sync_session, light.id) is None
+    assert _deleted_at(sync_session, dark.id) is None
+
+
+@pytest.mark.integration
+def test_reaper_still_reaps_with_one_logo_unset(sync_session: Session, media_storage: LocalMediaStorage) -> None:
+    # A NULL logo key in the NOT IN inventory would match nothing and stop the reaper outright.
+    user = _user(sync_session)
+    light = _asset(sync_session, user, created_at=_OLD)
+    orphan = _asset(sync_session, user, created_at=_OLD)
+    sync_session.add(
+        PlatformSettings(
+            id=PLATFORM_SETTINGS_ID,
+            default_license_id=curated_license_id("CC-BY-4.0"),
+            logo_light_key=light.key,
+            logo_dark_key=None,
+        )
+    )
+    sync_session.commit()
+    _save_blob(media_storage, light.key)
+    _save_blob(media_storage, orphan.key)
+
+    result = reap_orphaned_media()
+
+    assert result == {"reaped": 1, "blob_failures": 0}
+    sync_session.expire_all()
+    assert _deleted_at(sync_session, light.id) is None
+    assert _deleted_at(sync_session, orphan.id) is not None

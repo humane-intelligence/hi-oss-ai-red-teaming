@@ -25,7 +25,8 @@
   --destructive: #82181a;
   --destructive-foreground: #ffe2e2;
   --border: #d4d4d8;
-  --input: #d4d4d8;
+  /* 3:1 against the page and card surfaces (WCAG non-text contrast); --border stays subtle for dividers. */
+  --input: #71717a;
   --ring: #1447e6;
   --sidebar: #fafafa;
   --sidebar-foreground: #18181b;
@@ -73,7 +74,8 @@
   --destructive: #ffe2e2;
   --destructive-foreground: #82181a;
   --border: #3f3f46;
-  --input: #3f3f46;
+  /* 3:1 against the dark surfaces (WCAG non-text contrast); --border stays subtle for dividers. */
+  --input: #71717a;
   --ring: #2b7fff;
   --sidebar: #18181b;
   --sidebar-foreground: #fafafa;

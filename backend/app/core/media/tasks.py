@@ -11,9 +11,9 @@ Two invariants:
 
 - A reference counts regardless of the referencing row's liveness — flags/reviews
   can still reach a soft-deleted conversation's transcript, so its images survive.
-- The consumer inventory is a convention, not a schema. Today: `Evaluation.cover_image`
-  and `MessageImage.image_key`. A new column holding media keys MUST be added to the
-  sweep below — otherwise the reaper deletes live images.
+- The consumer inventory is a convention, not a schema. Today: `Evaluation.cover_image`,
+  `MessageImage.image_key` and the client logos on `PlatformSettings`. A new column holding
+  media keys MUST be added to the sweep below — otherwise the reaper deletes live images.
 
 Accepted race: a reference committed mid-sweep is invisible to the reaper's SELECT, so
 a graced-out asset can lose its blob just as it gains a consumer — a seconds-wide window
@@ -36,6 +36,7 @@ from app.core.evaluations.models import Evaluation
 from app.core.logging import get_logger
 from app.core.media.models import MediaAsset
 from app.core.media.storage import get_media_storage
+from app.core.platform_settings.models import PlatformSettings
 from app.workers.session import session_scope
 
 logger = get_logger(__name__)
@@ -54,6 +55,11 @@ def reap_orphaned_media() -> dict[str, int]:
     referenced_covers = select(col(Evaluation.cover_image)).where(col(Evaluation.cover_image).is_not(None))
     # No-op while image_key is NOT NULL, but a NULL in a NOT IN subquery would collapse the reaper to zero rows.
     referenced_attachments = select(col(MessageImage.image_key)).where(col(MessageImage.image_key).is_not(None))
+    referenced_logos = (
+        select(col(PlatformSettings.logo_light_key))
+        .where(col(PlatformSettings.logo_light_key).is_not(None))
+        .union(select(col(PlatformSettings.logo_dark_key)).where(col(PlatformSettings.logo_dark_key).is_not(None)))
+    )
     with session_scope() as session:
         orphans = list(
             session.execute(
@@ -61,6 +67,7 @@ def reap_orphaned_media() -> dict[str, int]:
                     col(MediaAsset.created_at) < cutoff,
                     col(MediaAsset.key).not_in(referenced_covers),
                     col(MediaAsset.key).not_in(referenced_attachments),
+                    col(MediaAsset.key).not_in(referenced_logos),
                 )
             )
             .scalars()

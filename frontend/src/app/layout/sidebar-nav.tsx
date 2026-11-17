@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { cn } from '@/lib/utils'
+import { ClientLogo } from '@/components/shared/client-logo'
+import { useClientLogo } from '@/features/system-preferences/queries'
 import { usePermissions } from '@/lib/auth/use-permissions'
 
 type NavItem = {
@@ -123,20 +125,44 @@ function isItemActive(to: string, pathname: string) {
   return matchPath({ path: to, end: false }, pathname) !== null
 }
 
+function DefaultBrand() {
+  return (
+    <>
+      <div className="font-display text-lg font-bold tracking-[0.16em]">
+        RED<span className="text-primary">·</span>TEAM
+      </div>
+      <div className="text-muted-foreground mt-0.5 font-mono text-[9px]">console</div>
+    </>
+  )
+}
+
 // Logo + permission-filtered navigation, shared verbatim by the desktop sidebar and the mobile
 // drawer. `onNavigate` lets the drawer close itself when a link is followed (no-op on desktop).
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { has, hasRole } = usePermissions()
   const { pathname } = useLocation()
+  const logo = useClientLogo()
   return (
     <>
       {/* w-fit: a full-width box would reach under the drawer's close button, so a missed tap on
           it would navigate to Overview instead of closing. */}
       <Link to="/" className="mb-4 block w-fit px-2 pt-1" onClick={onNavigate}>
-        <div className="font-display text-lg font-bold tracking-[0.16em]">
-          RED<span className="text-primary">·</span>TEAM
-        </div>
-        <div className="text-muted-foreground mt-0.5 font-mono text-[9px]">console</div>
+        {logo.light && logo.dark ? (
+          <ClientLogo
+            light={logo.light}
+            dark={logo.dark}
+            alt="Home"
+            className="max-h-12 max-w-[200px]"
+            fallback={<DefaultBrand />}
+          />
+        ) : logo.pending ? (
+          // Holds the slot so the default brand doesn't flash before a client logo replaces it.
+          <div className="h-10">
+            <span className="sr-only">Home</span>
+          </div>
+        ) : (
+          <DefaultBrand />
+        )}
       </Link>
       <nav>
         <NavLink to="/" end className={linkClass} onClick={onNavigate}>

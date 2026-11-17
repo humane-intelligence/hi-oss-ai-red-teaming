@@ -35,7 +35,8 @@ const READ_TIMEOUT_MS = 5_000
 
 function usePublicPlatformSettings() {
   return useQuery<PublicPlatformSettingsResponse>({
-    // Prefix-shares ['platform-settings'] so the settings mutation's invalidation covers it.
+    // The settings mutation writes this entry from its response rather than invalidating it (see
+    // mutations.ts): the endpoint is browser-cacheable, so a refetch could return the old copy.
     queryKey: ['platform-settings', 'public'],
     queryFn: async ({ signal }) =>
       unwrap(
@@ -70,4 +71,13 @@ export function usePasswordPolicy(): { policy: PublicPasswordPolicyResponse; isP
     policy: query.data?.password_policy ?? SHIPPED_PASSWORD_POLICY,
     isPending: query.isPending,
   }
+}
+
+// The instance's client logo, one key per theme, each falling back to the other when only one is
+// set. `pending` lets a caller hold its slot instead of flashing the default brand first.
+export function useClientLogo(): { pending: boolean; light?: string; dark?: string } {
+  const query = usePublicPlatformSettings()
+  const light = query.data?.logo_light_key ?? undefined
+  const dark = query.data?.logo_dark_key ?? undefined
+  return { pending: query.isPending, light: light ?? dark, dark: dark ?? light }
 }

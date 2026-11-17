@@ -1,5 +1,6 @@
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
+import { publicSettingsHandler } from './public-settings'
 
 // AuthShell and the status page fetch /version on every render; a default keeps
 // tests that don't care about it from tripping onUnhandledFrame: 'error'.
@@ -8,22 +9,9 @@ const defaultHandlers = [
   http.get('http://localhost/version', () =>
     HttpResponse.json({ version: 'test', environment: 'dev' }),
   ),
-  // The login/register screens read the public signup flag on every render; open signup is
-  // the default so only invite-only tests need to override. `min_length` is deliberately NOT the
-  // shipped 8 that `SHIPPED_PASSWORD_POLICY` falls back to (and that the pending state used to
-  // yield): identical values would make a test unable to tell a real read from a failed one.
-  http.get('http://localhost/api/v1/platform-settings/public', () =>
-    HttpResponse.json({
-      signup_enabled: true,
-      password_policy: {
-        min_length: 10,
-        require_uppercase: false,
-        require_digit: false,
-        require_symbol: false,
-      },
-      conversation_tags_enabled: true,
-    }),
-  ),
+  // The sign-in screens, the sidebar and the mobile header read the public settings on every render;
+  // see the handler for the defaults, which only the tests that care need to override.
+  publicSettingsHandler({}),
   // The login screen lists the configured SSO providers on every render; none by default.
   http.get('http://localhost/api/v1/auth/oidc/providers', () => HttpResponse.json([])),
   // The signup screens, the account page and the acceptance gate all read the current terms.

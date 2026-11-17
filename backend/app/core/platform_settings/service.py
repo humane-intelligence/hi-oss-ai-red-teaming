@@ -48,7 +48,9 @@ async def get_platform_settings(session: AsyncSession) -> PlatformSettings:
     )
 
 
-async def update_platform_settings(session: AsyncSession, **changes: UUID | bool | int) -> PlatformSettings:
+async def update_platform_settings(
+    session: AsyncSession, **changes: UUID | bool | int | str | None
+) -> PlatformSettings:
     """Apply `changes` (field → new value) to the singleton, materializing the row on first write.
 
     Atomic `INSERT ... ON CONFLICT DO UPDATE` on the fixed sentinel id: the INSERT arm carries

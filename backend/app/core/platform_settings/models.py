@@ -1,8 +1,8 @@
 """The platform-settings singleton — a one-row table (django-solo analogue).
 
 Holds platform-wide policy that ships with a default but can be overridden and persisted:
-data licensing, registration policy, password policy, and password-reset throttling. The
-single-row invariant is enforced by a fixed sentinel primary key (`PLATFORM_SETTINGS_ID`)
+data licensing, registration policy, password policy, password-reset throttling, and the client
+logo. The single-row invariant is enforced by a fixed sentinel primary key (`PLATFORM_SETTINGS_ID`)
 plus the service being the only writer — see [service.py](service.py). No `server_default`
 on `default_license_id`: the shipped default resolves from
 `Settings.platform_default_data_license` (env) to the matching curated row at write time,
@@ -57,3 +57,7 @@ class PlatformSettings(BaseModel, table=True):
         default=60, sa_column_kwargs={"nullable": False, "server_default": "60"}
     )
     password_reset_max_per_day: int = Field(default=5, sa_column_kwargs={"nullable": False, "server_default": "5"})
+    # The instance's client logo, one per theme: media storage keys of public images (`POST /images`).
+    # The media reaper treats them as references, so a logo is never swept as an orphan.
+    logo_light_key: str | None = Field(default=None, max_length=1024)
+    logo_dark_key: str | None = Field(default=None, max_length=1024)

@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { SidebarNav } from './sidebar-nav'
+import { ClientLogo } from '@/components/shared/client-logo'
+import { useClientLogo } from '@/features/system-preferences/queries'
 import { NavTrailSlotContext } from './nav-trail-slot'
 
 // Tailwind's default `md`. The drawer's trigger is `md:hidden`, so this query and that class have
@@ -22,6 +24,12 @@ export function AppShell() {
   const { has } = usePermissions()
   const { activeCount } = useExports()
   const [navOpen, setNavOpen] = useState(false)
+  const logo = useClientLogo()
+  const brand = (
+    <>
+      RED<span className="text-primary">·</span>TEAM
+    </>
+  )
   // State, not a ref: the pages that portal into this slot have to re-render once it exists, and a
   // ref mutation would not tell them.
   const [trailSlot, setTrailSlot] = useState<HTMLElement | null>(null)
@@ -89,7 +97,19 @@ export function AppShell() {
           </Drawer>
           {/* Compact logo keeps branding on mobile while the drawer is closed. */}
           <NavLink to="/" className="font-display text-sm font-bold tracking-[0.16em] md:hidden">
-            RED<span className="text-primary">·</span>TEAM
+            {logo.light && logo.dark ? (
+              <ClientLogo
+                light={logo.light}
+                dark={logo.dark}
+                alt="Home"
+                className="max-h-7 max-w-32"
+                fallback={brand}
+              />
+            ) : logo.pending ? (
+              <span className="sr-only">Home</span>
+            ) : (
+              brand
+            )}
           </NavLink>
 
           {/* Doubles as the spacer that pushes the controls right, so it is present at every width;

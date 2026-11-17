@@ -1,7 +1,9 @@
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useVersion } from '@/features/status/queries'
 import type { VersionResponse } from '@/lib/api/types'
 import { cn } from '@/lib/utils'
+import { ClientLogo } from '@/components/shared/client-logo'
+import { useClientLogo } from '@/features/system-preferences/queries'
 
 function ReadoutRow({ k, v }: { k: string; v: ReactNode }) {
   return (
@@ -25,30 +27,18 @@ function Wordmark({ className }: { className?: string }) {
   )
 }
 
-function Readout({ version }: { version?: VersionResponse }) {
+// Only the build, and only off prod (the SHA is public, but no need to advertise it there).
+function VersionNote({ version }: { version: VersionResponse }) {
   return (
-    <dl className="space-y-2.5 font-mono text-xs">
-      <ReadoutRow
-        k="status"
-        v={
-          <>
-            {/* Decorative: "operational" already carries the state in text, so the glyph is hidden
-                rather than announced as "black circle" (same call as backend-status.tsx). */}
-            <span aria-hidden="true" className="text-ok">
-              ●
-            </span>{' '}
-            operational
-          </>
-        }
-      />
-      {/* A state, like the two rows around it — an instruction ("authenticate to continue") is only
-          true of /login, and this block now renders under the form on every auth route. */}
-      <ReadoutRow k="access" v="unauthenticated" />
-      {/* SHA is public info, but only advertise it off prod. */}
-      {version && version.environment !== 'prod' && <ReadoutRow k="version" v={version.version} />}
+    <dl className="font-mono text-xs">
+      <ReadoutRow k="version" v={version.version} />
     </dl>
   )
 }
+
+// One deadline over the whole hold: the settings read alone can take twice its own timeout (one
+// retry), and an image can hang too, so a dead endpoint must not keep the form blank for longer.
+const REVEAL_DEADLINE_MS = 5_000
 
 export function AuthShell({
   title,
@@ -61,19 +51,42 @@ export function AuthShell({
   // completes) is a title + subtitle with nothing to act on.
   children?: ReactNode
 }) {
-  const { data: version } = useVersion()
+  const { data: version, isPending: versionPending } = useVersion()
+  const logo = useClientLogo()
+  const hasLogo = !!(logo.light && logo.dark)
+  const [logoReady, setLogoReady] = useState(false)
+  const markLogoReady = useCallback(() => setLogoReady(true), [])
+  const [pastDeadline, setPastDeadline] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setPastDeadline(true), REVEAL_DEADLINE_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  const holding = !pastDeadline && (logo.pending || versionPending || (hasLogo && !logoReady))
+  const shownVersion = version && version.environment !== 'prod' ? version : undefined
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       <aside className="bg-card hidden flex-col justify-between border-r p-10 lg:flex">
         <Wordmark className="text-2xl" />
-        <Readout version={version} />
+        {shownVersion && <VersionNote version={shownVersion} />}
       </aside>
 
       <main className="grid place-items-center p-6">
-        <div className="w-full max-w-sm">
-          {/* Below lg the decorative aside is gone; keep the brand above the form and the
-              status/access/version readout below it so both stay visible on mobile. */}
+        {/* Held invisible until everything above and below the fields has its final size (the
+            settings read, the logo images, and the version note shown below lg): anything arriving
+            after the form painted would move the fields under a user who is already typing. */}
+        <div className={cn('w-full max-w-sm', holding && 'invisible')}>
+          {/* Below lg the decorative aside is gone; keep the brand above the form and the version
+              below it so both stay visible on mobile. */}
           <Wordmark className="mb-8 text-xl lg:hidden" />
+          {logo.light && logo.dark && (
+            <ClientLogo
+              light={logo.light}
+              dark={logo.dark}
+              alt=""
+              onReady={markLogoReady}
+              className="mb-6 max-h-[100px] max-w-[200px]"
+            />
+          )}
           {/* `role="status"` implies `aria-live="polite"`. Only announces a title that mutates
               after mount — one already in its final state on first render never announces this way. */}
           <header className="mb-6" role="status">
@@ -87,9 +100,11 @@ export function AuthShell({
           {children}
           {/* Complementary, not part of the form: a screen reader on a phone can skip it instead of
               hearing it as primary content after the submit button. */}
-          <aside aria-label="console status" className="mt-8 border-t pt-6 lg:hidden">
-            <Readout version={version} />
-          </aside>
+          {shownVersion && (
+            <aside aria-label="console version" className="mt-8 border-t pt-6 lg:hidden">
+              <VersionNote version={shownVersion} />
+            </aside>
+          )}
         </div>
       </main>
     </div>
