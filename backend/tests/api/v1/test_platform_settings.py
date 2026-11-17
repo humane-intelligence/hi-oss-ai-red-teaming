@@ -19,6 +19,7 @@ from app.core.licenses.models import DataLicense
 from app.core.media.models import MediaAsset
 from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
 from app.core.platform_settings.models import PlatformSettings
+from app.core.platform_settings.service import SETTINGS_KNOBS
 from app.core.platform_settings.service import update_platform_settings
 from app.main import app
 from tests.api.v1.conftest import bearer as _auth
@@ -339,16 +340,14 @@ class TestUpdatePlatformSettings:
             # would promise what those already reject with a 422.
             ("password_min_length", 7),
             ("password_min_length", 129),
-            ("password_min_length", None),
             ("password_reset_cooldown_seconds", -1),
             ("password_reset_cooldown_seconds", 3601),
             ("password_reset_max_per_day", 0),
             ("password_reset_max_per_day", 101),
-            ("password_require_digit", None),
         ],
     )
-    async def test_rejects_out_of_bounds_or_null_password_knobs(
-        self, auth_db_client: AsyncClient, db_session: AsyncSession, knob: str, bad: int | None
+    async def test_rejects_out_of_bounds_password_knobs(
+        self, auth_db_client: AsyncClient, db_session: AsyncSession, knob: str, bad: int
     ) -> None:
         caller = await _caller(db_session, email=f"bad{knob}{bad}@example.com", permissions=_READ_WRITE)
 
@@ -417,13 +416,15 @@ class TestClientLogo:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    async def test_still_refuses_null_for_a_knob_that_always_has_a_value(
-        self, auth_db_client: AsyncClient, db_session: AsyncSession
+    # Derived from the model, so a knob added later is refused a null unless it opts into clearing.
+    @pytest.mark.parametrize("knob", sorted(set(SETTINGS_KNOBS) - {"logo_light_key", "logo_dark_key"}))
+    async def test_refuses_null_for_every_knob_but_the_logos(
+        self, knob: str, auth_db_client: AsyncClient, db_session: AsyncSession
     ) -> None:
         caller = await _caller(db_session, email="logo-null@example.com", permissions=_READ_WRITE)
 
-        response = await auth_db_client.patch(
-            "/api/v1/platform-settings", json={"password_min_length": None}, headers=_auth(caller)
-        )
+        response = await auth_db_client.patch("/api/v1/platform-settings", json={knob: None}, headers=_auth(caller))
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        # The null rule itself, not `extra="forbid"` refusing a knob the schema forgot to expose.
+        assert "must not be null" in response.text
