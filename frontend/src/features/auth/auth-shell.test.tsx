@@ -45,7 +45,8 @@ describe('AuthShell', () => {
     expect(screen.getAllByText('version')).toHaveLength(2)
   })
 
-  it('names the mobile readout as a complementary landmark', () => {
+  it('names the mobile version note as a complementary landmark', async () => {
+    versionHandler('dev')
     renderShell()
     // jsdom loads no stylesheet, so this asserts the markup and its landmark semantics, not the
     // breakpoint: CSS (`hidden lg:flex` / `lg:hidden`) is what shows exactly one copy per viewport,
@@ -53,15 +54,16 @@ describe('AuthShell', () => {
     // Named, not counted: `getAllByRole('complementary')` matches a bare <aside> too, so a count
     // would stay green if the label went away — and it would also pin the decorative desktop panel
     // as a landmark, which this test has no opinion about.
-    const mobile = screen.getByRole('complementary', { name: 'console status' })
-    expect(within(mobile).getByText('operational')).toBeInTheDocument()
-    expect(within(mobile).getByText('unauthenticated')).toBeInTheDocument()
+    const mobile = await screen.findByRole('complementary', { name: 'console version' })
+    expect(within(mobile).getByText('a4933be')).toBeInTheDocument()
   })
 
-  it('keeps the status dot out of the accessibility tree', () => {
+  it('shows no status or access readout', async () => {
+    versionHandler('dev')
     renderShell()
-    // The state is in the adjacent text; announcing the glyph would prefix it with "black circle".
-    for (const dot of screen.getAllByText('●')) expect(dot).toHaveAttribute('aria-hidden', 'true')
+    await waitFor(() => expect(screen.getAllByText('a4933be')).toHaveLength(2))
+    expect(screen.queryByText('operational')).toBeNull()
+    expect(screen.queryByText('unauthenticated')).toBeNull()
   })
 
   it('hides the version on prod', async () => {
@@ -74,17 +76,16 @@ describe('AuthShell', () => {
     )
     expect(screen.queryAllByText('version')).toHaveLength(0)
     expect(screen.queryAllByText('a4933be')).toHaveLength(0)
+    expect(screen.queryByRole('complementary', { name: 'console version' })).toBeNull()
   })
 
-  it('drops only the version row when /version fails', async () => {
+  it('shows no version block when /version fails', async () => {
     server.use(http.get('http://localhost/version', () => HttpResponse.json({}, { status: 500 })))
     const qc = renderShell()
     // The query settles into an error state; waiting on that is the render-side signal.
     await waitFor(() => expect(qc.getQueryState(['version'])?.status).toBe('error'))
     expect(screen.queryAllByText('version')).toHaveLength(0)
-    // The rest of the readout does not depend on /version.
-    expect(screen.getAllByText('operational')).toHaveLength(2)
-    expect(screen.getAllByText('unauthenticated')).toHaveLength(2)
+    expect(screen.queryByRole('complementary', { name: 'console version' })).toBeNull()
   })
 })
 

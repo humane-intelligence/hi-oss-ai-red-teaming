@@ -18,7 +18,7 @@ export function PlainSelect({
       className={cn(
         // Styled native `<select>`; kept for its real mobile picker wheels.
         // `min-w-0`: a select's intrinsic minimum is its widest option, which `w-full` does not override.
-        'bg-card text-card-foreground focus-visible:border-ring focus-visible:ring-ring [&>option]:bg-card [&>option]:text-card-foreground flex h-9 w-full min-w-0 rounded-md border px-3 text-sm shadow-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+        'bg-card text-card-foreground focus-visible:border-ring focus-visible:ring-ring [&>option]:bg-card [&>option]:text-card-foreground border-input flex h-9 w-full min-w-0 rounded-md border px-3 text-sm shadow-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
       {...props}

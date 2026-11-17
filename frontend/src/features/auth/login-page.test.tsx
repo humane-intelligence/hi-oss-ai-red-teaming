@@ -46,6 +46,7 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' })
 
     expect(await screen.findByRole('link', { name: 'Create one' })).toBeInTheDocument()
+    expect(screen.queryByText(/need access\?/i)).toBeNull()
   })
 
   it('hides the sign-up link under invite-only mode', async () => {
@@ -63,6 +64,7 @@ describe('LoginPage', () => {
       expect(screen.queryByRole('link', { name: 'Create one' })).not.toBeInTheDocument(),
     )
     expect(screen.getByRole('link', { name: 'Forgot password?' })).toBeInTheDocument()
+    expect(screen.getByText('Need access? Contact your organization admin.')).toBeInTheDocument()
   })
 
   it('shows an error on invalid credentials', async () => {

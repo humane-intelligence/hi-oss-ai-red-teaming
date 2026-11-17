@@ -30,7 +30,7 @@ export function DateTimeRange({
   const inner =
     'h-9 min-w-0 border-0 bg-transparent p-0 text-sm outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50'
   return (
-    <div className="bg-card focus-within:border-ring focus-within:ring-ring/50 flex w-full items-center gap-2 rounded-md border px-3 shadow-xs focus-within:ring-[3px] sm:w-auto">
+    <div className="bg-card focus-within:border-ring focus-within:ring-ring/50 border-input flex w-full items-center gap-2 rounded-md border px-3 shadow-xs focus-within:ring-[3px] sm:w-auto">
       <span className="text-muted-foreground shrink-0 text-sm">{label}</span>
       <input
         type="date"

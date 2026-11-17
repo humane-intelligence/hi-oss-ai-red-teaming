@@ -93,6 +93,11 @@ export function LoginPage() {
           )}
         </div>
         <OidcButtons />
+        {!signupEnabled && (
+          <p className="text-muted-foreground mt-6 text-center text-sm">
+            Need access? Contact your organization admin.
+          </p>
+        )}
       </>
     </AuthShell>
   )
