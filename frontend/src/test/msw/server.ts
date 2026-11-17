@@ -9,8 +9,8 @@ const defaultHandlers = [
   http.get('http://localhost/version', () =>
     HttpResponse.json({ version: 'test', environment: 'dev' }),
   ),
-  // The login/register screens read the public settings on every render; see the handler for the
-  // defaults, which only the tests that care need to override.
+  // The sign-in screens, the sidebar and the mobile header read the public settings on every render;
+  // see the handler for the defaults, which only the tests that care need to override.
   publicSettingsHandler({}),
   // The login screen lists the configured SSO providers on every render; none by default.
   http.get('http://localhost/api/v1/auth/oidc/providers', () => HttpResponse.json([])),
