@@ -7234,7 +7234,7 @@
                 "platform-settings"
               ]
             },
-            "description": "Return every platform-wide setting — data licensing, registration, password policy, password-reset throttling. Before any admin override, this reflects the shipped defaults with `updated_at: null`.\n\n**Requires permission:** `platform_settings:read`\n\n**Auth** · 🔒 Bearer token required.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the `platform_settings:read` permission. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+            "description": "Return every platform-wide setting — data licensing, registration, password policy, password-reset throttling, client logo. Before any admin override, this reflects the shipped defaults with `updated_at: null`.\n\n**Requires permission:** `platform_settings:read`\n\n**Auth** · 🔒 Bearer token required.\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the `platform_settings:read` permission. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
           },
           "response": []
         },

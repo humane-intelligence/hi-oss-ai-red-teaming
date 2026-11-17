@@ -16,7 +16,7 @@ from app.core.platform_settings.models import PlatformSettings
 
 
 class PlatformSettingsResponse(BaseModel):
-    """Platform-wide settings — data licensing, registration, password policy, reset throttling."""
+    """Platform-wide settings — data licensing, registration, password policy, reset throttling, client logo."""
 
     model_config = ConfigDict(
         json_schema_extra={

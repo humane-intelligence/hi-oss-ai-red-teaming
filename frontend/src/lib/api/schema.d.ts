@@ -2918,7 +2918,7 @@ export interface paths {
         };
         /**
          * Get platform settings
-         * @description Return every platform-wide setting — data licensing, registration, password policy, password-reset throttling. Before any admin override, this reflects the shipped defaults with `updated_at: null`.
+         * @description Return every platform-wide setting — data licensing, registration, password policy, password-reset throttling, client logo. Before any admin override, this reflects the shipped defaults with `updated_at: null`.
          */
         get: operations["get_platform_settings_endpoint_api_v1_platform_settings_get"];
         put?: never;
@@ -9894,7 +9894,7 @@ export interface components {
         };
         /**
          * PlatformSettingsResponse
-         * @description Platform-wide settings — data licensing, registration, password policy, reset throttling.
+         * @description Platform-wide settings — data licensing, registration, password policy, reset throttling, client logo.
          * @example {
          *       "default_license_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
          *       "email_verification_ttl_hours": 24,

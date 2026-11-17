@@ -1,7 +1,7 @@
 """Platform-settings singleton endpoints — mounted under `/api/v1/platform-settings`.
 
 Admin-only read/override of platform-wide policy: data licensing, registration, password
-policy, password-reset throttling. A resource-level `PATCH` with a partial body (not
+policy, password-reset throttling, client logo. A resource-level `PATCH` with a partial body (not
 per-knob sub-paths) so future settings extend the same routes without new endpoints.
 """
 
@@ -54,7 +54,7 @@ def _settings_snapshot(settings: PlatformSettings) -> dict[str, object]:
     summary="Get platform settings",
     description=(
         "Return every platform-wide setting — data licensing, registration, password policy, "
-        "password-reset throttling. Before any admin override, this reflects the shipped "
+        "password-reset throttling, client logo. Before any admin override, this reflects the shipped "
         "defaults with `updated_at: null`."
     ),
     responses=COMMON_ERROR_RESPONSES

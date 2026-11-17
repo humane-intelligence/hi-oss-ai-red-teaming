@@ -1,8 +1,8 @@
 """The platform-settings singleton — a one-row table (django-solo analogue).
 
 Holds platform-wide policy that ships with a default but can be overridden and persisted:
-data licensing, registration policy, password policy, and password-reset throttling. The
-single-row invariant is enforced by a fixed sentinel primary key (`PLATFORM_SETTINGS_ID`)
+data licensing, registration policy, password policy, password-reset throttling, and the client
+logo. The single-row invariant is enforced by a fixed sentinel primary key (`PLATFORM_SETTINGS_ID`)
 plus the service being the only writer — see [service.py](service.py). No `server_default`
 on `default_license_id`: the shipped default resolves from
 `Settings.platform_default_data_license` (env) to the matching curated row at write time,
