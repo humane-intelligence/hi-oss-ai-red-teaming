@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
+import { ApiError, humanizeError } from '@/lib/api/problem'
 import type { ConversationGroupResponse, EvaluationLabelCategoryResponse } from '@/lib/api/types'
 import { labelPayload, type LabelValues } from './label-values'
 import { LabelsFields } from './labels-fields'
@@ -36,6 +37,11 @@ export function EditLabelsDialog({
 }) {
   const save = useSetGroupLabels(evaluationId)
   const [value, setValue] = useState<LabelValues>({})
+  // 422s are never toasted, so this dialog is the only place left to say why Save did nothing.
+  const rejected =
+    save.error instanceof ApiError && save.error.status === 422
+      ? (save.error.problem.errors ?? []).map((e) => e.msg).join('; ') || humanizeError(save.error)
+      : null
 
   return (
     <Modal
@@ -43,7 +49,10 @@ export function EditLabelsDialog({
       onOpenChange={onOpenChange}
       busy={save.isPending}
       title={group.labels?.length ? 'Edit labels' : 'Add labels'}
-      onOpen={() => setValue(seed(heldLabels(group), categories))}
+      onOpen={() => {
+        save.reset()
+        setValue(seed(heldLabels(group), categories))
+      }}
     >
       <form
         className="space-y-4"
@@ -70,6 +79,11 @@ export function EditLabelsDialog({
           held={heldLabels(group)}
           idPrefix="edit-label"
         />
+        {rejected && (
+          <p role="alert" className="text-destructive text-sm">
+            {rejected}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel

@@ -1551,6 +1551,34 @@ describe('ConversationGroupPage — conversation labels', () => {
     )
   })
 
+  it('says why the server refused the labels instead of failing silently', async () => {
+    server.use(
+      http.get(groupUrl, () => HttpResponse.json(labelled)),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+      http.patch(groupUrl, () =>
+        HttpResponse.json(
+          {
+            title: 'Unprocessable Content',
+            status: 422,
+            errors: [
+              { loc: ['body', 'labels'], msg: 'Too many label categories', type: 'too_long' },
+            ],
+          },
+          { status: 422, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Too many label categories')
+  })
+
   it('shows a held value spelled differently from the list as that listed value', async () => {
     server.use(
       http.get(groupUrl, () =>
