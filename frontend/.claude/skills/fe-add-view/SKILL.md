@@ -35,7 +35,8 @@ for list+detail+search, `src/features/ai-models/` for list+detail without search
    Detail hooks set `enabled: id !== ''` and pass `params: { path: { widget_id: id } }`.
 
 3. **List page** — `src/features/<domain>/<domain>-list-page.tsx`. Define a `Column<T>[]`, then
-   compose `PageHeader` + `DataTable` + `Pagination` (all from `@/components/shared/`). Pass the
+   compose `PageHeader` + `DataTable` + `Pagination` (all from `@/components/shared/`), with
+   `SearchForm` in the toolbar if the endpoint takes `search`. Pass the
    query's `isPending`/`isError`/`error` straight into `DataTable`. `PAGE_SIZE = 20`. Make rows
    clickable (`onRowClick` → navigate to the detail route) only if a detail page exists.
 
@@ -43,8 +44,9 @@ for list+detail+search, `src/features/ai-models/` for list+detail without search
    then `Card` + `dl` of `Field` (`@/components/shared/field`). Render JSON blobs in a
    `<pre className="… bg-muted …">`.
 
-5. **Status badge** (if the domain has a status enum) — `<domain>/status-badge.tsx` mapping each
-   enum value to a `Badge` variant. Mirror `src/features/evaluations/status-badge.tsx`.
+5. **Status badge** (if the domain has a status enum) — a lifecycle status (draft → review →
+   approved/published) uses `LifecycleBadge` from `@/components/shared/lifecycle-badge`. Anything
+   else gets `<domain>/status-badge.tsx` mapping each enum value to a `Badge` variant.
 
 6. **Wire it up:**
    - Add a nav entry to `src/app/layout/app-shell.tsx` (`nav` array, pick a `lucide-react` icon).
