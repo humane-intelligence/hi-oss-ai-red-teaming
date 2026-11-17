@@ -1360,6 +1360,44 @@ async def test_a_label_under_a_deleted_category_stays_until_the_visible_set_chan
     assert await _stored_label_categories(db_session, created.json()["id"]) == {ids["note"]}
 
 
+async def test_a_blank_label_for_a_deleted_category_is_ignored_and_a_value_is_refused_without_its_id(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    # A console holding a stale category list sends every category it knows, blank ones included.
+    caller = await _caller(db_session, red_teamer_role, email="labels-stale@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    category = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))
+    assert category is not None
+    category.soft_delete(caller.id)
+    await db_session.flush()
+    evaluation_id, scenario_id = evaluation.id, scenario.id
+    models = [{"evaluation_ai_model_id": str(assignment.id)}]
+
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario_id,
+        {"name": "g", "models": models, "labels": {ids["language"]: "", ids["note"]: "kept"}},
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+    url = f"/api/v1/evaluations/{evaluation_id}/conversation-groups/{created.json()['id']}"
+
+    cleared = await auth_db_client.patch(
+        url, json={"labels": {ids["language"]: " ", ids["note"]: "edited"}}, headers=_auth(token)
+    )
+    refused = await auth_db_client.patch(url, json={"labels": {ids["language"]: "English"}}, headers=_auth(token))
+    refused_create = await _create_group(
+        auth_db_client, token, scenario_id, {"name": "h", "models": models, "labels": {ids["language"]: "English"}}
+    )
+
+    assert cleared.status_code == status.HTTP_200_OK
+    assert [label["value"] for label in cleared.json()["labels"]] == ["edited"]
+    for response in (refused, refused_create):
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert ids["language"] not in response.json()["detail"]
+
+
 async def test_patch_keeps_a_value_dropped_from_its_category_list(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
 ) -> None:

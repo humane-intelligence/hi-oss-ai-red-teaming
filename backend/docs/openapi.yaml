@@ -10115,7 +10115,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A label category is not defined on the evaluation, or a value is outside its list.
+          description: A label with a value names a category not defined on the evaluation, or the value is outside its list.
           content:
             application/problem+json:
               schema:
@@ -10390,7 +10390,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '400':
-          description: A label category is not defined on the evaluation, or a value is outside its list.
+          description: A label with a value names a category not defined on the evaluation, or the value is outside its list.
           content:
             application/problem+json:
               schema:

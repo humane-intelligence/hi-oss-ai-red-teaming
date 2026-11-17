@@ -1579,6 +1579,46 @@ describe('ConversationGroupPage — conversation labels', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Too many label categories')
   })
 
+  it('reloads the categories and the group when a save is refused over a deleted category', async () => {
+    // The group holds a label under `note`; once that category is gone the server stops returning it.
+    let live = categories
+    const bodies: unknown[] = []
+    server.use(
+      http.get(groupUrl, () =>
+        HttpResponse.json(
+          live.length === 2 ? labelled : { ...labelled, labels: labelled.labels.slice(0, 1) },
+        ),
+      ),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(live)),
+      http.patch(groupUrl, async ({ request }) => {
+        bodies.push(await request.json())
+        if (bodies.length > 1) return HttpResponse.json(labelled)
+        live = categories.slice(0, 1)
+        return HttpResponse.json(
+          { title: 'Bad Request', status: 400, detail: 'A label category is not defined.' },
+          { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('note')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(within(dialog).queryByLabelText('note')).toBeNull())
+    expect(within(dialog).getByLabelText('language')).toBeInTheDocument()
+
+    await waitFor(() => expect(screen.queryByText('note: roleplay')).toBeNull())
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(bodies).toHaveLength(2))
+    expect(bodies[1]).toEqual({ labels: { 'cat-lang': 'polish' } })
+  })
+
   it('shows a held value spelled differently from the list as that listed value', async () => {
     server.use(
       http.get(groupUrl, () =>

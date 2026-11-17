@@ -46,8 +46,9 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
         `updated_at` through `touch_conversation_group`.
 
     Raises:
-        BadRequestError: If a category is not a live category of the group's evaluation, or a
-            value is outside its category's list and not the one the group already holds there.
+        BadRequestError: If a non-blank value names a category that is not a live category of the
+            group's evaluation, or is outside its category's list and not the one the group
+            already holds there.
     """
     categories = {row.id: row for row in await list_label_categories(session, group.evaluation_id)}
     stored = await session.execute(
@@ -59,12 +60,13 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
     visible = {category_id: value for category_id, value in stored.tuples() if category_id in categories}
     rows: list[ConversationGroupLabel] = []
     for category_id, raw in labels.items():
-        category = categories.get(category_id)
-        if category is None:
-            raise BadRequestError(f"Label category {category_id} is not defined on this evaluation.")
         value = sanitise_single_line(raw)
+        # Blank first: clearing a category that was deleted meanwhile is already true, not an error.
         if not value:
             continue
+        category = categories.get(category_id)
+        if category is None:
+            raise BadRequestError("A label category is not defined on this evaluation; it may have been deleted.")
         if category.values:
             kept = visible.get(category_id)
             allowed_here = [*category.values, *([kept] if kept is not None else [])]

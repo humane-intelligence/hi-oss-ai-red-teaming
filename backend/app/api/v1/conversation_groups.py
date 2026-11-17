@@ -114,7 +114,7 @@ _OrderBy = Annotated[
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_400_BAD_REQUEST: problem_response(
-            "A label category is not defined on the evaluation, or a value is outside its list."
+            "A label with a value names a category not defined on the evaluation, or the value is outside its list."
         ),
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
@@ -137,7 +137,8 @@ async def create_conversation_group_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — a label category is not the evaluation's, or a value is outside its list.
+    * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
+      is outside its list. A blank value is ignored whatever its category.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:create`.
     * **404 Not Found** — the scenario isn't visible, or a model assignment isn't part of its evaluation.
@@ -301,7 +302,7 @@ async def get_conversation_group_endpoint(
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_400_BAD_REQUEST: problem_response(
-            "A label category is not defined on the evaluation, or a value is outside its list."
+            "A label with a value names a category not defined on the evaluation, or the value is outside its list."
         ),
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
@@ -320,7 +321,8 @@ async def update_conversation_group_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — a label category is not the evaluation's, or a value is outside its list.
+    * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
+      is outside its list. A blank value is ignored whatever its category.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:update`.
     * **404 Not Found** — no such group owned by the caller in this evaluation.

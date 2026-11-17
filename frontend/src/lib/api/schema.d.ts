@@ -21934,7 +21934,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationGroupResponse"];
                 };
             };
-            /** @description A label category is not defined on the evaluation, or a value is outside its list. */
+            /** @description A label with a value names a category not defined on the evaluation, or the value is outside its list. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -22244,7 +22244,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationGroupResponse"];
                 };
             };
-            /** @description A label category is not defined on the evaluation, or a value is outside its list. */
+            /** @description A label with a value names a category not defined on the evaluation, or the value is outside its list. */
             400: {
                 headers: {
                     [name: string]: unknown;
