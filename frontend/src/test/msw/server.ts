@@ -22,6 +22,8 @@ const defaultHandlers = [
         require_symbol: false,
       },
       conversation_tags_enabled: true,
+      logo_light_key: null,
+      logo_dark_key: null,
     }),
   ),
   // The login screen lists the configured SSO providers on every render; none by default.

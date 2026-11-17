@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { useVersion } from '@/features/status/queries'
 import type { VersionResponse } from '@/lib/api/types'
 import { cn } from '@/lib/utils'
+import { ClientLogo } from '@/components/shared/client-logo'
+import { useClientLogo } from '@/features/system-preferences/queries'
 
 function ReadoutRow({ k, v }: { k: string; v: ReactNode }) {
   return (
@@ -62,6 +64,7 @@ export function AuthShell({
   children?: ReactNode
 }) {
   const { data: version } = useVersion()
+  const logo = useClientLogo()
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       <aside className="bg-card hidden flex-col justify-between border-r p-10 lg:flex">
@@ -76,6 +79,14 @@ export function AuthShell({
           <Wordmark className="mb-8 text-xl lg:hidden" />
           {/* `role="status"` implies `aria-live="polite"`. Only announces a title that mutates
               after mount — one already in its final state on first render never announces this way. */}
+          {logo.light && logo.dark && (
+            <ClientLogo
+              light={logo.light}
+              dark={logo.dark}
+              alt="Client logo"
+              className="mb-6 max-h-[100px] max-w-[200px]"
+            />
+          )}
           <header className="mb-6" role="status">
             <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>
             {subtitle && (

@@ -72,3 +72,12 @@ export function usePasswordPolicy(): { policy: PublicPasswordPolicyResponse; isP
     isPending: query.isPending,
   }
 }
+
+// The instance's client logo, one key per theme, each falling back to the other when only one is
+// set. `pending` lets a caller hold its slot instead of flashing the default brand first.
+export function useClientLogo(): { pending: boolean; light?: string; dark?: string } {
+  const query = usePublicPlatformSettings()
+  const light = query.data?.logo_light_key ?? undefined
+  const dark = query.data?.logo_dark_key ?? undefined
+  return { pending: query.isPending, light: light ?? dark, dark: dark ?? light }
+}

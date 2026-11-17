@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
 import { AuthShell } from './auth-shell'
+import { publicSettingsHandler } from '@/test/msw/public-settings'
 
 function versionHandler(environment: string) {
   let hit = false
@@ -84,5 +85,29 @@ describe('AuthShell', () => {
     // The rest of the readout does not depend on /version.
     expect(screen.getAllByText('operational')).toHaveLength(2)
     expect(screen.getAllByText('unauthenticated')).toHaveLength(2)
+  })
+})
+
+describe('AuthShell — client logo', () => {
+  it('shows each theme its own logo above the headline', async () => {
+    server.use(
+      publicSettingsHandler({
+        logo_light_key: '2026/11/17/light.png',
+        logo_dark_key: '2026/11/17/dark.png',
+      }),
+    )
+    renderShell()
+
+    const [light, dark] = await screen.findAllByRole('img', { name: 'Client logo' })
+    expect(light).toHaveAttribute('src', 'http://localhost/api/v1/images/2026/11/17/light.png')
+    expect(light).toHaveClass('dark:hidden')
+    expect(dark).toHaveAttribute('src', 'http://localhost/api/v1/images/2026/11/17/dark.png')
+    expect(dark).toHaveClass('hidden', 'dark:block')
+  })
+
+  it('shows no logo when none is set', async () => {
+    renderShell()
+    await screen.findByRole('heading', { name: 'Sign in' })
+    expect(screen.queryByRole('img', { name: 'Client logo' })).toBeNull()
   })
 })
