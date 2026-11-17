@@ -29,7 +29,7 @@ export function ClientLogo({
         src={publicImageUrl(lightSrc)}
         alt={alt}
         onError={onError(lightSrc)}
-        className={cn('object-contain object-left dark:hidden', className)}
+        className={cn('block object-contain object-left dark:hidden', className)}
       />
       <img
         src={publicImageUrl(darkSrc)}
