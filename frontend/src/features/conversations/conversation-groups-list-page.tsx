@@ -75,7 +75,6 @@ export function ConversationGroupsListPage() {
       ),
     },
     {
-      id: 'actions',
       header: '',
       className: 'text-right',
       cell: (g) => {

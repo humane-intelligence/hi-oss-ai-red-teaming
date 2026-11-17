@@ -151,6 +151,21 @@ describe('ConversationGroupsListPage', () => {
     expect(within(emptied).getByText('No messages')).toBeInTheDocument()
   })
 
+  it('offers only the data columns in the Columns menu', async () => {
+    const user = userEvent.setup()
+    server.use(...handlers([ownRow]))
+    renderPage(['conversations:delete'])
+
+    await screen.findByRole('button', { name: DELETE_NAME })
+    await user.click(screen.getByRole('button', { name: 'Toggle columns' }))
+    expect(screen.getAllByRole('checkbox').map((c) => c.closest('label')?.textContent)).toEqual([
+      'Name',
+      'Evaluation',
+      'Models',
+      'Started',
+    ])
+  })
+
   it('opens the group page on row click', async () => {
     const user = userEvent.setup()
     server.use(...handlers([groupRow]))
