@@ -142,7 +142,7 @@ export function ConversationGroupsListPage() {
 }
 
 function GrantedInGroup({ evaluationId, children }: { evaluationId: string; children: ReactNode }) {
-  // One read pair per evaluation on the page; a hidden button already reports the failure.
+  // A failed read hides the button like a refusal; per-row toasts would be noise.
   const { granted } = useGroupAuthority(evaluationId, 'conversations:delete', {
     suppressErrorToast: true,
   })
