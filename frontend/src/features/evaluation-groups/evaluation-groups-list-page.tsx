@@ -222,7 +222,7 @@ function GroupsContent() {
         emptyHint={
           filtered
             ? undefined
-            : 'Create a group to set up an engagement: its dates, who can join, and the evaluations to run.'
+            : 'A group sets up an engagement: its dates, who can join, and the evaluations to run.'
         }
         emptyAction={
           !filtered && has('evaluation_groups:create') ? (
