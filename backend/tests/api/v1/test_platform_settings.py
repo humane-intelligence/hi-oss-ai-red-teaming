@@ -19,6 +19,7 @@ from app.core.licenses.models import DataLicense
 from app.core.media.models import MediaAsset
 from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
 from app.core.platform_settings.models import PlatformSettings
+from app.core.platform_settings.schemas import LOGO_KNOBS
 from app.core.platform_settings.service import SETTINGS_KNOBS
 from app.core.platform_settings.service import update_platform_settings
 from app.main import app
@@ -395,6 +396,26 @@ class TestClientLogo:
         assert cleared.status_code == status.HTTP_200_OK
         assert cleared.json()["logo_light_key"] is None
 
+    async def test_another_admin_saves_around_a_logo_they_did_not_upload(
+        self, auth_db_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        # The own-upload check runs on changed keys only; checked on every key, it would 400
+        # every other admin's save as soon as one admin had set a logo.
+        first = await _caller(db_session, email="logo-first@example.com", permissions=_READ_WRITE)
+        second = await _caller(db_session, email="logo-second@example.com", permissions=_READ_WRITE)
+        logo = await _image(db_session, first)
+        await auth_db_client.patch("/api/v1/platform-settings", json={"logo_light_key": logo.key}, headers=_auth(first))
+
+        response = await auth_db_client.patch(
+            "/api/v1/platform-settings",
+            json={"logo_light_key": logo.key, "invite_only": True},
+            headers=_auth(second),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["logo_light_key"] == logo.key
+        assert response.json()["invite_only"] is True
+
     @pytest.mark.parametrize("which", ["missing", "private", "deleted", "foreign"])
     async def test_refuses_a_key_that_is_not_a_live_public_image(
         self, auth_db_client: AsyncClient, db_session: AsyncSession, which: str
@@ -421,7 +442,7 @@ class TestClientLogo:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     # Derived from the model, so a knob added later is refused a null unless it opts into clearing.
-    @pytest.mark.parametrize("knob", sorted(set(SETTINGS_KNOBS) - {"logo_light_key", "logo_dark_key"}))
+    @pytest.mark.parametrize("knob", sorted(set(SETTINGS_KNOBS) - LOGO_KNOBS))
     async def test_refuses_null_for_every_knob_but_the_logos(
         self, knob: str, auth_db_client: AsyncClient, db_session: AsyncSession
     ) -> None:
