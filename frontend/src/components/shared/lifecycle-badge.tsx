@@ -3,9 +3,7 @@ import type { EvaluationStatus, PublicationStatus } from '@/lib/api/types'
 
 export type LifecycleStatus = PublicationStatus | EvaluationStatus
 
-// One tone per lifecycle stage, shared by groups and evaluations so a stage reads the same
-// everywhere: neutral before review, amber while an admin has it, orange when it is back with the
-// owner, indigo once approved, green live, red refused, muted when over, dashed when just created.
+// One tone per stage, shared by groups and evaluations so a stage reads the same everywhere.
 const toneByStatus: Record<LifecycleStatus, NonNullable<BadgeProps['variant']>> = {
   new: 'dashed',
   draft: 'neutral',
