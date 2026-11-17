@@ -48,6 +48,11 @@ export function useUpdatePlatformSettings() {
             logo_dark_key: saved.logo_dark_key,
           },
       )
+      // The entry above covers this tab until it reloads; replacing the browser's cached copy covers
+      // the reload too, which would otherwise show the old logo for up to 30s.
+      void apiClient
+        .GET('/api/v1/platform-settings/public', { cache: 'reload' })
+        .catch(() => undefined)
       for (const queryKey of LICENSE_DERIVED_KEYS) qc.invalidateQueries({ queryKey })
       toast.success('Settings saved')
     },

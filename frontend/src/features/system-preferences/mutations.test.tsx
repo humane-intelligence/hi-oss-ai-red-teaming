@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
+import { apiClient } from '@/lib/api/client'
 import { useUpdatePlatformSettings } from './mutations'
 
 // Real keys as the feature hooks spell them, not the mutation's own list — a prefix that misses
@@ -122,6 +123,26 @@ describe('platform-settings update and the public read', () => {
       logo_dark_key: null,
     })
     expect(qc.getQueryState(['platform-settings', 'public'])?.isInvalidated).toBe(false)
+  })
+
+  it('replaces the browser-cached public read, so a reload shows the save', async () => {
+    server.use(
+      http.patch('http://localhost/api/v1/platform-settings', () =>
+        HttpResponse.json({ invite_only: true, updated_at: '2026-11-17T10:00:00Z' }),
+      ),
+    )
+    // msw rebuilds the request and drops `cache`, so the option is checked where it is passed.
+    const get = vi.spyOn(apiClient, 'GET')
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useUpdatePlatformSettings(), { wrapper })
+
+    await act(() => result.current.mutateAsync({ invite_only: true }))
+
+    expect(get).toHaveBeenCalledWith('/api/v1/platform-settings/public', { cache: 'reload' })
+    get.mockRestore()
   })
 
   it('creates no public entry when the public read was never loaded', async () => {
