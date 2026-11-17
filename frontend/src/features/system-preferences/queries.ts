@@ -35,7 +35,8 @@ const READ_TIMEOUT_MS = 5_000
 
 function usePublicPlatformSettings() {
   return useQuery<PublicPlatformSettingsResponse>({
-    // Prefix-shares ['platform-settings'] so the settings mutation's invalidation covers it.
+    // The settings mutation writes this entry from its response rather than invalidating it (see
+    // mutations.ts): the endpoint is browser-cacheable, so a refetch could return the old copy.
     queryKey: ['platform-settings', 'public'],
     queryFn: async ({ signal }) =>
       unwrap(

@@ -3,18 +3,27 @@ import { ImageOff } from 'lucide-react'
 import { humanizeError } from '@/lib/api/problem'
 import { IMAGE_TYPES, publicImageUrl, uploadPublicImage, validateImageFile } from '@/lib/api/images'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 // Uploads on pick, so the form submits just the key. A replaced or abandoned upload is left to the
-// backend's orphan reaper: clones share the key, so deleting it here could break another evaluation.
-export function CoverImageField({
+// backend's orphan reaper: a key can be shared (evaluation clones share a cover), so deleting it here
+// could break another reference.
+export function ImageUploadField({
   value,
   onChange,
   onUploadingChange,
   labelId,
+  alt,
+  noun,
+  previewClassName,
   'aria-describedby': describedBy,
 }: {
   value: string
   onChange: (key: string) => void
+  // Alt text of the preview, and what the field calls its image ("cover", "logo").
+  alt: string
+  noun: string
+  previewClassName: string
   onUploadingChange: (uploading: boolean) => void
   labelId: string
   // Forwarded by `FormField`; the group carries it because no single control owns the field.
@@ -23,7 +32,7 @@ export function CoverImageField({
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Keyed to the value, so a new cover gets a fresh chance to load.
+  // Keyed to the value, so a new image gets a fresh chance to load.
   const [brokenKey, setBrokenKey] = useState<string | null>(null)
 
   const setBusy = (busy: boolean) => {
@@ -55,15 +64,20 @@ export function CoverImageField({
     >
       {value &&
         (brokenKey === value ? (
-          <div className="text-muted-foreground flex h-32 w-56 flex-col items-center justify-center gap-2 rounded-md border p-3 text-center text-sm">
+          <div
+            className={cn(
+              'text-muted-foreground flex flex-col items-center justify-center gap-2 rounded-md border p-3 text-center text-sm',
+              previewClassName,
+            )}
+          >
             <ImageOff className="size-4" aria-hidden="true" />
-            Current cover can’t be displayed
+            Current {noun} can’t be displayed
           </div>
         ) : (
           <img
             src={publicImageUrl(value)}
-            alt="Cover image"
-            className="h-32 w-56 rounded-md border object-cover"
+            alt={alt}
+            className={cn('rounded-md border', previewClassName)}
             onError={() => setBrokenKey(value)}
           />
         ))}

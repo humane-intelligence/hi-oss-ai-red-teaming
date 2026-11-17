@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { TermsSettingsSection } from '@/features/terms/terms-settings-section'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { FormField } from '@/components/shared/form-field'
+import { ImageUploadField } from '@/components/shared/image-upload-field'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -59,6 +60,9 @@ const schema = z.object({
     .int('Whole links only')
     .min(1, 'At least 1 link')
     .max(100, 'At most 100 links'),
+  // '' = no logo; sent as null.
+  logo_light_key: z.string(),
+  logo_dark_key: z.string(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -112,8 +116,14 @@ export function SystemPreferencesPage() {
         password_require_symbol: false,
         password_reset_cooldown_seconds: 60,
         password_reset_max_per_day: 5,
+        logo_light_key: '',
+        logo_dark_key: '',
       },
     })
+  const logoLight = useWatch({ control, name: 'logo_light_key' })
+  const logoDark = useWatch({ control, name: 'logo_dark_key' })
+  const [uploads, setUploads] = useState(0)
+  const trackUpload = (busy: boolean) => setUploads((n) => n + (busy ? 1 : -1))
   const defaultLicenseId = useWatch({ control, name: 'default_license_id' })
   const inviteOnly = useWatch({ control, name: 'invite_only' })
   const requiredChars = {
@@ -144,6 +154,8 @@ export function SystemPreferencesPage() {
       password_require_symbol: s.password_require_symbol,
       password_reset_cooldown_seconds: s.password_reset_cooldown_seconds,
       password_reset_max_per_day: s.password_reset_max_per_day,
+      logo_light_key: s.logo_light_key ?? '',
+      logo_dark_key: s.logo_dark_key ?? '',
     })
   }, [settings.data, isDirty, reset])
 
@@ -168,6 +180,8 @@ export function SystemPreferencesPage() {
       body.password_reset_cooldown_seconds = values.password_reset_cooldown_seconds
     if (dirtyFields.password_reset_max_per_day)
       body.password_reset_max_per_day = values.password_reset_max_per_day
+    if (dirtyFields.logo_light_key) body.logo_light_key = values.logo_light_key || null
+    if (dirtyFields.logo_dark_key) body.logo_dark_key = values.logo_dark_key || null
 
     try {
       await update.mutateAsync(body)
@@ -367,6 +381,35 @@ export function SystemPreferencesPage() {
                 </p>
               </div>
             </SettingsSection>
+            <SettingsSection
+              title="Client logo"
+              description="Shown on the sign-in page and at the top of the menu, so users recognise the instance as theirs. PNG or WebP with a transparent background works best; with only one set, it is used in both themes."
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                {(
+                  [
+                    // Each preview sits on the background it will be shown on.
+                    ['logo_light_key', 'Light theme', logoLight, 'bg-white'],
+                    ['logo_dark_key', 'Dark theme', logoDark, 'bg-zinc-950'],
+                  ] as const
+                ).map(([name, label, value, surface]) => (
+                  <div key={name} className="space-y-1.5">
+                    <p id={`${name}-label`} className="text-sm font-medium">
+                      {label}
+                    </p>
+                    <ImageUploadField
+                      value={value}
+                      onChange={(key) => setValue(name, key, { shouldDirty: true })}
+                      onUploadingChange={trackUpload}
+                      labelId={`${name}-label`}
+                      alt={`${label} logo`}
+                      noun="logo"
+                      previewClassName={cn('h-24 w-52 object-contain p-2', surface)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </SettingsSection>
           </fieldset>
 
           <div
@@ -374,7 +417,7 @@ export function SystemPreferencesPage() {
           >
             {canUpdate && (
               <div className="flex items-center gap-3">
-                <Button type="submit" disabled={formState.isSubmitting || !isDirty}>
+                <Button type="submit" disabled={formState.isSubmitting || !isDirty || uploads > 0}>
                   {formState.isSubmitting ? 'Saving…' : 'Save changes'}
                 </Button>
                 {isDirty && !formState.isSubmitting && (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { delay, http, HttpResponse } from 'msw'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -396,5 +396,67 @@ describe('SystemPreferencesPage', () => {
     const select = await screen.findByLabelText('Data license')
     const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent)
     expect(labels).not.toContain(NO_LICENSE.name)
+  })
+})
+
+describe('SystemPreferencesPage — client logo', () => {
+  const LOGO_KEY = '2026/11/17/logo.png'
+
+  function capturePatch(onPatch: (body: Record<string, unknown>) => void) {
+    return http.patch('http://localhost/api/v1/platform-settings', async ({ request }) => {
+      onPatch((await request.json()) as Record<string, unknown>)
+      return HttpResponse.json(settings({ updated_at: '2026-11-17T10:00:00Z' }))
+    })
+  }
+
+  it('uploads a light-theme logo and saves only that key', async () => {
+    mockReads(settings())
+    let captured: Record<string, unknown> | null = null
+    server.use(
+      http.post('http://localhost/api/v1/images', () =>
+        HttpResponse.json(
+          {
+            id: 'a0000000-0000-0000-0000-000000000001',
+            key: LOGO_KEY,
+            url: `/api/v1/images/${LOGO_KEY}`,
+            content_type: 'image/png',
+            width: 10,
+            height: 10,
+            size_bytes: 68,
+            is_private: false,
+            created_at: '2026-11-17T00:00:00Z',
+          },
+          { status: 201 },
+        ),
+      ),
+      capturePatch((b) => (captured = b)),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const light = within(await screen.findByRole('group', { name: 'Light theme' }))
+    const input = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement
+    await user.upload(input, new File(['x'], 'logo.png', { type: 'image/png' }))
+    expect(await light.findByRole('img', { name: 'Light theme logo' })).toHaveAttribute(
+      'src',
+      `http://localhost/api/v1/images/${LOGO_KEY}`,
+    )
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(captured).toEqual({ logo_light_key: LOGO_KEY }))
+  })
+
+  it('removes a logo by saving null', async () => {
+    mockReads(settings({ logo_dark_key: LOGO_KEY }))
+    let captured: Record<string, unknown> | null = null
+    server.use(capturePatch((b) => (captured = b)))
+    const user = userEvent.setup()
+    renderPage()
+
+    const dark = within(await screen.findByRole('group', { name: 'Dark theme' }))
+    await user.click(dark.getByRole('button', { name: 'Remove image' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(captured).toEqual({ logo_dark_key: null }))
   })
 })
