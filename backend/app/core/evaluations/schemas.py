@@ -21,6 +21,7 @@ from app.core.ai_gateway import WarmupStatus
 from app.core.ai_gateway.enums import Modality
 from app.core.ai_gateway.inference_params import mask_inference_params
 from app.core.ai_gateway.inference_params import merge_inference_params
+from app.core.auth.object_roles.schemas import ObjectMemberCreate
 from app.core.auth.roles import ROLE_PERMISSIONS
 from app.core.auth.roles import SystemRole
 from app.core.auth.schemas import MAX_INVITE_ROWS
@@ -1128,6 +1129,22 @@ class GroupInvitationBulkRequest(BulkRequest[GroupInvitationCreate]):
     @model_validator(mode="after")
     def _validate_unique_emails(self) -> GroupInvitationBulkRequest:
         assert_unique_invite_emails(row.data.email for row in self.rows)
+        return self
+
+
+class GroupMemberBulkRequest(BulkRequest[ObjectMemberCreate]):
+    """Bulk envelope of the group member add; a `user_id` may appear in one row only (422 otherwise)."""
+
+    # Processed anyway, the later row would 409 as "already a member" for a user who wasn't one
+    # before the request, and its roles would be dropped.
+    @model_validator(mode="after")
+    def _validate_unique_users(self) -> GroupMemberBulkRequest:
+        seen: set[UUID] = set()
+        for row in self.rows:
+            if row.data.user_id in seen:
+                msg = f"Duplicate user_id: {row.data.user_id}."
+                raise ValueError(msg)
+            seen.add(row.data.user_id)
         return self
 
 

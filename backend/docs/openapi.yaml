@@ -7882,7 +7882,84 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: The user is already a member of this group.
+          description: The user is already a member of this group, or is deactivated.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/evaluation-groups/{group_id}/members/bulk:
+    post:
+      tags:
+      - evaluation-groups
+      summary: Add group members in bulk
+      description: Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK
+        when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown
+        user, `409` for a user who is already a member or is deactivated) land inside `results[].error`, and the other rows
+        are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true`
+        previews the outcomes and rolls back instead of committing.
+      operationId: bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupMemberBulkRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse_ObjectMemberResponse_'
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks permission to manage this group's members.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation group not found, or not visible to the caller.
           content:
             application/problem+json:
               schema:
@@ -17450,6 +17527,38 @@ components:
       - failed
       - results
       title: BulkResponse[InvitationResponse]
+    BulkResponse_ObjectMemberResponse_:
+      properties:
+        dry_run:
+          type: boolean
+          title: Dry Run
+          description: Echo of the request flag — `true` means nothing was committed.
+        total:
+          type: integer
+          title: Total
+          description: Number of rows in the request.
+        succeeded:
+          type: integer
+          title: Succeeded
+          description: Rows whose processor returned without raising.
+        failed:
+          type: integer
+          title: Failed
+          description: Rows that raised an `APIError`.
+        results:
+          items:
+            $ref: '#/components/schemas/BulkRowResult_ObjectMemberResponse_'
+          type: array
+          title: Results
+          description: Per-row outcomes in request order.
+      type: object
+      required:
+      - dry_run
+      - total
+      - succeeded
+      - failed
+      - results
+      title: BulkResponse[ObjectMemberResponse]
     BulkResponse_PasswordResetTarget_:
       properties:
         dry_run:
@@ -17658,6 +17767,34 @@ components:
       - row_key
       - status
       title: BulkRowResult[InvitationResponse]
+    BulkRowResult_ObjectMemberResponse_:
+      properties:
+        row_key:
+          type: string
+          title: Row Key
+          description: Echo of the client-assigned `row_key`.
+        status:
+          type: string
+          enum:
+          - ok
+          - failed
+          title: Status
+          description: '`ok` if the processor returned; `failed` if it raised an `APIError`.'
+        data:
+          anyOf:
+          - $ref: '#/components/schemas/ObjectMemberResponse'
+          - type: 'null'
+          description: Server-rendered result on success; `None` on failure.
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/Problem'
+          - type: 'null'
+          description: RFC 7807 envelope on failure; `None` on success.
+      type: object
+      required:
+      - row_key
+      - status
+      title: BulkRowResult[ObjectMemberResponse]
     BulkRowResult_PasswordResetTarget_:
       properties:
         row_key:
@@ -17837,6 +17974,25 @@ components:
       - row_key
       - data
       title: BulkRow[InvitationCreate]
+    BulkRow_ObjectMemberCreate_:
+      properties:
+        row_key:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Row Key
+          description: Client-assigned identifier echoed back on the response so FE can correlate results without relying
+            on order.
+          examples:
+          - row-001
+        data:
+          $ref: '#/components/schemas/ObjectMemberCreate'
+          description: Payload for this row; shape depends on the endpoint.
+      type: object
+      required:
+      - row_key
+      - data
+      title: BulkRow[ObjectMemberCreate]
     BulkRow_PasswordResetTarget_:
       properties:
         row_key:
@@ -21238,6 +21394,25 @@ components:
           id: b2c3d4e5-2222-3333-4444-555566667777
           name: red_teamer
         user_id: a1b2c3d4-1111-2222-3333-444455556666
+    GroupMemberBulkRequest:
+      properties:
+        rows:
+          items:
+            $ref: '#/components/schemas/BulkRow_ObjectMemberCreate_'
+          type: array
+          minItems: 1
+          title: Rows
+          description: At least one row is required.
+        dry_run:
+          type: boolean
+          title: Dry Run
+          description: If true, the request is processed and rolled back instead of committed.
+          default: false
+      type: object
+      required:
+      - rows
+      title: GroupMemberBulkRequest
+      description: Bulk envelope of the group member add; a `user_id` may appear in one row only (422 otherwise).
     GroupTaskCompletionRollup:
       properties:
         total_conversations:

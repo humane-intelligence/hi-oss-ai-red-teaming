@@ -4,7 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
-import { usePublishGroup, useSubmitGroup } from './mutations'
+import { toast } from 'sonner'
+import { useBulkAddGroupMembers, usePublishGroup, useSubmitGroup } from './mutations'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }))
 
@@ -64,5 +65,53 @@ describe('a refused transition still refreshes the group detail', () => {
         expect.objectContaining({ queryKey: ['evaluation-group', GROUP_ID] }),
       ),
     )
+  })
+})
+
+describe('useBulkAddGroupMembers', () => {
+  function bulkResponse(succeeded: number, failed: number) {
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/bulk`, () =>
+        HttpResponse.json({
+          dry_run: false,
+          total: succeeded + failed,
+          succeeded,
+          failed,
+          results: [],
+        }),
+      ),
+    )
+  }
+  const body = {
+    rows: [{ row_key: 'u1', data: { user_id: 'u1', role_ids: ['r1'] } }],
+    dry_run: false,
+  }
+
+  it('refreshes members and annotators and toasts a clean run', async () => {
+    bulkResponse(3, 0)
+    const { spy, wrapper } = withClient()
+    const { result } = renderHook(() => useBulkAddGroupMembers(GROUP_ID), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync(body)
+    })
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['evaluation-group-members', GROUP_ID] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['evaluation-group-annotators', GROUP_ID] })
+    expect(toast.success).toHaveBeenCalledWith('3 members added')
+  })
+
+  it('leaves a partial failure to the dialog instead of toasting it', async () => {
+    vi.mocked(toast.success).mockClear()
+    bulkResponse(2, 1)
+    const { spy, wrapper } = withClient()
+    const { result } = renderHook(() => useBulkAddGroupMembers(GROUP_ID), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync(body)
+    })
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['evaluation-group-members', GROUP_ID] })
+    expect(toast.success).not.toHaveBeenCalled()
   })
 })

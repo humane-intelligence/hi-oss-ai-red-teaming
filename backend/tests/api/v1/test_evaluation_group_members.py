@@ -12,14 +12,21 @@ from uuid import uuid4
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
+from app.core.audit.enums import AuditAction
+from app.core.audit.models import AuditLog
 from app.core.auth.models import Role
 from app.core.auth.models import User
+from app.core.auth.models import UserStatus
+from app.core.auth.object_roles.models import ObjectRoleAssignment
 from app.core.auth.object_roles.registry import ObjectType
 from app.core.auth.object_roles.service import grant_roles
 from app.core.auth.object_roles.service import remove_member
 from app.core.auth.roles import Permission
+from app.core.auth.schemas import MAX_INVITE_ROWS
 from app.core.auth.services.users import create_user
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.enums import PublicationStatus
@@ -471,3 +478,257 @@ async def test_creator_without_owner_role_loses_group_access(
         response = await async_client_with_db.get(f"/api/v1/evaluation-groups/{group.id}")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def _bulk_url(group: EvaluationGroup) -> str:
+    return f"{_members_url(group)}/bulk"
+
+
+def _row(key: str, user_id: object, *roles: Role) -> dict[str, object]:
+    return {"row_key": key, "data": {"user_id": str(user_id), "role_ids": [str(r.id) for r in roles]}}
+
+
+async def test_bulk_add_adds_every_row_with_its_own_roles(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session, _READ)
+    group = await _owned_group(db_session, system_roles, owner)
+    first, second = await _user(db_session), await _user(db_session)
+    first_id, second_id = first.id, second.id
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={
+                "rows": [
+                    _row("a", first_id, system_roles["red_teamer"]),
+                    _row("b", second_id, system_roles["red_teamer"], system_roles["annotator"]),
+                ]
+            },
+        )
+        listed = await async_client_with_db.get(_members_url(group))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert (body["succeeded"], body["failed"]) == (2, 0)
+    roles_by_user = {m["user"]["id"]: {r["name"] for r in m["roles"]} for m in listed.json()["items"]}
+    assert roles_by_user[str(first_id)] == {"red_teamer"}
+    assert roles_by_user[str(second_id)] == {"red_teamer", "annotator"}
+    audits = (
+        (await db_session.execute(select(AuditLog).where(col(AuditLog.action) == AuditAction.MEMBER_ADD.value)))
+        .scalars()
+        .all()
+    )
+    assert {a.object_id for a in audits} == {first_id, second_id}
+
+
+async def test_bulk_add_reports_failed_rows_and_keeps_the_rest(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # A partial failure must not silently drop the rest of an organization.
+    owner = await _user(db_session, _READ)
+    group = await _owned_group(db_session, system_roles, owner)
+    existing, refused, fresh = await _user(db_session), await _user(db_session), await _user(db_session)
+    await _assign(db_session, group, existing, system_roles["viewer"])
+    existing_id, refused_id, fresh_id = existing.id, refused.id, fresh.id
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={
+                "rows": [
+                    _row("member", existing_id, system_roles["red_teamer"]),
+                    _row("admin-role", refused_id, system_roles["admin"]),
+                    _row("ghost", uuid4(), system_roles["red_teamer"]),
+                    _row("fresh", fresh_id, system_roles["red_teamer"]),
+                ]
+            },
+        )
+        listed = await async_client_with_db.get(_members_url(group))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert (body["succeeded"], body["failed"]) == (1, 3)
+    statuses = {r["row_key"]: (r["status"], r["error"] and r["error"]["status"]) for r in body["results"]}
+    assert statuses == {
+        "member": ("failed", status.HTTP_409_CONFLICT),
+        "admin-role": ("failed", status.HTTP_400_BAD_REQUEST),
+        "ghost": ("failed", status.HTTP_404_NOT_FOUND),
+        "fresh": ("ok", None),
+    }
+    roles_by_user = {m["user"]["id"]: {r["name"] for r in m["roles"]} for m in listed.json()["items"]}
+    assert roles_by_user[str(existing_id)] == {"viewer"}
+    assert roles_by_user[str(fresh_id)] == {"red_teamer"}
+
+
+async def test_bulk_add_dry_run_writes_nothing(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # Dry-run rolls the whole session back, fixtures included, so only emptiness is checkable.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    target = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={"rows": [_row("a", target.id, system_roles["red_teamer"])], "dry_run": True},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert (body["dry_run"], body["succeeded"]) == (True, 1)
+    assert (await db_session.execute(select(ObjectRoleAssignment))).scalars().all() == []
+    assert (await db_session.execute(select(AuditLog))).scalars().all() == []
+
+
+async def test_bulk_add_dry_run_records_no_audit(
+    async_client_with_db: AsyncClient,
+    db_session: AsyncSession,
+    system_roles: dict[str, Role],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The rollback would hide an audit row anyway; the bulk contract wants it never written.
+    calls: list[object] = []
+
+    async def spy(*args: object, **kwargs: object) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr("app.api.v1.evaluation_group_members.record_audit", spy)
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    target = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={"rows": [_row("a", target.id, system_roles["red_teamer"])], "dry_run": True},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["succeeded"] == 1
+    assert calls == []
+
+
+async def test_bulk_add_rejects_a_user_repeated_across_rows(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    target = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={
+                "rows": [
+                    _row("a", target.id, system_roles["red_teamer"]),
+                    _row("b", target.id, system_roles["annotator"]),
+                ]
+            },
+        )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "Duplicate user_id" in response.text
+
+
+async def test_add_refuses_a_deactivated_user(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # Matches the group invitation, which 409s the same account.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    deactivated = await create_user(
+        db_session,
+        email=f"{uuid4().hex[:8]}@example.com",
+        roles=[await make_role(db_session)],
+        status=UserStatus.INACTIVE,
+    )
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _members_url(group),
+            json={"user_id": str(deactivated.id), "role_ids": [str(system_roles["viewer"].id)]},
+        )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "deactivated" in response.json()["detail"]
+
+
+async def test_bulk_add_fails_a_deactivated_row_and_adds_an_invited_one(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # An account still onboarding is added; its roles wait for activation, as with an invitation.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    deactivated = await create_user(
+        db_session,
+        email=f"{uuid4().hex[:8]}@example.com",
+        roles=[await make_role(db_session)],
+        status=UserStatus.INACTIVE,
+    )
+    invited = await _user(db_session)
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _bulk_url(group),
+            json={
+                "rows": [
+                    _row("deactivated", deactivated.id, system_roles["viewer"]),
+                    _row("invited", invited.id, system_roles["viewer"]),
+                ]
+            },
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    statuses = {r["row_key"]: (r["status"], r["error"] and r["error"]["status"]) for r in response.json()["results"]}
+    assert statuses == {"deactivated": ("failed", status.HTTP_409_CONFLICT), "invited": ("ok", None)}
+
+
+async def test_bulk_add_takes_more_rows_than_an_invitation_bulk(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # "Add all members" sends a whole organization: this envelope keeps the platform row cap and
+    # must not be aligned with the tighter `MAX_INVITE_ROWS`, which exists because invites send mail.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    rows = [_row(str(i), uuid4(), system_roles["viewer"]) for i in range(MAX_INVITE_ROWS + 1)]
+
+    with as_user(owner):
+        response = await async_client_with_db.post(_bulk_url(group), json={"rows": rows, "dry_run": True})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total"] == MAX_INVITE_ROWS + 1
+
+
+async def test_bulk_add_on_a_hidden_group_is_404(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    manager = await _user(db_session, permissions=[Permission.EVALUATION_GROUPS_MANAGE_MEMBERS.value, *_READ])
+    target = await _user(db_session)
+
+    with as_user(manager):
+        response = await async_client_with_db.post(
+            _bulk_url(group), json={"rows": [_row("a", target.id, system_roles["viewer"])]}
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_bulk_add_needs_manage_members(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    member = await _user(db_session)
+    await _assign(db_session, group, member, system_roles["red_teamer"])
+    target = await _user(db_session)
+
+    with as_user(member):
+        response = await async_client_with_db.post(
+            _bulk_url(group), json={"rows": [_row("a", target.id, system_roles["viewer"])]}
+        )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
