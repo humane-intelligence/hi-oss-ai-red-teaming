@@ -280,7 +280,7 @@ describe('ConversationGroupsListPage', () => {
       )
       await expect(
         screen.findByRole('button', { name: DELETE_NAME }, { timeout: 200 }),
-      ).rejects.toThrow()
+      ).rejects.toThrow(/Unable to find/)
     })
   })
 })
