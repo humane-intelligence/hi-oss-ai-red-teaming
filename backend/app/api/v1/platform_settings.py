@@ -26,6 +26,7 @@ from app.core.exceptions import BadRequestError
 from app.core.licenses.catalog import NO_LICENSE_SPDX_ID
 from app.core.licenses.catalog import curated_license_id
 from app.core.licenses.service import validate_license_ref
+from app.core.media.services.images import get_assets_by_keys
 from app.core.openapi import COMMON_ERROR_RESPONSES
 from app.core.openapi import problem_response
 from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
@@ -85,7 +86,8 @@ async def get_platform_settings_endpoint(
     description=(
         "Unauthenticated subset of platform settings for the login/registration screens — whether "
         "open self-signup is enabled (the inverse of invite-only mode) and the password rules every "
-        "set-password screen must satisfy, plus whether conversation tags are in use on this instance."
+        "set-password screen must satisfy, plus whether conversation tags are in use on this instance "
+        "and the client logo the sign-in page shows."
     ),
     responses=COMMON_ERROR_RESPONSES,
 )
@@ -109,6 +111,8 @@ async def get_public_platform_settings_endpoint(
         signup_enabled=not settings.invite_only,
         password_policy=PublicPasswordPolicyResponse.from_model(settings),
         conversation_tags_enabled=app_settings.conversation_tags_enabled,
+        logo_light_key=settings.logo_light_key,
+        logo_dark_key=settings.logo_dark_key,
     )
 
 
@@ -121,6 +125,8 @@ async def get_public_platform_settings_endpoint(
         "Override platform-wide settings — any subset of the knobs in the request schema; omitted "
         "fields stay unchanged. `default_license_id` must reference a live licence "
         "(`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. "
+        "`logo_light_key` / `logo_dark_key` must name a live public image (`POST /api/v1/images`); "
+        "`null` removes one. "
         "Materializes the singleton row on the first effective write; a no-op PATCH writes "
         "(and audits) nothing."
     ),
@@ -128,7 +134,8 @@ async def get_public_platform_settings_endpoint(
     | {
         status.HTTP_400_BAD_REQUEST: problem_response(
             "`default_license_id` — requested, or the shipped default on the row-materializing "
-            "first write — does not reference a live licence, or is the `No license` entry."
+            "first write — does not reference a live licence, or is the `No license` entry; or a logo "
+            "key does not name a live public image."
         ),
         status.HTTP_401_UNAUTHORIZED: problem_response("Missing or invalid bearer token."),
         status.HTTP_403_FORBIDDEN: problem_response("Caller lacks the `platform_settings:update` permission."),
@@ -149,10 +156,10 @@ async def update_platform_settings_endpoint(
 
     * **400 Bad Request** — `default_license_id` (requested, or the shipped default on the
       row-materializing first write) does not reference a live licence, or is the `No license`
-      entry.
+      entry; or a logo key does not name a live public image.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `platform_settings:update`.
-    * **422 Unprocessable Entity** — a field is explicitly null.
+    * **422 Unprocessable Entity** — a field other than a logo key is explicitly null.
     """
     current = await get_platform_settings(db)
     changes = {
@@ -177,6 +184,12 @@ async def update_platform_settings_endpoint(
         # validate that too, or an unsynced catalog (`make synclicenses` not run) surfaces as a
         # raw IntegrityError 500 instead of a legible 400.
         await validate_license_ref(db, current.default_license_id)
+    logo_keys = [changes[k] for k in ("logo_light_key", "logo_dark_key") if changes.get(k) is not None]
+    if logo_keys:
+        assets = await get_assets_by_keys(db, logo_keys)
+        # A private image would 404 on the sign-in page, which has no session to sign a URL with.
+        if any(key not in assets or assets[key].is_private for key in logo_keys):
+            raise BadRequestError("A logo must be a live public image uploaded with POST /api/v1/images.")
     # Snapshot *before* the upsert: update_platform_settings refreshes the
     # identity-map-pinned row in place, so a live reference would read the new values.
     before = _settings_snapshot(current)

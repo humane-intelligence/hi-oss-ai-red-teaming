@@ -57,3 +57,7 @@ class PlatformSettings(BaseModel, table=True):
         default=60, sa_column_kwargs={"nullable": False, "server_default": "60"}
     )
     password_reset_max_per_day: int = Field(default=5, sa_column_kwargs={"nullable": False, "server_default": "5"})
+    # The instance's client logo, one per theme: media storage keys of public images (`POST /images`).
+    # The media reaper treats them as references, so a logo is never swept as an orphan.
+    logo_light_key: str | None = Field(default=None, max_length=1024)
+    logo_dark_key: str | None = Field(default=None, max_length=1024)

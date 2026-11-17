@@ -27,6 +27,8 @@ function settings(overrides: Partial<PlatformSettingsResponse> = {}): PlatformSe
     password_require_symbol: false,
     password_reset_cooldown_seconds: 60,
     password_reset_max_per_day: 5,
+    logo_light_key: null,
+    logo_dark_key: null,
     updated_at: null,
     ...overrides,
   }

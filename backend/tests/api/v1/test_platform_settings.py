@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.licenses.catalog import NO_LICENSE_SPDX_ID
 from app.core.licenses.catalog import curated_license_id
 from app.core.licenses.models import DataLicense
+from app.core.media.models import MediaAsset
 from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
 from app.core.platform_settings.models import PlatformSettings
 from app.core.platform_settings.service import update_platform_settings
@@ -70,6 +71,8 @@ class TestGetPublicPlatformSettings:
                 "require_symbol": False,
             },
             "conversation_tags_enabled": True,
+            "logo_light_key": None,
+            "logo_dark_key": None,
         }
         # Anonymous + fetched per login-screen load — must be shared-cacheable.
         assert response.headers["cache-control"] == "public, max-age=30"
@@ -109,7 +112,13 @@ class TestGetPublicPlatformSettings:
         response = await auth_db_client.get("/api/v1/platform-settings/public")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.json().keys() == {"signup_enabled", "password_policy", "conversation_tags_enabled"}
+        assert response.json().keys() == {
+            "signup_enabled",
+            "password_policy",
+            "conversation_tags_enabled",
+            "logo_light_key",
+            "logo_dark_key",
+        }
 
     async def test_conversation_tags_follow_the_instance_setting(self, auth_db_client: AsyncClient) -> None:
         tags_off = app.dependency_overrides[get_settings]().model_copy(update={"conversation_tags_enabled": False})
@@ -344,5 +353,77 @@ class TestUpdatePlatformSettings:
         caller = await _caller(db_session, email=f"bad{knob}{bad}@example.com", permissions=_READ_WRITE)
 
         response = await auth_db_client.patch("/api/v1/platform-settings", json={knob: bad}, headers=_auth(caller))
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def _image(db: AsyncSession, owner: User, *, private: bool = False) -> MediaAsset:
+    asset = MediaAsset(
+        key=f"2026/11/17/{uuid4().hex}.png",
+        content_type="image/png",
+        size_bytes=1,
+        width=1,
+        height=1,
+        is_private=private,
+        created_by_id=owner.id,
+    )
+    db.add(asset)
+    await db.flush()
+    return asset
+
+
+@pytest.mark.integration
+class TestClientLogo:
+    async def test_set_logo_shows_on_the_public_settings_and_null_removes_it(
+        self, auth_db_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        caller = await _caller(db_session, email="logo-admin@example.com", permissions=_READ_WRITE)
+        light = await _image(db_session, caller)
+
+        set_light = await auth_db_client.patch(
+            "/api/v1/platform-settings", json={"logo_light_key": light.key}, headers=_auth(caller)
+        )
+        public = await auth_db_client.get("/api/v1/platform-settings/public")
+        cleared = await auth_db_client.patch(
+            "/api/v1/platform-settings", json={"logo_light_key": None}, headers=_auth(caller)
+        )
+
+        assert set_light.status_code == status.HTTP_200_OK
+        assert set_light.json()["logo_light_key"] == light.key
+        assert set_light.json()["logo_dark_key"] is None
+        assert public.json()["logo_light_key"] == light.key
+        assert public.json()["logo_dark_key"] is None
+        assert cleared.status_code == status.HTTP_200_OK
+        assert cleared.json()["logo_light_key"] is None
+
+    @pytest.mark.parametrize("which", ["missing", "private", "deleted"])
+    async def test_refuses_a_key_that_is_not_a_live_public_image(
+        self, auth_db_client: AsyncClient, db_session: AsyncSession, which: str
+    ) -> None:
+        caller = await _caller(db_session, email=f"logo-bad-{which}@example.com", permissions=_READ_WRITE)
+        if which == "missing":
+            key = "2026/11/17/nothing-here.png"
+        else:
+            asset = await _image(db_session, caller, private=which == "private")
+            if which == "deleted":
+                asset.soft_delete(None)
+                db_session.add(asset)
+                await db_session.flush()
+            key = asset.key
+
+        response = await auth_db_client.patch(
+            "/api/v1/platform-settings", json={"logo_dark_key": key}, headers=_auth(caller)
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    async def test_still_refuses_null_for_a_knob_that_always_has_a_value(
+        self, auth_db_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        caller = await _caller(db_session, email="logo-null@example.com", permissions=_READ_WRITE)
+
+        response = await auth_db_client.patch(
+            "/api/v1/platform-settings", json={"password_min_length": None}, headers=_auth(caller)
+        )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

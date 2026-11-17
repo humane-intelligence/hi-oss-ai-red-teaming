@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
+from pydantic import ValidationInfo
 from pydantic import field_validator
 
 from app.core.auth.password_policy import MAX_PASSWORD_LENGTH
@@ -29,6 +30,8 @@ class PlatformSettingsResponse(BaseModel):
                 "password_require_symbol": False,  # nosec B105
                 "password_reset_cooldown_seconds": 60,  # nosec B105
                 "password_reset_max_per_day": 5,  # nosec B105
+                "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
+                "logo_dark_key": None,
                 "updated_at": "2026-06-24T08:00:00Z",
             }
         }
@@ -55,6 +58,10 @@ class PlatformSettingsResponse(BaseModel):
         description="How many self-service password-reset requests one account can make per rolling 24 hours. "
         "Admin-triggered sends are not bound by the cap but consume it."
     )
+    logo_light_key: str | None = Field(
+        description="Image key of the client logo for the light theme (`GET /api/v1/images/{key}`); `null` when unset."
+    )
+    logo_dark_key: str | None = Field(description="Image key of the client logo for the dark theme; `null` when unset.")
     updated_at: datetime | None = Field(
         default=None,
         description="When the settings were last overridden; `null` means they are still the shipped defaults.",
@@ -73,6 +80,8 @@ class PlatformSettingsResponse(BaseModel):
             password_require_symbol=settings.password_require_symbol,
             password_reset_cooldown_seconds=settings.password_reset_cooldown_seconds,
             password_reset_max_per_day=settings.password_reset_max_per_day,
+            logo_light_key=settings.logo_light_key,
+            logo_dark_key=settings.logo_dark_key,
             updated_at=settings.updated_at,
         )
 
@@ -122,6 +131,8 @@ class PublicPlatformSettingsResponse(BaseModel):
                     "require_symbol": False,
                 },
                 "conversation_tags_enabled": True,
+                "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
+                "logo_dark_key": None,
             }
         }
     )
@@ -139,6 +150,15 @@ class PublicPlatformSettingsResponse(BaseModel):
         "evaluation behaves as if tagging were off and the console shows no tags; set by the "
         "deployment (`CONVERSATION_TAGS_ENABLED`), not by the platform-settings singleton."
     )
+    logo_light_key: str | None = Field(
+        description="Image key of the instance's client logo for the light theme, served without a session "
+        "at `GET /api/v1/images/{key}`; `null` when unset. A client shows the other theme's logo when "
+        "only one is set."
+    )
+    logo_dark_key: str | None = Field(description="Image key of the client logo for the dark theme; `null` when unset.")
+
+
+_CLEARABLE = frozenset({"logo_light_key", "logo_dark_key"})
 
 
 class PlatformSettingsUpdate(BaseModel):
@@ -199,13 +219,24 @@ class PlatformSettingsUpdate(BaseModel):
         description="Self-service reset requests one account can make per rolling 24 hours (1-100). "
         "Admin-triggered sends are not bound by the cap but consume it. Omit to leave unchanged.",
     )
+    logo_light_key: str | None = Field(
+        default=None,
+        max_length=1024,
+        description="Image key (from `POST /api/v1/images`, public) of the light-theme client logo; "
+        "explicit `null` removes it. Omit to leave unchanged.",
+    )
+    logo_dark_key: str | None = Field(
+        default=None,
+        max_length=1024,
+        description="Image key of the dark-theme client logo; explicit `null` removes it. Omit to leave unchanged.",
+    )
 
     @field_validator("*")
     @classmethod
-    def _reject_explicit_null(cls, value: UUID | bool | int | None) -> UUID | bool | int | None:
+    def _reject_explicit_null(cls, value: UUID | bool | int | str | None, info: ValidationInfo) -> object:
         # Omitted → default None, validator not run → "unchanged". An explicit null is
-        # rejected (every knob always has a value — there is no "clear" state). Registered on
-        # `*` because every field here is a knob, so a newly added one can't miss the rule.
-        if value is None:
+        # rejected for every knob that always has a value; the logos are the only ones with an
+        # unset state. Registered on `*` so a newly added knob can't miss the rule.
+        if value is None and info.field_name not in _CLEARABLE:
             raise ValueError("must not be null; omit the field to leave it unchanged")
         return value
