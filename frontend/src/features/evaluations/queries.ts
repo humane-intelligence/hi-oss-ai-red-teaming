@@ -58,10 +58,11 @@ export function useEvaluationLookup() {
   return (id: string) => byId.get(id) ?? `${id.slice(0, 8)}…`
 }
 
-export function useEvaluation(id: string) {
+export function useEvaluation(id: string, options?: { suppressErrorToast?: boolean }) {
   return useQuery({
     queryKey: ['evaluation', id],
     enabled: id !== '',
+    meta: options?.suppressErrorToast ? { suppressErrorToast: true } : undefined,
     queryFn: async () =>
       unwrap(
         await apiClient.GET('/api/v1/evaluations/{evaluation_id}', {

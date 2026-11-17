@@ -164,6 +164,58 @@ describe('GroupCreatePage', () => {
     expect(body.models.map((m) => m.evaluation_ai_model_id)).toEqual([MODEL_A, MODEL_B])
   })
 
+  it('names a blank group after its models and start time', async () => {
+    let captured: unknown = null
+    server.use(
+      ...baseHandlers(),
+      http.post(
+        `http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`,
+        async ({ request }) => {
+          captured = await request.json()
+          return HttpResponse.json(groupResponse(), { status: 201 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    await user.click(screen.getByRole('button', { name: /add model/i }))
+    await user.click(screen.getByLabelText('Model 2'))
+    await user.click(await screen.findByRole('option', { name: 'claude-3-opus' }))
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect((captured as { name: string }).name).toMatch(
+      /^Compare: gpt-4o vs claude-3-opus · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+    )
+  })
+
+  it('sends a typed name, trimmed', async () => {
+    let captured: unknown = null
+    server.use(
+      ...baseHandlers(),
+      http.post(
+        `http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`,
+        async ({ request }) => {
+          captured = await request.json()
+          return HttpResponse.json(groupResponse(), { status: 201 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    await user.type(screen.getByLabelText('Name (optional)'), '  Jailbreak run  ')
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect((captured as { name: string }).name).toBe('Jailbreak run')
+  })
+
   it('includes per-row parameters when set', async () => {
     let captured: unknown = null
     server.use(

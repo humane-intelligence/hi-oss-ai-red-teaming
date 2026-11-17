@@ -15,10 +15,14 @@ import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissi
 // union (a page gates several affordances off one fetch). `failed` keeps a load error from
 // reading as a refusal — a deleted or unreachable group is not a permission verdict — and
 // `pending` is only true while the answer could still turn out to be yes.
-export function useGroupAuthority(evaluationId: string, permission: string) {
+export function useGroupAuthority(
+  evaluationId: string,
+  permission: string,
+  options?: { suppressErrorToast?: boolean },
+) {
   const global = usePermissions()
-  const evaluation = useEvaluation(evaluationId)
-  const parentGroup = useEvaluationGroup(evaluation.data?.evaluation_group_id ?? '')
+  const evaluation = useEvaluation(evaluationId, options)
+  const parentGroup = useEvaluationGroup(evaluation.data?.evaluation_group_id ?? '', options)
   const { has: allows } = useEffectivePermissions(parentGroup.data?.user_permissions)
   const granted = allows(permission)
   const failed = !granted && (evaluation.isError || parentGroup.isError)

@@ -47,6 +47,28 @@ describe('notifyMutationError', () => {
   })
 })
 
+describe('query error channel', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('skips the toast for a query that reports its own failures', () => {
+    const onError = queryClient.getQueryCache().config.onError
+    const query = { meta: { suppressErrorToast: true } } as never
+
+    onError?.(new ApiError({ detail: 'boom' }, 500), query)
+
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('still toasts a query that does not opt out', () => {
+    const onError = queryClient.getQueryCache().config.onError
+    const query = { meta: undefined } as never
+
+    onError?.(new ApiError({ detail: 'boom' }, 500), query)
+
+    expect(toast.error).toHaveBeenCalled()
+  })
+})
+
 describe('mutation error channel', () => {
   beforeEach(() => vi.clearAllMocks())
 
