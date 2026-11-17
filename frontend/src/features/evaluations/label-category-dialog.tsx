@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCreateLabelCategory, useUpdateLabelCategory } from './mutations'
 
 // The server drops control and format characters (zero-width spaces and the like) before it checks
-// anything, so a line of only those is blank there; dropping them here keeps the two in agreement.
+// anything, so a line of only those is blank there; dropping them here roughly mirrors that.
 const cleanLine = (text: string) => text.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()
 
 const splitValues = (text: string) => text.split('\n').map(cleanLine).filter(Boolean)
@@ -134,7 +134,12 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={formState.isSubmitting}
+          >
             Cancel
           </Button>
           <Button type="submit" disabled={formState.isSubmitting}>
