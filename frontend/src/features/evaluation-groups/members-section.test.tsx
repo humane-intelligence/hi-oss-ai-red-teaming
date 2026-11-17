@@ -443,6 +443,24 @@ describe('MembersSection — add flow', () => {
     ).toBeNull()
   })
 
+  it('adds only the organization members the search shows', async () => {
+    handlers({ users: [], orgMembers: [user3, user4] })
+    const { user, dialog } = await openDialog(['users:read', 'organizations:read'], true)
+
+    const org = await within(dialog).findByRole('region', { name: 'Andless (organization)' })
+    await within(org).findByLabelText('Add all members')
+    await user.type(within(dialog).getByPlaceholderText('Search by name or email'), 'dave')
+
+    expect(within(org).queryByLabelText('Add all members')).toBeNull()
+    await user.click(within(org).getByLabelText('Add all matching'))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+
+    expect(
+      within(dialog).getByRole('rowheader', { name: 'Dave Bowman · dave@example.com' }),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByRole('rowheader', { name: /carol@example.com/ })).toBeNull()
+  })
+
   it('shows deactivated users but leaves them out of the pick, Add all included', async () => {
     const carol = { ...user3, status: 'inactive' }
     const erin = {

@@ -112,7 +112,8 @@ export function AddMembersDialog({
   const orgList = orgMembers.data?.items ?? []
   const orgIds = new Set(orgList.map((u) => u.id))
   const orgVisible = orgList.filter(matches)
-  const orgJoinable = orgList.filter((u) => !members.has(u.id) && u.status !== 'inactive')
+  // From the rows the search leaves on screen, so Add all never picks someone the user can't see.
+  const orgJoinable = orgVisible.filter((u) => !members.has(u.id) && u.status !== 'inactive')
   const orgPicked = orgJoinable.filter((u) => picked.has(u.id)).length
   const others = (users.data ?? []).filter((u) => !orgIds.has(u.id))
   const roleList = [...(roles.data?.items ?? [])].sort((a, b) => rank(a.name) - rank(b.name))
@@ -285,7 +286,7 @@ export function AddMembersDialog({
                         }
                         onCheckedChange={toggleOrganization}
                       />
-                      Add all members
+                      {term ? 'Add all matching' : 'Add all members'}
                     </label>
                   )}
                   {orgMembers.isSuccess && orgList.length === 0 && (
