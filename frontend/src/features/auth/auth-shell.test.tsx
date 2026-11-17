@@ -169,6 +169,21 @@ describe('AuthShell — client logo', () => {
     }
   })
 
+  it('holds the form until the version note is known', async () => {
+    server.use(
+      http.get('http://localhost/version', async () => {
+        await delay('infinite')
+        return HttpResponse.json({})
+      }),
+    )
+    renderShell()
+
+    const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!
+    // The settings read settles on its own; only the version keeps the hold.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(column).toHaveClass('invisible')
+  })
+
   it('shows no logo when none is set', async () => {
     renderShell()
     const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!

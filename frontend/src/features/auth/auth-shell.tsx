@@ -51,7 +51,7 @@ export function AuthShell({
   // completes) is a title + subtitle with nothing to act on.
   children?: ReactNode
 }) {
-  const { data: version } = useVersion()
+  const { data: version, isPending: versionPending } = useVersion()
   const logo = useClientLogo()
   const hasLogo = !!(logo.light && logo.dark)
   const [logoReady, setLogoReady] = useState(false)
@@ -61,7 +61,7 @@ export function AuthShell({
     const timer = setTimeout(() => setPastDeadline(true), REVEAL_DEADLINE_MS)
     return () => clearTimeout(timer)
   }, [])
-  const holding = !pastDeadline && (logo.pending || (hasLogo && !logoReady))
+  const holding = !pastDeadline && (logo.pending || versionPending || (hasLogo && !logoReady))
   const shownVersion = version && version.environment !== 'prod' ? version : undefined
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
@@ -71,9 +71,9 @@ export function AuthShell({
       </aside>
 
       <main className="grid place-items-center p-6">
-        {/* Held invisible until the logo's size is final (settings read, image loaded or failed):
-            a logo arriving after the form painted would push the fields down under a user who is
-            already typing. */}
+        {/* Held invisible until everything above and below the fields has its final size (the
+            settings read, the logo images, and the version note shown below lg): anything arriving
+            after the form painted would move the fields under a user who is already typing. */}
         <div className={cn('w-full max-w-sm', holding && 'invisible')}>
           {/* Below lg the decorative aside is gone; keep the brand above the form and the version
               below it so both stay visible on mobile. */}
