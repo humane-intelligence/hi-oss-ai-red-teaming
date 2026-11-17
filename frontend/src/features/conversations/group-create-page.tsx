@@ -129,6 +129,9 @@ export function GroupCreatePage() {
         ...(parameters ? { parameters } : {}),
       }
     })
+    // A category deleted after its field was filled would 400 the create, with no field left to clear.
+    const liveIds = new Set((labelCategories.data ?? []).map((c) => c.id))
+    const liveLabels = Object.fromEntries(Object.entries(labels).filter(([id]) => liveIds.has(id)))
     const modelNames = rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')
     const fallbackName = `Compare: ${modelNames} · ${startedStamp(new Date())}`
     createGroup.mutate(
@@ -137,7 +140,7 @@ export function GroupCreatePage() {
         body: {
           name: name.trim() || fallbackName,
           models: payloadModels,
-          labels: labelPayload(labels, { keepBlanks: false }),
+          labels: labelPayload(liveLabels, { keepBlanks: false }),
         },
       },
       { onSuccess: (group) => navigate(`/evaluations/${evalId}/conversation-groups/${group.id}`) },
