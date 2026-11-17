@@ -29,12 +29,14 @@ export function useUpdatePlatformSettings() {
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['platform-settings'], exact: true })
       // The public read is shared-cacheable for 30s, so a refetch could get the browser's stale
-      // copy back; the saved settings already say what it would return now.
+      // copy back; the saved settings already say what it would return now. Built field by field,
+      // with no spread, so a public field added later fails to compile until it is mapped here.
       qc.setQueryData<PublicPlatformSettingsResponse>(
         ['platform-settings', 'public'],
         (prev) =>
           prev && {
-            ...prev,
+            // Read from server config, not the singleton, so the save can't have changed it.
+            conversation_tags_enabled: prev.conversation_tags_enabled,
             signup_enabled: !saved.invite_only,
             password_policy: {
               min_length: saved.password_min_length,
