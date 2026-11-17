@@ -11,7 +11,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
+from sqlmodel import select
 
+from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.schemas import MAX_LABEL_CATEGORIES
 from app.core.exceptions import ConflictError
@@ -48,11 +50,18 @@ def _assert_name_free(live: list[EvaluationLabelCategory], name: str, *, except_
         raise ConflictError(f"Label category {name!r} already exists on this evaluation.")
 
 
+_NAME_INDEX = "ix_evaluation_label_categories_evaluation_id_name"
+
+
 async def _flush_or_conflict(session: AsyncSession, name: str) -> None:
     try:
         await session.flush()
     except IntegrityError as exc:
-        # The pre-read loses a concurrent race; the partial-unique index on lower(name) decides.
+        # The pre-read loses a concurrent race; the partial-unique index on lower(name) decides. Any other
+        # constraint (the evaluation FK) is not a name clash. The driver error is chained on `orig`.
+        driver_exc = exc.orig.__cause__ if exc.orig is not None else None
+        if getattr(driver_exc, "constraint_name", None) != _NAME_INDEX:
+            raise
         raise ConflictError(f"Label category {name!r} already exists on this evaluation.") from exc
 
 
@@ -63,9 +72,18 @@ async def create_label_category(
 
     Raises:
         ConflictError: If the name is taken (ignoring case) or the evaluation is at the
-            `MAX_LABEL_CATEGORIES` cap. The cap has no index behind it, so racing creates can
-            overshoot it by the number of racers.
+            `MAX_LABEL_CATEGORIES` cap.
+        NotFoundError: If the evaluation was deleted after the caller was authorised.
     """
+    # The cap has no index behind it; the evaluation row lock serialises racing creates before the count.
+    # NO KEY UPDATE, so FK inserts of other children under the evaluation don't queue behind it.
+    locked = await session.execute(
+        select(Evaluation.id)
+        .where(col(Evaluation.id) == evaluation_id, col(Evaluation.deleted_at).is_(None))
+        .with_for_update(key_share=True)
+    )
+    if locked.scalar_one_or_none() is None:
+        raise NotFoundError("Evaluation not found.")
     live = await list_label_categories(session, evaluation_id)
     _assert_name_free(live, name)
     if len(live) >= MAX_LABEL_CATEGORIES:
