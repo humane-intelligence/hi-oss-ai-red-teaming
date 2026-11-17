@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { formatCalendarDate } from '@/lib/format-date'
 import { Plus } from 'lucide-react'
 import { useEvaluationGroups, type EvaluationGroupOrderBy } from './queries'
 import { PublicationStatusBadge } from './status-badge'
@@ -7,13 +8,13 @@ import { EvaluationsContent } from '@/features/evaluations/evaluations-list-page
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { Pagination } from '@/components/shared/pagination'
 import { Tabs, type TabItem } from '@/components/ui/tabs'
 import { tabPanelProps } from '@/components/ui/tab-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { FilterSelect } from '@/components/shared/filter-select'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type {
@@ -36,6 +37,8 @@ const PAGE_SIZE = 20
 
 type GroupFilters = { status: PublicationStatus | ''; accessLevel: EvaluationGroupAccessLevel | '' }
 const DEFAULT_FILTERS: GroupFilters = { status: '', accessLevel: '' }
+// Most groups have no organization; the column stays one click away under Columns.
+const DEFAULT_HIDDEN = ['organization']
 
 // Built per-render so the Organization cell can resolve `organization_id` to a
 // name via the lookup hook (only callable inside a component).
@@ -45,9 +48,17 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       id: 'title',
       label: 'Title',
       header: 'Title',
+      // A real link, not just its look: keyboard reach and "open in a new tab"; the row keeps its own
+      // click. Untitled drafts stay text: several links all named "Untitled draft" can't be told apart.
       cell: (g) =>
         g.title ? (
-          <span className="font-medium">{g.title}</span>
+          <Link
+            to={`/evaluation-groups/${g.id}`}
+            onClick={(ev) => ev.stopPropagation()}
+            className="text-primary font-medium underline-offset-2 hover:underline"
+          >
+            {g.title}
+          </Link>
         ) : (
           <span className="text-muted-foreground">Untitled draft</span>
         ),
@@ -82,7 +93,11 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       label: 'Start',
       header: 'Start',
       hideBelow: 'sm',
-      cell: (g) => <span className="text-muted-foreground">{g.start_date ?? '—'}</span>,
+      cell: (g) => (
+        <span className="text-muted-foreground whitespace-nowrap">
+          {g.start_date ? formatCalendarDate(g.start_date) : '—'}
+        </span>
+      ),
       sortKey: 'start_date',
     },
     {
@@ -90,7 +105,11 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       label: 'End',
       header: 'End',
       hideBelow: 'lg',
-      cell: (g) => <span className="text-muted-foreground">{g.end_date ?? '—'}</span>,
+      cell: (g) => (
+        <span className="text-muted-foreground whitespace-nowrap">
+          {g.end_date ? formatCalendarDate(g.end_date) : '—'}
+        </span>
+      ),
       sortKey: 'end_date',
     },
   ]
@@ -109,7 +128,7 @@ export function EvaluationGroupsListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Evaluation Groups"
-        description="Engagements and the evaluations inside them."
+        description="An evaluation group is one red-teaming engagement: when it runs, who takes part, and the evaluations inside it."
       />
       <Tabs tabs={TABS} value={tab} onChange={(v) => setParams(v === 'groups' ? {} : { tab: v })} />
       <div {...tabPanelProps(tab)}>
@@ -128,6 +147,7 @@ function GroupsContent() {
   const view = useListViewState<GroupFilters>({
     defaultFilters: DEFAULT_FILTERS,
     defaultOrderBy: '-created_at',
+    defaultHiddenColumns: DEFAULT_HIDDEN,
   })
 
   // A manager sees every group (incl. others' private/draft); everyone else gets
@@ -142,28 +162,18 @@ function GroupsContent() {
     all_groups: has('evaluation_groups:manage') || undefined,
   })
   const page = query.data
+  const filtered = !!view.search || Object.values(view.filters).some(Boolean)
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search title/description…"
-            aria-label="Search evaluation groups"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search title/description…"
+          label="Search evaluation groups"
+        />
         <FilterSelect
           label="Status"
           value={view.filters.status}
@@ -176,6 +186,7 @@ function GroupsContent() {
           value={view.filters.accessLevel}
           onChange={(v) => view.setFilter('accessLevel', v as EvaluationGroupAccessLevel | '')}
           allLabel="All access levels"
+          className="sm:w-44"
           options={[
             { value: 'public', label: 'Public' },
             { value: 'organization', label: 'Organization' },
@@ -202,9 +213,19 @@ function GroupsContent() {
         isError={query.isError}
         error={query.error}
         hiddenColumns={view.hiddenColumns}
-        emptyLabel="No evaluation groups yet."
+        // A search or filter that matches nothing is not a first visit: no "yet", no create prompt.
+        emptyLabel={
+          filtered
+            ? 'No evaluation groups match this search or filter.'
+            : 'No evaluation groups yet.'
+        }
+        emptyHint={
+          filtered
+            ? undefined
+            : 'A group sets up an engagement: its dates, who can join, and the evaluations to run.'
+        }
         emptyAction={
-          has('evaluation_groups:create') ? (
+          !filtered && has('evaluation_groups:create') ? (
             <Button onClick={() => navigate('/evaluation-groups/new')}>
               <Plus className="size-4" /> New group
             </Button>

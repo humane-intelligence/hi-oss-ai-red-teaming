@@ -1,15 +1,16 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useEvaluations, type EvaluationOrderBy } from './queries'
+import { formatTimestamp } from '@/lib/format-date'
 import { EvaluationStatusBadge } from './status-badge'
 import { useGroupLookup } from '@/features/evaluation-groups/queries'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { Pagination } from '@/components/shared/pagination'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { FilterSelect } from '@/components/shared/filter-select'
 import { usePermissions } from '@/lib/auth/use-permissions'
 import type { EvaluationResponse, EvaluationStatus } from '@/lib/api/types'
@@ -32,7 +33,10 @@ const DEFAULT_FILTERS: EvaluationFilters = { status: '' }
 export function EvaluationsListPage() {
   return (
     <div className="space-y-6">
-      <PageHeader title="Evaluations" description="Red-teaming evaluations visible to you." />
+      <PageHeader
+        title="Evaluations"
+        description="An evaluation is a set of scenarios to test against chosen models, inside an evaluation group."
+      />
       <EvaluationsContent />
     </div>
   )
@@ -56,13 +60,23 @@ export function EvaluationsContent() {
     order_by: (view.orderBy ?? '-created_at') as EvaluationOrderBy,
   })
   const page = query.data
+  const filtered = !!view.search || Object.values(view.filters).some(Boolean)
 
   const columns: Column<EvaluationResponse>[] = [
     {
       id: 'title',
       label: 'Title',
       header: 'Title',
-      cell: (e) => <span className="font-medium">{e.title}</span>,
+      // A real link, not just its look: keyboard reach and "open in a new tab"; the row keeps its own click.
+      cell: (e) => (
+        <Link
+          to={`/evaluations/${e.id}`}
+          onClick={(ev) => ev.stopPropagation()}
+          className="text-primary font-medium underline-offset-2 hover:underline"
+        >
+          {e.title}
+        </Link>
+      ),
       sortKey: 'title',
     },
     {
@@ -101,6 +115,7 @@ export function EvaluationsContent() {
       label: 'Models',
       header: 'Models',
       hideBelow: 'sm',
+      className: 'text-center',
       cell: (e) => e.models?.length ?? 0,
     },
     {
@@ -109,7 +124,9 @@ export function EvaluationsContent() {
       header: 'Created',
       hideBelow: 'md',
       cell: (e) => (
-        <span className="text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</span>
+        <span className="text-muted-foreground whitespace-nowrap">
+          {formatTimestamp(e.created_at)}
+        </span>
       ),
       sortKey: 'created_at',
     },
@@ -118,24 +135,13 @@ export function EvaluationsContent() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search title/description…"
-            aria-label="Search evaluations"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search title/description…"
+          label="Search evaluations"
+        />
         <FilterSelect
           label="Status"
           value={view.filters.status}
@@ -163,9 +169,17 @@ export function EvaluationsContent() {
         isError={query.isError}
         error={query.error}
         hiddenColumns={view.hiddenColumns}
-        emptyLabel="No evaluations yet."
+        // A search or filter that matches nothing is not a first visit: no "yet", no create prompt.
+        emptyLabel={
+          filtered ? 'No evaluations match this search or filter.' : 'No evaluations yet.'
+        }
+        emptyHint={
+          filtered
+            ? undefined
+            : 'Each evaluation sits in a group and picks the models to test and the scenarios to run.'
+        }
         emptyAction={
-          has('evaluations:create') ? (
+          !filtered && has('evaluations:create') ? (
             <Button onClick={() => navigate('/evaluations/new')}>
               <Plus className="size-4" /> New evaluation
             </Button>

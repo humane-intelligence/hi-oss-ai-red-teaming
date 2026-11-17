@@ -857,3 +857,12 @@ describe('EvaluationGroupDetailPage — the identity heading', () => {
     expect(heading.parentElement?.contains(trail)).toBe(false)
   })
 })
+
+describe('EvaluationGroupDetailPage — dates', () => {
+  it('shows the start date in the lists’ format', async () => {
+    server.use(...makeHandlers(withPerms(baseGroup, ['evaluation_groups:read'])))
+    renderPage()
+
+    expect(await screen.findByText('Jan 1, 2026')).toBeInTheDocument()
+  })
+})

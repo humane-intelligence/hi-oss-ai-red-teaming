@@ -4,11 +4,11 @@ import { useRestoreFlag } from './mutations'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchForm } from '@/components/shared/search-form'
 import { DataTable, type Column } from '@/components/shared/data-table'
 import { Pagination } from '@/components/shared/pagination'
 import { StatusPill } from '@/components/shared/status-pill'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { FilterSelect } from '@/components/shared/filter-select'
 import { DeletedToggle } from '@/components/shared/deleted-toggle'
 import { usePermissions } from '@/lib/auth/use-permissions'
@@ -149,24 +149,13 @@ export function MessageFlagsListPage() {
         description="Responses you flagged as exploit-worthy, and where they stand."
       />
       <div className="flex flex-wrap gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            view.commitSearch()
-          }}
-          className="flex w-full gap-2 sm:max-w-sm sm:min-w-64 sm:flex-1"
-        >
-          <Input
-            value={view.searchDraft}
-            onChange={(e) => view.setSearchDraft(e.target.value)}
-            placeholder="Search reason…"
-            aria-label="Search flags by reason"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" variant="outline">
-            Search
-          </Button>
-        </form>
+        <SearchForm
+          value={view.searchDraft}
+          onChange={view.setSearchDraft}
+          onSubmit={view.commitSearch}
+          placeholder="Search reason…"
+          label="Search flags by reason"
+        />
         <FilterSelect
           label="Status"
           value={view.filters.status}

@@ -279,3 +279,49 @@ describe('EvaluationsListPage — the Group column', () => {
     expect(seen.every((u) => u.searchParams.get('all_groups') === null)).toBe(true)
   })
 })
+
+describe('EvaluationsListPage — row cells', () => {
+  it('links the title, dates it "Mon D, YYYY" and centres the model count', async () => {
+    server.use(oneEvaluationIn(GROUP_ON_PAGE_TWO), groupsHandler())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    const title = await screen.findByRole('link', { name: 'Prompt injection' })
+    expect(title).toHaveAttribute('href', '/evaluations/ev-1')
+    expect(screen.getByText('Aug 11, 2026')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Models' })).toHaveClass('text-center')
+  })
+})
+
+describe('EvaluationsListPage — first visit', () => {
+  it('says what an evaluation is and offers to create one when there are none', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/evaluations', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 20, offset: 0 }),
+      ),
+    )
+    renderPage(['evaluations:read', 'evaluations:create'])
+
+    expect(screen.getByText(/an evaluation is a set of scenarios/i)).toBeInTheDocument()
+    expect(await screen.findByText('No evaluations yet.')).toBeInTheDocument()
+    expect(screen.getByText(/each evaluation sits in a group/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /new evaluation/i })).toHaveLength(2)
+  })
+
+  it('says nothing matched, without the first-visit prompt, when a search finds nothing', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/evaluations', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 20, offset: 0 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage(['evaluations:read', 'evaluations:create'])
+
+    await user.type(screen.getByRole('textbox', { name: 'Search evaluations' }), 'zzz{Enter}')
+
+    expect(
+      await screen.findByText('No evaluations match this search or filter.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/each evaluation sits in a group/i)).toBeNull()
+    expect(screen.getAllByRole('button', { name: /new evaluation/i })).toHaveLength(1)
+  })
+})

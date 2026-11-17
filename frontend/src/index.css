@@ -45,6 +45,10 @@
   --new-surface: #fce7f3;
   --err: #82181a;
   --err-surface: #ffe2e2;
+  --approved: #312c85;
+  --approved-surface: #e0e7ff;
+  --changes: #7e2a0c;
+  --changes-surface: #ffedd4;
 }
 
 .dark {
@@ -87,6 +91,10 @@
   --new-surface: #861043;
   --err: #ffe2e2;
   --err-surface: #82181a;
+  --approved: #e0e7ff;
+  --approved-surface: #312c85;
+  --changes: #ffedd4;
+  --changes-surface: #9f2d00;
 }
 
 @theme inline {
@@ -132,6 +140,10 @@
   --color-new-surface: var(--new-surface);
   --color-err: var(--err);
   --color-err-surface: var(--err-surface);
+  --color-approved: var(--approved);
+  --color-approved-surface: var(--approved-surface);
+  --color-changes: var(--changes);
+  --color-changes-surface: var(--changes-surface);
 }
 
 @layer base {

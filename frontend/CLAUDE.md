@@ -77,7 +77,7 @@ Two heavy runtime dependencies, treated differently:
   `npx skills add shadcn-ui/ui -g`; don't vendor it into this repository. Repo-local skills are for
   project-specific workflows such as `fe-add-view` and `fe-sync-backend`.
 - **Shared composites** live in `src/components/shared/` — `DataTable`, `Pagination`, `PageHeader`,
-  `FormField`, `DetailSkeleton`, plus three that own the responsive behaviour:
+  `FormField`, `DetailSkeleton`, plus these:
   - **`PageActions`**: a detail page's action row. `primary` is JSX (status-dependent clusters);
     `secondary` is data, rendered inline from `sm` and as a `DropdownMenu` below it. Don't hand-roll
     a row of buttons in a page header: a `shrink-0` row sets a min-width wider than a phone.
@@ -85,6 +85,10 @@ Two heavy runtime dependencies, treated differently:
     trigger and the items stop the click, because the row itself navigates.
   - **`FilterSelect`**: an "All …" list filter. Wraps `Select` with the empty-value sentinel and
     the width rules the toolbars depend on.
+  - **`SearchForm`**: a list's search box, input with an attached icon submit button. Don't
+    hand-roll an Input + "Search" button form in a toolbar.
+  - **`LifecycleBadge`**: the status badge for group and evaluation lifecycle stages, one tone per
+    stage so a stage reads the same on every page.
 
   Build list/detail views from these, never hand-roll a table. New domain view → the
   [fe-add-view](.claude/skills/fe-add-view/SKILL.md) skill.
