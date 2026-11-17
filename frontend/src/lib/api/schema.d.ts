@@ -20035,7 +20035,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The user is already a member of this group, or is deactivated. */
+            /** @description The user is already a member of this group. */
             409: {
                 headers: {
                     [name: string]: unknown;

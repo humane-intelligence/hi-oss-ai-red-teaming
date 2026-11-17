@@ -7882,7 +7882,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: The user is already a member of this group, or is deactivated.
+          description: The user is already a member of this group.
           content:
             application/problem+json:
               schema:

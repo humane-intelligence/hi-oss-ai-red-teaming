@@ -632,10 +632,10 @@ async def test_bulk_add_rejects_a_user_repeated_across_rows(
     assert "Duplicate user_id" in response.text
 
 
-async def test_add_refuses_a_deactivated_user(
+async def test_single_add_puts_a_removed_deactivated_member_back(
     async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
 ) -> None:
-    # Matches the group invitation, which 409s the same account.
+    # The console's Undo after a removal is this call; only the bulk add refuses the account.
     owner = await _user(db_session)
     group = await _owned_group(db_session, system_roles, owner)
     deactivated = await create_user(
@@ -645,14 +645,17 @@ async def test_add_refuses_a_deactivated_user(
         status=UserStatus.INACTIVE,
     )
 
-    with as_user(owner):
-        response = await async_client_with_db.post(
-            _members_url(group),
-            json={"user_id": str(deactivated.id), "role_ids": [str(system_roles["viewer"].id)]},
-        )
+    body = {"user_id": str(deactivated.id), "role_ids": [str(system_roles["viewer"].id)]}
 
-    assert response.status_code == status.HTTP_409_CONFLICT
-    assert "deactivated" in response.json()["detail"]
+    with as_user(owner):
+        added = await async_client_with_db.post(_members_url(group), json=body)
+        removed = await async_client_with_db.delete(f"{_members_url(group)}/{deactivated.id}")
+        restored = await async_client_with_db.post(_members_url(group), json=body)
+
+    assert added.status_code == status.HTTP_201_CREATED
+    assert removed.status_code == status.HTTP_204_NO_CONTENT
+    assert restored.status_code == status.HTTP_201_CREATED
+    assert [role["name"] for role in restored.json()["roles"]] == ["viewer"]
 
 
 async def test_bulk_add_fails_a_deactivated_row_and_adds_an_invited_one(
