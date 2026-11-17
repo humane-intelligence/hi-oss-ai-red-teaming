@@ -158,7 +158,8 @@ class PublicPlatformSettingsResponse(BaseModel):
     logo_dark_key: str | None = Field(description="Image key of the client logo for the dark theme; `null` when unset.")
 
 
-_CLEARABLE = frozenset({"logo_light_key", "logo_dark_key"})
+# The only knobs with an unset state, so the only ones an explicit null clears.
+LOGO_KNOBS = frozenset({"logo_light_key", "logo_dark_key"})
 
 
 class PlatformSettingsUpdate(BaseModel):
@@ -223,8 +224,7 @@ class PlatformSettingsUpdate(BaseModel):
         default=None,
         max_length=1024,
         description="Image key (from `POST /api/v1/images`, public, uploaded by the caller) of the light-theme "
-        "client logo; "
-        "explicit `null` removes it. Omit to leave unchanged.",
+        "client logo; explicit `null` removes it. Omit to leave unchanged.",
     )
     logo_dark_key: str | None = Field(
         default=None,
@@ -239,6 +239,6 @@ class PlatformSettingsUpdate(BaseModel):
         # Omitted → default None, validator not run → "unchanged". An explicit null is
         # rejected for every knob that always has a value; the logos are the only ones with an
         # unset state. Registered on `*` so a newly added knob can't miss the rule.
-        if value is None and info.field_name not in _CLEARABLE:
+        if value is None and info.field_name not in LOGO_KNOBS:
             raise ValueError("must not be null; omit the field to leave it unchanged")
         return value

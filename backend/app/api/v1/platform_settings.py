@@ -31,6 +31,7 @@ from app.core.openapi import COMMON_ERROR_RESPONSES
 from app.core.openapi import problem_response
 from app.core.platform_settings.models import PLATFORM_SETTINGS_ID
 from app.core.platform_settings.models import PlatformSettings
+from app.core.platform_settings.schemas import LOGO_KNOBS
 from app.core.platform_settings.schemas import PlatformSettingsResponse
 from app.core.platform_settings.schemas import PlatformSettingsUpdate
 from app.core.platform_settings.schemas import PublicPasswordPolicyResponse
@@ -126,8 +127,7 @@ async def get_public_platform_settings_endpoint(
         "fields stay unchanged. `default_license_id` must reference a live licence "
         "(`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. "
         "`logo_light_key` / `logo_dark_key` must name a live public image the caller uploaded "
-        "(`POST /api/v1/images`); "
-        "`null` removes one. "
+        "(`POST /api/v1/images`); `null` removes one. "
         "Materializes the singleton row on the first effective write; a no-op PATCH writes "
         "(and audits) nothing."
     ),
@@ -185,7 +185,7 @@ async def update_platform_settings_endpoint(
         # validate that too, or an unsynced catalog (`make synclicenses` not run) surfaces as a
         # raw IntegrityError 500 instead of a legible 400.
         await validate_license_ref(db, current.default_license_id)
-    logo_keys = [changes[k] for k in ("logo_light_key", "logo_dark_key") if changes.get(k) is not None]
+    logo_keys = [changes[k] for k in sorted(LOGO_KNOBS) if changes.get(k) is not None]
     if logo_keys:
         assets = await get_assets_by_keys(db, logo_keys)
         # A private image would 404 on the sign-in page, which has no session to sign a URL with.
@@ -194,7 +194,7 @@ async def update_platform_settings_endpoint(
         if any(
             key not in assets or assets[key].is_private or assets[key].created_by_id != admin.id for key in logo_keys
         ):
-            raise BadRequestError("A logo must be a live public image you uploaded with POST /api/v1/images.")
+            raise BadRequestError("A logo must be a live public image you uploaded; upload it again.")
     # Snapshot *before* the upsert: update_platform_settings refreshes the
     # identity-map-pinned row in place, so a live reference would read the new values.
     before = _settings_snapshot(current)
