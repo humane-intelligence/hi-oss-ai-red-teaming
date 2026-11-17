@@ -15,6 +15,7 @@ from fastapi import status
 from httpx import AsyncClient
 from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 from sqlmodel import select
 
 from app.core.ai_gateway.enums import ProviderVendor
@@ -26,6 +27,7 @@ from app.core.auth.services.users import create_user as create_user_service
 from app.core.config import get_settings
 from app.core.conversations.models import Conversation
 from app.core.conversations.models import ConversationGroup
+from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.services.messages import open_turn
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.models import Evaluation
@@ -1221,12 +1223,15 @@ async def test_create_sets_labels_canonical_and_cleaned_by_category_name(
     )
 
     assert created.status_code == status.HTTP_201_CREATED
+    assert fetched.status_code == status.HTTP_200_OK
     expected = [
         {"category_id": ids["language"], "name": "language", "value": "Polish"},
         {"category_id": ids["note"], "name": "Note", "value": "tried roleplay"},
     ]
     assert created.json()["labels"] == expected
     assert fetched.json()["labels"] == expected
+    # Labels set at create are part of the create, not a later edit.
+    assert created.json()["updated_at"] == created.json()["created_at"]
 
 
 @pytest.mark.parametrize("which", ["outside-list", "unknown-category", "other-evaluation"])
@@ -1310,6 +1315,49 @@ async def test_patch_with_unchanged_labels_keeps_updated_at(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["updated_at"] == created.json()["updated_at"]
+
+
+async def _stored_label_categories(db_session: AsyncSession, group_id: str) -> set[str]:
+    rows = await db_session.execute(
+        select(col(ConversationGroupLabel.category_id)).where(
+            col(ConversationGroupLabel.conversation_group_id) == UUID(group_id)
+        )
+    )
+    return {str(category_id) for category_id in rows.scalars()}
+
+
+async def test_a_label_under_a_deleted_category_stays_until_the_visible_set_changes(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-hidden@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["language"]: "English", ids["note"]: "kept"},
+        },
+    )
+    category = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))
+    assert category is not None
+    category.soft_delete(caller.id)
+    await db_session.flush()
+    url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
+
+    same = await auth_db_client.patch(url, json={"labels": {ids["note"]: "kept"}}, headers=_auth(token))
+
+    assert same.status_code == status.HTTP_200_OK
+    assert same.json()["updated_at"] == created.json()["updated_at"]
+    assert await _stored_label_categories(db_session, created.json()["id"]) == {ids["language"], ids["note"]}
+
+    changed = await auth_db_client.patch(url, json={"labels": {ids["note"]: "edited"}}, headers=_auth(token))
+
+    assert changed.status_code == status.HTTP_200_OK
+    assert await _stored_label_categories(db_session, created.json()["id"]) == {ids["note"]}
 
 
 async def test_patch_keeps_a_value_dropped_from_its_category_list(

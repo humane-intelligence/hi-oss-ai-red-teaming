@@ -7,8 +7,6 @@ from collections import defaultdict
 from collections.abc import Collection
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC
-from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -35,13 +33,17 @@ class GroupLabel:
     value: str
 
 
-async def set_group_labels(session: AsyncSession, group: ConversationGroup, labels: Mapping[UUID, str]) -> None:
+async def set_group_labels(session: AsyncSession, group: ConversationGroup, labels: Mapping[UUID, str]) -> bool:
     """Replace the group's labels with `labels` (category id → value); a blank value clears that category.
 
     A category with values only takes one of them (matched ignoring case, stored as the category
     spells it), or the value the group already holds there — so dropping a value from a category's
     list never blocks relabelling the group's other categories; one without takes any single line
     of text.
+
+    Returns:
+        Whether the visible set changed; the group row itself is left alone, so a relabel bumps
+        `updated_at` through `touch_conversation_group`.
 
     Raises:
         BadRequestError: If a category is not a live category of the group's evaluation, or a
@@ -72,16 +74,13 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
             value = match
         rows.append(ConversationGroupLabel(conversation_group_id=group.id, category_id=category_id, value=value))
     if visible == {row.category_id: row.value for row in rows}:
-        return
+        return False
     await session.execute(
         delete(ConversationGroupLabel).where(col(ConversationGroupLabel.conversation_group_id) == group.id)
     )
     session.add_all(rows)
-    # The group row is untouched otherwise, so `updated_at` would miss a relabel. App clock on purpose:
-    # the DB's now() is pinned to transaction start, so it couldn't tell a relabel from the create.
-    group.updated_at = datetime.now(UTC)
-    session.add(group)
     await session.flush()
+    return True
 
 
 async def labels_by_group(session: AsyncSession, group_ids: Collection[UUID]) -> dict[UUID, list[GroupLabel]]:

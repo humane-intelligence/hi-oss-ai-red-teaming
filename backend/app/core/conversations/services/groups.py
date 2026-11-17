@@ -338,6 +338,21 @@ async def rename_conversation_group(
     return conversation_group
 
 
+async def touch_conversation_group(session: AsyncSession, conversation_group: ConversationGroup) -> ConversationGroup:
+    """Bump `updated_at` for a change that lives in another table (a relabel).
+
+    `statement_timestamp()`, not `now()`: `now()` is pinned to transaction start, so it would not move
+    when a rename in the same request already stamped it.
+    """
+    await session.execute(
+        update(ConversationGroup)
+        .where(col(ConversationGroup.id) == conversation_group.id)
+        .values(updated_at=func.statement_timestamp())
+    )
+    await session.refresh(conversation_group, attribute_names=["updated_at"])
+    return conversation_group
+
+
 async def soft_delete_conversation_group(
     session: AsyncSession, conversation_group: ConversationGroup, *, by_id: UUID
 ) -> ConversationGroup:

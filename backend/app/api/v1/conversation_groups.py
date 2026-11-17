@@ -51,6 +51,7 @@ from app.core.conversations.services.groups import get_conversation_group
 from app.core.conversations.services.groups import list_conversation_groups
 from app.core.conversations.services.groups import rename_conversation_group
 from app.core.conversations.services.groups import soft_delete_conversation_group
+from app.core.conversations.services.groups import touch_conversation_group
 from app.core.conversations.services.labels import labels_by_group
 from app.core.conversations.services.labels import set_group_labels
 from app.core.dependencies import DbSession
@@ -335,8 +336,8 @@ async def update_conversation_group_endpoint(
     )
     if payload.name is not None:
         conversation_group = await rename_conversation_group(db, conversation_group, name=payload.name)
-    if payload.labels is not None:
-        await set_group_labels(db, conversation_group, payload.labels)
+    if payload.labels is not None and await set_group_labels(db, conversation_group, payload.labels):
+        conversation_group = await touch_conversation_group(db, conversation_group)
     license_str = await resolve_effective_license(db, conversation_group.evaluation_id)
     labels = await labels_by_group(db, [conversation_group.id])
     return ConversationGroupResponse.from_model(
