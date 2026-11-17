@@ -70,12 +70,20 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
   })
 
   const onSubmit = handleSubmit(async ({ name, values }) => {
-    const body = { name, values: splitValues(values) }
     try {
       if (category) {
-        await update.mutateAsync({ categoryId: category.id, body })
+        // Only what differs from what the dialog opened with: a rename must not write back a stale value list.
+        const opened = formState.defaultValues
+        const list = splitValues(values)
+        const body = {
+          ...(name !== cleanLine(opened?.name ?? '') && { name }),
+          ...(list.join('\n') !== splitValues(opened?.values ?? '').join('\n') && { values: list }),
+        }
+        if (Object.keys(body).length > 0) {
+          await update.mutateAsync({ categoryId: category.id, body })
+        }
       } else {
-        await create.mutateAsync(body)
+        await create.mutateAsync({ name, values: splitValues(values) })
       }
       onOpenChange(false)
     } catch (err) {

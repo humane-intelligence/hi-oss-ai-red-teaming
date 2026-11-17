@@ -141,7 +141,72 @@ describe('LabelsCard', () => {
     await user.type(values, '{Enter}polish')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(body).toEqual({ name: 'language', values: ['english', 'polish'] }))
+    await waitFor(() => expect(body).toEqual({ values: ['english', 'polish'] }))
+  })
+
+  it('sends a rename without the values, so it cannot overwrite a list changed elsewhere', async () => {
+    let body: unknown = null
+    server.use(
+      http.get(url, () => HttpResponse.json([category('language', ['english'])])),
+      http.patch(`${url}/id-language`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(category('lang', ['english']))
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    const dialog = await screen.findByRole('dialog')
+    const name = within(dialog).getByLabelText('Category')
+    await user.clear(name)
+    await user.type(name, 'lang')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(body).toEqual({ name: 'lang' }))
+  })
+
+  it('does not send values that only gained a blank line', async () => {
+    let body: unknown = null
+    server.use(
+      http.get(url, () => HttpResponse.json([category('language', ['english'])])),
+      http.patch(`${url}/id-language`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(category('lang', ['english']))
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Allowed values'), '{Enter}')
+    const name = within(dialog).getByLabelText('Category')
+    await user.clear(name)
+    await user.type(name, 'lang')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(body).toEqual({ name: 'lang' }))
+  })
+
+  it('closes without a request when nothing was edited', async () => {
+    let patched = false
+    server.use(
+      http.get(url, () => HttpResponse.json([category('language', ['english'])])),
+      http.patch(`${url}/id-language`, () => {
+        patched = true
+        return HttpResponse.json(category('language', ['english']))
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(patched).toBe(false)
   })
 
   it('deletes a category only after the delete is confirmed', async () => {
