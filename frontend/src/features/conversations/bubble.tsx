@@ -5,6 +5,7 @@ import { copyText } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/shared/markdown'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { MessageAttachments } from '@/components/shared/message-attachments'
 import { MessageMeta } from '@/components/shared/message-meta'
 import { TagContext } from '@/components/shared/tag-context'
@@ -18,7 +19,7 @@ export type BubbleTagProps =
   | { tags: MessageResponse['tags']; unsentTags: Set<string> }
 
 // Shared chat bubble for both the single-conversation view and the side-by-side panes.
-// The optional flag/meta props are the superset the detail view uses; a pane just omits them.
+// The optional props are the superset the detail view uses; a pane omits only `extra` (the meta line).
 export function Bubble({
   messageId,
   role,
@@ -150,15 +151,17 @@ export function Bubble({
         </div>
       </div>
       {onFlag && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon-sm"
           onClick={onFlag}
           title="Flag this reply for review"
           aria-label="Flag this reply for review"
-          className="bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 sticky top-2 inline-flex size-8 shrink-0 items-center justify-center self-start rounded-md border shadow-sm focus-visible:ring-[3px] focus-visible:outline-none"
+          className="text-muted-foreground hover:text-foreground sticky top-2 self-start"
         >
           <Flag className="size-4" />
-        </button>
+        </Button>
       )}
     </div>
   )
