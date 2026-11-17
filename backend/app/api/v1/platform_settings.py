@@ -125,7 +125,8 @@ async def get_public_platform_settings_endpoint(
         "Override platform-wide settings — any subset of the knobs in the request schema; omitted "
         "fields stay unchanged. `default_license_id` must reference a live licence "
         "(`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. "
-        "`logo_light_key` / `logo_dark_key` must name a live public image (`POST /api/v1/images`); "
+        "`logo_light_key` / `logo_dark_key` must name a live public image the caller uploaded "
+        "(`POST /api/v1/images`); "
         "`null` removes one. "
         "Materializes the singleton row on the first effective write; a no-op PATCH writes "
         "(and audits) nothing."
@@ -135,7 +136,7 @@ async def get_public_platform_settings_endpoint(
         status.HTTP_400_BAD_REQUEST: problem_response(
             "`default_license_id` — requested, or the shipped default on the row-materializing "
             "first write — does not reference a live licence, or is the `No license` entry; or a logo "
-            "key does not name a live public image."
+            "key does not name a live public image the caller uploaded."
         ),
         status.HTTP_401_UNAUTHORIZED: problem_response("Missing or invalid bearer token."),
         status.HTTP_403_FORBIDDEN: problem_response("Caller lacks the `platform_settings:update` permission."),
@@ -156,7 +157,7 @@ async def update_platform_settings_endpoint(
 
     * **400 Bad Request** — `default_license_id` (requested, or the shipped default on the
       row-materializing first write) does not reference a live licence, or is the `No license`
-      entry; or a logo key does not name a live public image.
+      entry; or a logo key does not name a live public image the caller uploaded.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `platform_settings:update`.
     * **422 Unprocessable Entity** — a field other than a logo key is explicitly null.
@@ -188,8 +189,12 @@ async def update_platform_settings_endpoint(
     if logo_keys:
         assets = await get_assets_by_keys(db, logo_keys)
         # A private image would 404 on the sign-in page, which has no session to sign a URL with.
-        if any(key not in assets or assets[key].is_private for key in logo_keys):
-            raise BadRequestError("A logo must be a live public image uploaded with POST /api/v1/images.")
+        # Another user's upload is refused because its uploader could delete it and blank the logo;
+        # it reads as unknown, so the check leaks nothing about other users' assets.
+        if any(
+            key not in assets or assets[key].is_private or assets[key].created_by_id != admin.id for key in logo_keys
+        ):
+            raise BadRequestError("A logo must be a live public image you uploaded with POST /api/v1/images.")
     # Snapshot *before* the upsert: update_platform_settings refreshes the
     # identity-map-pinned row in place, so a live reference would read the new values.
     before = _settings_snapshot(current)

@@ -395,13 +395,17 @@ class TestClientLogo:
         assert cleared.status_code == status.HTTP_200_OK
         assert cleared.json()["logo_light_key"] is None
 
-    @pytest.mark.parametrize("which", ["missing", "private", "deleted"])
+    @pytest.mark.parametrize("which", ["missing", "private", "deleted", "foreign"])
     async def test_refuses_a_key_that_is_not_a_live_public_image(
         self, auth_db_client: AsyncClient, db_session: AsyncSession, which: str
     ) -> None:
         caller = await _caller(db_session, email=f"logo-bad-{which}@example.com", permissions=_READ_WRITE)
         if which == "missing":
             key = "2026/11/17/nothing-here.png"
+        elif which == "foreign":
+            # Its uploader could delete it and blank the sign-in logo.
+            other = await _caller(db_session, email="logo-uploader@example.com", permissions=[])
+            key = (await _image(db_session, other)).key
         else:
             asset = await _image(db_session, caller, private=which == "private")
             if which == "deleted":

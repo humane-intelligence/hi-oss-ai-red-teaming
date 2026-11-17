@@ -2928,7 +2928,7 @@ export interface paths {
         head?: never;
         /**
          * Update platform settings
-         * @description Override platform-wide settings — any subset of the knobs in the request schema; omitted fields stay unchanged. `default_license_id` must reference a live licence (`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. `logo_light_key` / `logo_dark_key` must name a live public image (`POST /api/v1/images`); `null` removes one. Materializes the singleton row on the first effective write; a no-op PATCH writes (and audits) nothing.
+         * @description Override platform-wide settings — any subset of the knobs in the request schema; omitted fields stay unchanged. `default_license_id` must reference a live licence (`GET /api/v1/licenses`) other than `No license`, which cannot be the platform default. `logo_light_key` / `logo_dark_key` must name a live public image the caller uploaded (`POST /api/v1/images`); `null` removes one. Materializes the singleton row on the first effective write; a no-op PATCH writes (and audits) nothing.
          */
         patch: operations["update_platform_settings_endpoint_api_v1_platform_settings_patch"];
         trace?: never;
@@ -10024,12 +10024,12 @@ export interface components {
             password_reset_max_per_day?: number | null;
             /**
              * Logo Light Key
-             * @description Image key (from `POST /api/v1/images`, public) of the light-theme client logo; explicit `null` removes it. Omit to leave unchanged.
+             * @description Image key (from `POST /api/v1/images`, public, uploaded by the caller) of the light-theme client logo; explicit `null` removes it. Omit to leave unchanged.
              */
             logo_light_key?: string | null;
             /**
              * Logo Dark Key
-             * @description Image key of the dark-theme client logo; explicit `null` removes it. Omit to leave unchanged.
+             * @description Image key of the dark-theme client logo, same rules as `logo_light_key`; explicit `null` removes it. Omit to leave unchanged.
              */
             logo_dark_key?: string | null;
         };
@@ -26459,7 +26459,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlatformSettingsResponse"];
                 };
             };
-            /** @description `default_license_id` — requested, or the shipped default on the row-materializing first write — does not reference a live licence, or is the `No license` entry; or a logo key does not name a live public image. */
+            /** @description `default_license_id` — requested, or the shipped default on the row-materializing first write — does not reference a live licence, or is the `No license` entry; or a logo key does not name a live public image the caller uploaded. */
             400: {
                 headers: {
                     [name: string]: unknown;

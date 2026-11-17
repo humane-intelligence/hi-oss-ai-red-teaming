@@ -222,13 +222,15 @@ class PlatformSettingsUpdate(BaseModel):
     logo_light_key: str | None = Field(
         default=None,
         max_length=1024,
-        description="Image key (from `POST /api/v1/images`, public) of the light-theme client logo; "
+        description="Image key (from `POST /api/v1/images`, public, uploaded by the caller) of the light-theme "
+        "client logo; "
         "explicit `null` removes it. Omit to leave unchanged.",
     )
     logo_dark_key: str | None = Field(
         default=None,
         max_length=1024,
-        description="Image key of the dark-theme client logo; explicit `null` removes it. Omit to leave unchanged.",
+        description="Image key of the dark-theme client logo, same rules as `logo_light_key`; explicit `null` "
+        "removes it. Omit to leave unchanged.",
     )
 
     @field_validator("*")
