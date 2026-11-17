@@ -294,3 +294,29 @@ def test_reaper_keeps_the_client_logos(sync_session: Session, media_storage: Loc
     sync_session.expire_all()
     assert _deleted_at(sync_session, light.id) is None
     assert _deleted_at(sync_session, dark.id) is None
+
+
+@pytest.mark.integration
+def test_reaper_still_reaps_with_one_logo_unset(sync_session: Session, media_storage: LocalMediaStorage) -> None:
+    # A NULL logo key in the NOT IN inventory would match nothing and stop the reaper outright.
+    user = _user(sync_session)
+    light = _asset(sync_session, user, created_at=_OLD)
+    orphan = _asset(sync_session, user, created_at=_OLD)
+    sync_session.add(
+        PlatformSettings(
+            id=PLATFORM_SETTINGS_ID,
+            default_license_id=curated_license_id("CC-BY-4.0"),
+            logo_light_key=light.key,
+            logo_dark_key=None,
+        )
+    )
+    sync_session.commit()
+    _save_blob(media_storage, light.key)
+    _save_blob(media_storage, orphan.key)
+
+    result = reap_orphaned_media()
+
+    assert result == {"reaped": 1, "blob_failures": 0}
+    sync_session.expire_all()
+    assert _deleted_at(sync_session, light.id) is None
+    assert _deleted_at(sync_session, orphan.id) is not None
