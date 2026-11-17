@@ -66,7 +66,7 @@ export function AuthShell({
             <ClientLogo
               light={logo.light}
               dark={logo.dark}
-              alt="Client logo"
+              alt=""
               className="mb-6 max-h-[100px] max-w-[200px]"
             />
           )}

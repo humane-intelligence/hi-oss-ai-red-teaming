@@ -99,7 +99,13 @@ describe('AuthShell — client logo', () => {
     )
     renderShell()
 
-    const [light, dark] = await screen.findAllByRole('img', { name: 'Client logo' })
+    // `alt=""`: the heading names the page, so the logo is decorative and has no img role.
+    const [light, dark] = await waitFor(() => {
+      const logos = [...document.querySelectorAll('img[src*="/api/v1/images/"]')]
+      expect(logos).toHaveLength(2)
+      return logos
+    })
+    expect(light).toHaveAttribute('alt', '')
     expect(light).toHaveAttribute('src', 'http://localhost/api/v1/images/2026/11/17/light.png')
     expect(light).toHaveClass('dark:hidden')
     expect(dark).toHaveAttribute('src', 'http://localhost/api/v1/images/2026/11/17/dark.png')
@@ -109,6 +115,6 @@ describe('AuthShell — client logo', () => {
   it('shows no logo when none is set', async () => {
     renderShell()
     await screen.findByRole('heading', { name: 'Sign in' })
-    expect(screen.queryByRole('img', { name: 'Client logo' })).toBeNull()
+    expect(document.querySelector('img[src*="/api/v1/images/"]')).toBeNull()
   })
 })
