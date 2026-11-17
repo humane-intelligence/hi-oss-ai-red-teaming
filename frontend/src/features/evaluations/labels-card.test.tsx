@@ -181,6 +181,28 @@ describe('LabelsCard', () => {
     expect(screen.getByText(/up to 20 label categories/i)).toBeInTheDocument()
   })
 
+  it('returns focus to Add after a delete at the cap, once Add is enabled again', async () => {
+    let rows = Array.from({ length: MAX_LABEL_CATEGORIES }, (_, i) => category(`c${i}`))
+    server.use(
+      http.get(url, () => HttpResponse.json(rows)),
+      http.delete(`${url}/id-c0`, () => {
+        rows = rows.slice(1)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete c0' }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: /^delete$/i }),
+    )
+
+    const add = screen.getByRole('button', { name: 'Add label category' })
+    await waitFor(() => expect(add).toHaveFocus())
+    expect(add).toBeEnabled()
+  })
+
   it('offers a retry when the categories fail to load', async () => {
     let fail = true
     server.use(

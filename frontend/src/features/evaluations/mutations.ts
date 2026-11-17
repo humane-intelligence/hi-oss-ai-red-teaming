@@ -256,10 +256,11 @@ export function useRemoveTagKey(evaluationId: string) {
 // Group labels embed the category name, so a rename or delete also refreshes the conversation groups.
 function useInvalidateLabelCategories(evaluationId: string) {
   const qc = useQueryClient()
+  // Resolves with the category list only; a slow group refetch must not hold a dialog open.
   return () => {
-    qc.invalidateQueries({ queryKey: ['evaluation-label-categories', evaluationId] })
-    qc.invalidateQueries({ queryKey: ['conversation-groups'] })
-    qc.invalidateQueries({ queryKey: ['conversation-group'] })
+    void qc.invalidateQueries({ queryKey: ['conversation-groups'] })
+    void qc.invalidateQueries({ queryKey: ['conversation-group'] })
+    return qc.invalidateQueries({ queryKey: ['evaluation-label-categories', evaluationId] })
   }
 }
 
@@ -313,9 +314,10 @@ export function useDeleteLabelCategory(evaluationId: string) {
           { params: { path: { evaluation_id: evaluationId, category_id: categoryId } } },
         ),
       ),
+    // Returned so the caller's onSuccess sees the refreshed list: below the cap again, Add is enabled.
     onSuccess: () => {
-      invalidate()
       toast.success('Label category deleted')
+      return invalidate()
     },
   })
 }

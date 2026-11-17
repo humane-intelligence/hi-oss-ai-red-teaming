@@ -26,6 +26,7 @@ export function LabelsCard({
   const [deleting, setDeleting] = useState<EvaluationLabelCategoryResponse | null>(null)
   // A deleted row takes its focused Delete button with it; focus lands here instead of on the page.
   const addRef = useRef<HTMLButtonElement>(null)
+  const justDeleted = useRef(false)
 
   const rows = categories.data ?? []
   const atCap = rows.length >= MAX_LABEL_CATEGORIES
@@ -155,7 +156,11 @@ export function LabelsCard({
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleting(null)
+          if (open) return
+          setDeleting(null)
+          // On the dialog's close event, after its own focus restore to the Delete button, or it would win.
+          if (justDeleted.current) addRef.current?.focus()
+          justDeleted.current = false
         }}
         title="Delete label category"
         description={`Delete "${deleting?.name}"? Conversations lose their ${deleting?.name} label, and it can't be restored.`}
@@ -166,8 +171,8 @@ export function LabelsCard({
           if (!deleting) return
           remove.mutate(deleting.id, {
             onSuccess: () => {
+              justDeleted.current = true
               setDeleting(null)
-              addRef.current?.focus()
             },
           })
         }}
