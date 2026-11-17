@@ -16,6 +16,7 @@ export function ImageUploadField({
   alt,
   noun,
   previewClassName,
+  surfaceClassName,
   'aria-describedby': describedBy,
 }: {
   value: string
@@ -24,6 +25,9 @@ export function ImageUploadField({
   alt: string
   noun: string
   previewClassName: string
+  // A fixed backdrop for the image only; the can't-display state keeps the page's own surface,
+  // where its muted text has contrast.
+  surfaceClassName?: string
   onUploadingChange: (uploading: boolean) => void
   labelId: string
   // Forwarded by `FormField`; the group carries it because no single control owns the field.
@@ -77,7 +81,7 @@ export function ImageUploadField({
           <img
             src={publicImageUrl(value)}
             alt={alt}
-            className={cn('rounded-md border', previewClassName)}
+            className={cn('rounded-md border', previewClassName, surfaceClassName)}
             onError={() => setBrokenKey(value)}
           />
         ))}

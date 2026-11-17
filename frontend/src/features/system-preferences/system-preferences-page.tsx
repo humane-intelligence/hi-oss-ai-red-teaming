@@ -404,7 +404,8 @@ export function SystemPreferencesPage() {
                       labelId={`${name}-label`}
                       alt={`${label} logo`}
                       noun="logo"
-                      previewClassName={cn('h-24 w-52 object-contain p-2', surface)}
+                      previewClassName="h-24 w-52 object-contain p-2"
+                      surfaceClassName={surface}
                     />
                   </div>
                 ))}

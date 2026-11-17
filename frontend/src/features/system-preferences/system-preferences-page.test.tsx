@@ -446,6 +446,21 @@ describe('SystemPreferencesPage — client logo', () => {
     await waitFor(() => expect(captured).toEqual({ logo_light_key: LOGO_KEY }))
   })
 
+  it('shows a broken logo on the page surface, not the theme backdrop', async () => {
+    mockReads(settings({ logo_dark_key: LOGO_KEY }))
+    renderPage()
+
+    const dark = within(await screen.findByRole('group', { name: 'Dark theme' }))
+    const preview = dark.getByRole('img', { name: 'Dark theme logo' })
+    expect(preview).toHaveClass('bg-zinc-950')
+    act(() => {
+      preview.dispatchEvent(new Event('error'))
+    })
+
+    // Muted text on the fixed dark backdrop would drop to ~2.6:1 in the light theme.
+    expect(dark.getByText('Current logo can’t be displayed')).not.toHaveClass('bg-zinc-950')
+  })
+
   it('removes a logo by saving null', async () => {
     mockReads(settings({ logo_dark_key: LOGO_KEY }))
     let captured: Record<string, unknown> | null = null
