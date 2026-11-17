@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
@@ -112,9 +112,23 @@ describe('AuthShell — client logo', () => {
     expect(dark).toHaveClass('hidden', 'dark:block')
   })
 
+  it('holds the form invisible until the public settings settle', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', async () => {
+        await delay('infinite')
+        return HttpResponse.json({})
+      }),
+    )
+    renderShell()
+
+    const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!
+    expect(column).toHaveClass('invisible')
+  })
+
   it('shows no logo when none is set', async () => {
     renderShell()
-    await screen.findByRole('heading', { name: 'Sign in' })
+    const column = screen.getByRole('heading', { name: 'Sign in' }).parentElement!.parentElement!
+    await waitFor(() => expect(column).not.toHaveClass('invisible'))
     expect(document.querySelector('img[src*="/api/v1/images/"]')).toBeNull()
   })
 })

@@ -58,7 +58,9 @@ export function AuthShell({
       </aside>
 
       <main className="grid place-items-center p-6">
-        <div className="w-full max-w-sm">
+        {/* Held invisible until the public settings settle: a logo arriving after the form painted
+            would push the fields down under a user who is already typing. */}
+        <div className={cn('w-full max-w-sm', logo.pending && 'invisible')}>
           {/* Below lg the decorative aside is gone; keep the brand above the form and the version
               below it so both stay visible on mobile. */}
           <Wordmark className="mb-8 text-xl lg:hidden" />
