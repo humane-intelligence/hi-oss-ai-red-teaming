@@ -1,5 +1,5 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { formatDate } from '@/lib/format-date'
+import { formatCalendarDate } from '@/lib/format-date'
 import { Plus } from 'lucide-react'
 import { useEvaluationGroups, type EvaluationGroupOrderBy } from './queries'
 import { PublicationStatusBadge } from './status-badge'
@@ -95,7 +95,7 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       hideBelow: 'sm',
       cell: (g) => (
         <span className="text-muted-foreground whitespace-nowrap">
-          {g.start_date ? formatDate(g.start_date) : '—'}
+          {g.start_date ? formatCalendarDate(g.start_date) : '—'}
         </span>
       ),
       sortKey: 'start_date',
@@ -107,7 +107,7 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       hideBelow: 'lg',
       cell: (g) => (
         <span className="text-muted-foreground whitespace-nowrap">
-          {g.end_date ? formatDate(g.end_date) : '—'}
+          {g.end_date ? formatCalendarDate(g.end_date) : '—'}
         </span>
       ),
       sortKey: 'end_date',

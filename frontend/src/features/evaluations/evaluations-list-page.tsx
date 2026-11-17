@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useEvaluations, type EvaluationOrderBy } from './queries'
-import { formatDate } from '@/lib/format-date'
+import { formatTimestamp } from '@/lib/format-date'
 import { EvaluationStatusBadge } from './status-badge'
 import { useGroupLookup } from '@/features/evaluation-groups/queries'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
@@ -124,7 +124,9 @@ export function EvaluationsContent() {
       header: 'Created',
       hideBelow: 'md',
       cell: (e) => (
-        <span className="text-muted-foreground whitespace-nowrap">{formatDate(e.created_at)}</span>
+        <span className="text-muted-foreground whitespace-nowrap">
+          {formatTimestamp(e.created_at)}
+        </span>
       ),
       sortKey: 'created_at',
     },
