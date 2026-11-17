@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from typing import Annotated
 from typing import Any
+from typing import Self
 from uuid import UUID
 
 from pydantic import AfterValidator
@@ -22,6 +23,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import StringConstraints
 from pydantic import field_validator
+from pydantic import model_validator
 
 from app.core.ai_gateway.chat import ChatMessage
 from app.core.ai_gateway.chat import Usage
@@ -633,6 +635,12 @@ class ConversationGroupUpdate(BaseModel):
         if not stripped:
             raise ValueError("must contain non-whitespace text")
         return stripped
+
+    @model_validator(mode="after")
+    def _require_a_field(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("send at least one of name, labels")
+        return self
 
 
 class ConversationGroupLabelResponse(BaseModel):

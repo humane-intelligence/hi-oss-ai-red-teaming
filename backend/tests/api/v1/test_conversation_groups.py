@@ -1417,6 +1417,25 @@ async def test_patch_rejects_null_labels(
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
+async def test_patch_with_no_fields_is_422(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-empty-patch@example.com")
+    token = _token(caller)
+    evaluation, scenario, assignment, _ = await _labelled_setup(db_session)
+    created = await _create_group(
+        auth_db_client, token, scenario.id, {"name": "g", "models": [{"evaluation_ai_model_id": str(assignment.id)}]}
+    )
+
+    response = await auth_db_client.patch(
+        f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}",
+        json={},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
 async def test_a_deleted_category_drops_its_label_from_the_lists(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
 ) -> None:
