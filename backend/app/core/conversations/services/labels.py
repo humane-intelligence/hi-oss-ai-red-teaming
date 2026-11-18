@@ -66,7 +66,7 @@ async def set_group_labels(session: AsyncSession, group: ConversationGroup, labe
             continue
         category = categories.get(category_id)
         if category is None:
-            raise BadRequestError("A label category is not defined on this evaluation; it may have been deleted.")
+            raise BadRequestError("A category is not defined on this evaluation; it may have been deleted.")
         if category.values:
             kept = visible.get(category_id)
             allowed_here = [*category.values, *([kept] if kept is not None else [])]

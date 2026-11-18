@@ -193,15 +193,10 @@ async def acquire_group_for_conversation(
     )
     max_size = get_settings().max_conversation_group_size
     if await _count_live_conversations(session, conversation_group_id) >= max_size:
-        raise ConflictError(
-            f"Conversation group {conversation_group_id} already holds the maximum of {max_size} conversations."
-        )
+        raise ConflictError(f"This conversation already compares the maximum of {max_size} models.")
     # A model joining after the first prompt never saw the earlier turns, so its replies would not be comparable.
     if await _group_has_turns(session, conversation_group_id):
-        raise ConflictError(
-            f"Conversation group {conversation_group_id} already has prompts; "
-            "models can only be added before the first one."
-        )
+        raise ConflictError("This conversation already has prompts; models can only be added before the first one.")
     return group
 
 
@@ -401,7 +396,7 @@ async def assert_group_has_room(session: AsyncSession, group_id: UUID) -> None:
     )
     max_size = get_settings().max_conversation_group_size
     if await _count_live_conversations(session, group_id) >= max_size:
-        raise ConflictError(f"Conversation group {group_id} already holds the maximum of {max_size} conversations.")
+        raise ConflictError(f"This conversation already compares the maximum of {max_size} models.")
 
 
 async def revive_pruned_group(session: AsyncSession, group_id: UUID) -> None:

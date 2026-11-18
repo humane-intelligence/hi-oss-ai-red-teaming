@@ -24540,7 +24540,7 @@ components:
         default_license_id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         email_verification_ttl_hours: 24
         invite_only: false
-        logo_light_key: 2026/11/17/3f2a0000-0000-0000-0000-000000000000.png
+        logo_light_key: 2026/11/17/3f2a00000000400080000000000000a1.png
         password_min_length: 8
         password_require_digit: false
         password_require_symbol: false
@@ -24830,7 +24830,7 @@ components:
       description: Unauthenticated subset of platform settings — safe to expose to anonymous clients.
       example:
         conversation_tags_enabled: true
-        logo_light_key: 2026/11/17/3f2a0000-0000-0000-0000-000000000000.png
+        logo_light_key: 2026/11/17/3f2a00000000400080000000000000a1.png
         password_policy:
           min_length: 8
           require_digit: false

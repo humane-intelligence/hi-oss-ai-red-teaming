@@ -431,6 +431,8 @@ async def test_create_into_a_group_with_prompts_returns_409(
 
     _assert_problem(response, status.HTTP_409_CONFLICT)
     assert "already has prompts" in response.json()["detail"]
+    # The console shows this text as is, and it never shows a raw id.
+    assert body["conversation_group_id"] not in response.json()["detail"]
 
 
 async def test_move_into_a_group_with_prompts_returns_409(

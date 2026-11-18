@@ -77,7 +77,7 @@ async def _add_member(
     roles = await resolve_assignable_roles(session, _SCOPE_SPEC, payload.role_ids)
     # Same rule and order as the group invitation; a pending account is fine, its roles wait for activation.
     if refuse_deactivated and user.status is UserStatus.INACTIVE:
-        raise ConflictError("User is deactivated. Reactivate via PATCH /users/{id} first.")
+        raise ConflictError("User is deactivated. Reactivate the account first.")
     member = await add_member(session, _OBJECT_TYPE, group_id, user, roles)
     if audit:
         await record_audit(
