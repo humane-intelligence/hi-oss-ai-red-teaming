@@ -1743,6 +1743,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluation-groups/{group_id}/assignable-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List roles assignable in the group
+         * @description Return a paginated list of the roles a member of this group can be given — the source for `role_ids` on the group's member and invitation routes, which refuse any other role.
+         */
+        get: operations["list_group_assignable_roles_endpoint_api_v1_evaluation_groups__group_id__assignable_roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluation-groups/{group_id}/metrics": {
         parameters: {
             query?: never;
@@ -3939,6 +3959,37 @@ export interface components {
              * @description Pending reviews this user holds whose whole parent chain is live and whose evaluation is neither `completed` nor `rejected` and whose group is neither `inactive` nor `not_approved` — not their lifetime review total, and narrower than the review queue, which also lists work inside finished evaluations. Counted platform-wide, including groups the caller cannot see: it answers how loaded the person is, not how loaded they are on work you can account for.
              */
             active_review_count: number;
+        };
+        /**
+         * AssignableRoleResponse
+         * @description A role offered by an in-group role picker: the slim projection plus the self-join default flag.
+         */
+        AssignableRoleResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Server-assigned role identifier.
+             * @example a1b2c3d4-1111-2222-3333-444455556666
+             */
+            id: string;
+            /**
+             * Name
+             * @description Stable role slug — used as the machine identifier.
+             * @example red_teamer
+             */
+            name: string;
+            /**
+             * Display Name
+             * @description Human-readable role label for display.
+             * @example Red Teamer
+             */
+            display_name: string;
+            /**
+             * Is Participant Default
+             * @description Whether this is the role a user gets on joining a group themselves — a picker's starting choice.
+             * @example true
+             */
+            is_participant_default: boolean;
         };
         /**
          * AuditLogResponse
@@ -9102,6 +9153,32 @@ export interface components {
              * @description Items on this page.
              */
             items: components["schemas"]["AssignableReviewerResponse"][];
+            /**
+             * Total
+             * @description Total number of items across all pages.
+             * @example 42
+             */
+            total: number;
+            /**
+             * Limit
+             * @description Max items per page (echo of the request).
+             * @example 20
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Zero-based offset of the first item on this page.
+             * @example 0
+             */
+            offset: number;
+        };
+        /** Page[AssignableRoleResponse] */
+        Page_AssignableRoleResponse_: {
+            /**
+             * Items
+             * @description Items on this page.
+             */
+            items: components["schemas"]["AssignableRoleResponse"][];
             /**
              * Total
              * @description Total number of items across all pages.
@@ -20420,6 +20497,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_AnnotatorResponse_"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks permission to manage this group's members. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation group not found, or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_group_assignable_roles_endpoint_api_v1_evaluation_groups__group_id__assignable_roles_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AssignableRoleResponse_"];
                 };
             };
             /** @description Missing or invalid bearer token. */

@@ -3561,6 +3561,49 @@
           "response": []
         },
         {
+          "name": "List roles assignable in the group",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/:group_id/assignable-roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                ":group_id",
+                "assignable-roles"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}",
+                  "description": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Return a paginated list of the roles a member of this group can be given — the source for `role_ids` on the group's member and invitation routes, which refuse any other role.\n\n**Requires permission:** `evaluation_groups:manage_members`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `group_id` (string<uuid>, required)\n\n**Query parameters**\n- `limit` (integer, optional) _[≥1, ≤100, default 20]_\n- `offset` (integer, optional) _[≥0, default 0]_\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks permission to manage this group's members. |\n| 404 | Evaluation group not found, or not visible to the caller. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+          },
+          "response": []
+        },
+        {
           "name": "Duplicate evaluation group",
           "request": {
             "method": "POST",

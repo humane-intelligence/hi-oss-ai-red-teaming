@@ -34,6 +34,7 @@ from app.core.exceptions import ConflictError
 from app.core.exceptions import ForbiddenError
 from app.core.exceptions import NotFoundError
 from app.core.helpers import escape_like
+from app.core.pagination import paginate
 from app.core.soft_delete import with_live
 
 
@@ -219,6 +220,24 @@ async def resolve_assignable_roles(
                 f"Role(s) must grant '{spec.required_permission.value}' to be assignable here: {', '.join(lacking)}."
             )
     return roles
+
+
+async def list_assignable_roles(
+    session: AsyncSession,
+    spec: ObjectScopeSpec,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[Role], int]:
+    """One page of the roles `resolve_assignable_roles` accepts for this object type, ordered by slug.
+
+    The same rules as the write side, in SQL, so a role picker fed from this never
+    offers a role the assignment would then refuse.
+    """
+    statement = Role.live_select().where(col(Role.is_active).is_(True), col(Role.is_object_assignable).is_(True))
+    if spec.required_permission is not None:
+        statement = statement.where(col(Role.permissions).contains([spec.required_permission.value]))
+    return await paginate(session, statement.order_by(col(Role.name)), limit=limit, offset=offset)
 
 
 async def _live_assignments(
