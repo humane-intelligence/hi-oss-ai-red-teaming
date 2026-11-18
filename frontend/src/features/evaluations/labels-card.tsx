@@ -115,7 +115,7 @@ export function LabelsCard({
                   ))}
                 </div>
               ) : (
-                <div className="text-muted-foreground text-xs">Free text</div>
+                <div className="text-muted-foreground text-xs">No tags — picked on its own</div>
               )}
             </div>
             {canManage && (

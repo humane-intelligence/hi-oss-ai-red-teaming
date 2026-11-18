@@ -102,8 +102,10 @@ class ConversationGroupLabel(SQLModel, table=True):
     """One label value set on a conversation group, under one of its evaluation's label categories.
 
     A plain link row like `FlaggedMessage`: the group's labels are replaced as a set, so there is no
-    soft delete. `value` is stored as text — a value later dropped from the category's list stays on
-    the groups that carry it. A soft-deleted category hides its labels at read time.
+    soft delete. A group may hold several values in one category, so `value` is part of the key; the
+    empty string is the category selected on its own, which is all a category without values takes.
+    `value` is stored as text — a value later dropped from the category's list stays on the groups
+    that carry it. A soft-deleted category hides its labels at read time.
     """
 
     __tablename__ = "conversation_group_labels"
@@ -111,7 +113,7 @@ class ConversationGroupLabel(SQLModel, table=True):
 
     conversation_group_id: uuid.UUID = Field(foreign_key="conversation_groups.id", primary_key=True, ondelete="CASCADE")
     category_id: uuid.UUID = Field(foreign_key="evaluation_label_categories.id", primary_key=True, ondelete="CASCADE")
-    value: str = Field(max_length=200, nullable=False)
+    value: str = Field(max_length=200, primary_key=True)
 
 
 class Conversation(BaseModel, InferenceParamsMixin, table=True):

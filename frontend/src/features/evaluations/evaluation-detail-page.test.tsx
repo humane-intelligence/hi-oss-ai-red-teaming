@@ -64,7 +64,7 @@ function baseHandlers(
         id: GROUP_ID,
         title: groupTitle,
         description: '',
-        status: 'approved',
+        status: 'published',
         access_level: 'open',
         start_date: '2026-01-01',
         end_date: null,
@@ -800,7 +800,7 @@ describe('EvaluationDetailPage — in-group authority', () => {
         id: GROUP_ID,
         title: 'Spring jailbreak',
         description: '',
-        status: 'approved',
+        status: 'published',
         access_level: 'invitation_only',
         start_date: '2026-01-01',
         end_date: null,
@@ -950,6 +950,8 @@ describe('EvaluationDetailPage — in-group authority', () => {
     const noModel = await startButton()
     expect(noModel).toBeDisabled()
     expect(noModel).toHaveAttribute('title', 'Assign a model first')
+    // A disabled button shows no tooltip, so the reason is on the page as well.
+    expect(screen.getByText('Assign a model first to start a conversation.')).toBeInTheDocument()
   })
 
   it('says a scenario is missing when the evaluation has models but none', async () => {

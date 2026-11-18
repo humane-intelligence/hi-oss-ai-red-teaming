@@ -29,7 +29,7 @@ class ConversationGroupRow:
     evaluation_title: str | None
     owner_email: str | None
     scenario_name: str | None
-    labels: dict[str, str]
+    labels: dict[str, list[str]]
 
 
 async def _fetch_conversation_groups(session: AsyncSession, scope: ExportScope) -> AsyncIterator[ConversationGroupRow]:
@@ -81,7 +81,7 @@ _COLUMNS: list[Column[ConversationGroupRow]] = [
     # The member conversation ids, space-separated — so a group joins to the
     # `conversations` / `transcript` exports (whose `Conversation ID` column carries them).
     Column("Conversation IDs", lambda r: " ".join(str(conversation.id) for conversation in r.group.conversations)),
-    # `{category: value}` — one column whatever the evaluation's categories, so a group-wide export
+    # `{category: [values]}` — one column whatever the evaluation's categories, so a group-wide export
     # spanning evaluations with different categories keeps a fixed header.
     Column("Labels", value=lambda r: r.labels, formatter=lambda v: json.dumps(v, ensure_ascii=False)),
     Column("Created", lambda r: r.group.created_at),

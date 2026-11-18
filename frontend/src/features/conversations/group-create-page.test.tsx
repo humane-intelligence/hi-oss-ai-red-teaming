@@ -409,7 +409,7 @@ describe('GroupCreatePage', () => {
     expect(Object.prototype.hasOwnProperty.call(body.models[1], 'title')).toBe(false)
   })
 
-  it('sends the labels set, leaving out the blank ones', async () => {
+  it('sends the picked tags, leaving out the categories with none', async () => {
     let captured: unknown = null
     server.use(
       ...baseHandlers(),
@@ -440,18 +440,20 @@ describe('GroupCreatePage', () => {
     await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
     await selectScenario(user)
     expect(await screen.findByText(/never sent to the model/i)).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('language'), 'polish')
-    await user.type(screen.getByLabelText('note'), '  roleplay ')
+    await user.click(screen.getByLabelText('language: polish'))
+    await user.click(screen.getByLabelText('language: english'))
+    await user.click(screen.getByLabelText('note'))
     await user.click(screen.getByRole('button', { name: /start conversation/i }))
 
+    // Two tags in one category, and a category without tags picked on its own; `team` is left out.
     await waitFor(() => expect(captured).not.toBeNull())
     expect((captured as { labels: unknown }).labels).toEqual({
-      'cat-lang': 'polish',
-      'cat-note': 'roleplay',
+      'cat-lang': ['polish', 'english'],
+      'cat-note': [],
     })
   })
 
-  it('leaves out a label whose category was deleted after it was filled', async () => {
+  it('leaves out a tag whose category was deleted after it was picked', async () => {
     let captured: unknown = null
     let categories = [
       { id: 'cat-lang', evaluation_id: EVAL_ID, name: 'language', values: [], created_at: '' },
@@ -475,15 +477,15 @@ describe('GroupCreatePage', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
     await selectScenario(user)
-    await user.type(await screen.findByLabelText('language'), 'polish')
-    await user.type(screen.getByLabelText('note'), 'roleplay')
+    await user.click(await screen.findByLabelText('language'))
+    await user.click(screen.getByLabelText('note'))
     categories = categories.filter((c) => c.id !== 'cat-note')
     await qc.invalidateQueries()
     await waitFor(() => expect(screen.queryByLabelText('note')).toBeNull())
     await user.click(screen.getByRole('button', { name: /start conversation/i }))
 
     await waitFor(() => expect(captured).not.toBeNull())
-    expect((captured as { labels: unknown }).labels).toEqual({ 'cat-lang': 'polish' })
+    expect((captured as { labels: unknown }).labels).toEqual({ 'cat-lang': [] })
   })
 
   it('shows no label fields when the evaluation defines no categories', async () => {

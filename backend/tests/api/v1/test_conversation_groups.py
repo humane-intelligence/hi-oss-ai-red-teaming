@@ -30,6 +30,7 @@ from app.core.conversations.models import ConversationGroup
 from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.services.messages import open_turn
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationLabelCategory
@@ -85,8 +86,9 @@ async def _evaluation_for(
     *,
     owner_id: UUID | None = None,
     access_level: EvaluationGroupAccessLevel = EvaluationGroupAccessLevel.PUBLIC,
+    status: PublicationStatus = PublicationStatus.PUBLISHED,
 ) -> Evaluation:
-    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id)
+    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id, status=status)
     row = Evaluation(title="Eval", description="d", evaluation_group_id=group.id, created_by_id=group.created_by_id)
     db_session.add(row)
     await db_session.flush()
@@ -180,6 +182,52 @@ async def test_create_returns_201_location_and_grouped_conversations(
     assert by_assignment[str(first.id)]["parameters"] == {}
     assert by_assignment[str(second.id)]["parameters"] == {"temperature": 0.9}
     assert response.headers["Location"] == f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{body['id']}"
+
+
+@pytest.mark.parametrize(
+    "group_status",
+    [PublicationStatus.APPROVED, PublicationStatus.INACTIVE],
+)
+async def test_create_in_a_group_that_is_not_published_returns_409_for_a_participant(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role, group_status: PublicationStatus
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="early@example.com")
+    evaluation = await _evaluation_for(db_session, status=group_status)
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
+
+    response = await _create_group(
+        auth_db_client,
+        _token(caller),
+        scenario.id,
+        {"name": "too early or too late", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert str(evaluation.id) not in response.json()["detail"]
+
+
+async def test_a_manager_may_try_a_scenario_before_publication_but_not_after_the_group_finished(
+    auth_db_client: AsyncClient, db_session: AsyncSession, manager_role: Role
+) -> None:
+    manager = await _caller(db_session, manager_role, email="tryout@example.com")
+    outcomes = {}
+    for group_status in (PublicationStatus.APPROVED, PublicationStatus.INACTIVE):
+        evaluation = await _evaluation_for(db_session, status=group_status)
+        assignment = await _assignment(db_session, evaluation.id)
+        scenario = await _scenario(db_session, evaluation.id)
+        response = await _create_group(
+            auth_db_client,
+            _token(manager),
+            scenario.id,
+            {"name": "tryout", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+        )
+        outcomes[group_status] = response.status_code
+
+    assert outcomes == {
+        PublicationStatus.APPROVED: status.HTTP_201_CREATED,
+        PublicationStatus.INACTIVE: status.HTTP_409_CONFLICT,
+    }
 
 
 async def test_create_rejects_scenario_id_left_in_the_body_422(
@@ -1196,7 +1244,9 @@ async def _labelled_setup(db_session: AsyncSession) -> tuple[Evaluation, Scenari
     assignment = await _assignment(db_session, evaluation.id)
     scenario = await _scenario(db_session, evaluation.id)
     language = EvaluationLabelCategory(evaluation_id=evaluation.id, name="language", values=["English", "Polish"])
-    note = EvaluationLabelCategory(evaluation_id=evaluation.id, name="Note")
+    note = EvaluationLabelCategory(
+        evaluation_id=evaluation.id, name="Note", values=["first", "kept", "edited", "retry", "tried roleplay"]
+    )
     db_session.add_all([language, note])
     await db_session.flush()
     return evaluation, scenario, assignment, {"language": str(language.id), "note": str(note.id)}
@@ -1215,7 +1265,7 @@ async def test_create_sets_labels_canonical_and_cleaned_by_category_name(
         {
             "name": "g",
             "models": [{"evaluation_ai_model_id": str(assignment.id)}],
-            "labels": {ids["note"]: " tried\nroleplay ", ids["language"]: "polish"},
+            "labels": {ids["note"]: [" tried\nroleplay "], ids["language"]: ["polish"]},
         },
     )
     fetched = await auth_db_client.get(
@@ -1234,6 +1284,41 @@ async def test_create_sets_labels_canonical_and_cleaned_by_category_name(
     assert created.json()["updated_at"] == created.json()["created_at"]
 
 
+async def test_a_group_holds_several_values_in_one_category_and_a_bare_category_as_a_marker(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-many@example.com")
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    marker = EvaluationLabelCategory(evaluation_id=evaluation.id, name="guardrail-violation")
+    db_session.add(marker)
+    await db_session.flush()
+    token = _token(caller)
+
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {ids["language"]: ["polish", "English"], str(marker.id): []},
+        },
+    )
+    url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
+    # A marker takes no text of its own, and leaving a category out clears it.
+    free_text = await auth_db_client.patch(url, json={"labels": {str(marker.id): ["anything"]}}, headers=_auth(token))
+    narrowed = await auth_db_client.patch(url, json={"labels": {ids["language"]: ["Polish"]}}, headers=_auth(token))
+
+    assert created.status_code == status.HTTP_201_CREATED
+    assert [(label["name"], label["value"]) for label in created.json()["labels"]] == [
+        ("guardrail-violation", None),
+        ("language", "English"),
+        ("language", "Polish"),
+    ]
+    assert free_text.status_code == status.HTTP_400_BAD_REQUEST
+    assert [(label["name"], label["value"]) for label in narrowed.json()["labels"]] == [("language", "Polish")]
+
+
 @pytest.mark.parametrize("which", ["outside-list", "unknown-category", "other-evaluation"])
 async def test_create_rejects_a_label_the_evaluation_does_not_define(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role, which: str
@@ -1241,15 +1326,15 @@ async def test_create_rejects_a_label_the_evaluation_does_not_define(
     caller = await _caller(db_session, red_teamer_role, email=f"labels-bad-{which}@example.com")
     _, scenario, assignment, ids = await _labelled_setup(db_session)
     if which == "outside-list":
-        labels = {ids["language"]: "german"}
+        labels = {ids["language"]: ["german"]}
     elif which == "other-evaluation":
         other = await _evaluation_for(db_session)
         foreign = EvaluationLabelCategory(evaluation_id=other.id, name="language")
         db_session.add(foreign)
         await db_session.flush()
-        labels = {str(foreign.id): "x"}
+        labels = {str(foreign.id): ["x"]}
     else:
-        labels = {str(uuid4()): "x"}
+        labels = {str(uuid4()): ["x"]}
 
     response = await _create_group(
         auth_db_client,
@@ -1275,13 +1360,13 @@ async def test_patch_replaces_labels_and_keeps_the_name(
         {
             "name": "keep me",
             "models": [{"evaluation_ai_model_id": str(assignment.id)}],
-            "labels": {ids["language"]: "English", ids["note"]: "first"},
+            "labels": {ids["language"]: ["English"], ids["note"]: ["first"]},
         },
     )
     url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
 
     response = await auth_db_client.patch(
-        url, json={"labels": {ids["language"]: "Polish", ids["note"]: " "}}, headers=_auth(token)
+        url, json={"labels": {ids["language"]: ["Polish"], ids["note"]: []}}, headers=_auth(token)
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -1303,13 +1388,13 @@ async def test_patch_with_unchanged_labels_keeps_updated_at(
         {
             "name": "g",
             "models": [{"evaluation_ai_model_id": str(assignment.id)}],
-            "labels": {ids["language"]: "Polish"},
+            "labels": {ids["language"]: ["Polish"]},
         },
     )
 
     response = await auth_db_client.patch(
         f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}",
-        json={"labels": {ids["language"]: "polish"}},
+        json={"labels": {ids["language"]: ["polish"]}},
         headers=_auth(token),
     )
 
@@ -1339,7 +1424,7 @@ async def test_a_label_under_a_deleted_category_stays_until_the_visible_set_chan
         {
             "name": "g",
             "models": [{"evaluation_ai_model_id": str(assignment.id)}],
-            "labels": {ids["language"]: "English", ids["note"]: "kept"},
+            "labels": {ids["language"]: ["English"], ids["note"]: ["kept"]},
         },
     )
     category = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))
@@ -1348,13 +1433,13 @@ async def test_a_label_under_a_deleted_category_stays_until_the_visible_set_chan
     await db_session.flush()
     url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
 
-    same = await auth_db_client.patch(url, json={"labels": {ids["note"]: "kept"}}, headers=_auth(token))
+    same = await auth_db_client.patch(url, json={"labels": {ids["note"]: ["kept"]}}, headers=_auth(token))
 
     assert same.status_code == status.HTTP_200_OK
     assert same.json()["updated_at"] == created.json()["updated_at"]
     assert await _stored_label_categories(db_session, created.json()["id"]) == {ids["language"], ids["note"]}
 
-    changed = await auth_db_client.patch(url, json={"labels": {ids["note"]: "edited"}}, headers=_auth(token))
+    changed = await auth_db_client.patch(url, json={"labels": {ids["note"]: ["edited"]}}, headers=_auth(token))
 
     assert changed.status_code == status.HTTP_200_OK
     assert await _stored_label_categories(db_session, created.json()["id"]) == {ids["note"]}
@@ -1378,17 +1463,17 @@ async def test_a_blank_label_for_a_deleted_category_is_ignored_and_a_value_is_re
         auth_db_client,
         token,
         scenario_id,
-        {"name": "g", "models": models, "labels": {ids["language"]: "", ids["note"]: "kept"}},
+        {"name": "g", "models": models, "labels": {ids["language"]: [], ids["note"]: ["kept"]}},
     )
     assert created.status_code == status.HTTP_201_CREATED
     url = f"/api/v1/evaluations/{evaluation_id}/conversation-groups/{created.json()['id']}"
 
     cleared = await auth_db_client.patch(
-        url, json={"labels": {ids["language"]: " ", ids["note"]: "edited"}}, headers=_auth(token)
+        url, json={"labels": {ids["language"]: [], ids["note"]: ["edited"]}}, headers=_auth(token)
     )
-    refused = await auth_db_client.patch(url, json={"labels": {ids["language"]: "English"}}, headers=_auth(token))
+    refused = await auth_db_client.patch(url, json={"labels": {ids["language"]: ["English"]}}, headers=_auth(token))
     refused_create = await _create_group(
-        auth_db_client, token, scenario_id, {"name": "h", "models": models, "labels": {ids["language"]: "English"}}
+        auth_db_client, token, scenario_id, {"name": "h", "models": models, "labels": {ids["language"]: ["English"]}}
     )
 
     assert cleared.status_code == status.HTTP_200_OK
@@ -1411,7 +1496,7 @@ async def test_patch_keeps_a_value_dropped_from_its_category_list(
         {
             "name": "g",
             "models": [{"evaluation_ai_model_id": str(assignment.id)}],
-            "labels": {ids["language"]: "Polish"},
+            "labels": {ids["language"]: ["Polish"]},
         },
     )
     language = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))
@@ -1423,10 +1508,10 @@ async def test_patch_keeps_a_value_dropped_from_its_category_list(
 
     # The full set comes back with the dropped value untouched and another category changed.
     kept = await auth_db_client.patch(
-        url, json={"labels": {ids["language"]: "Polish", ids["note"]: "retry"}}, headers=_auth(token)
+        url, json={"labels": {ids["language"]: ["Polish"], ids["note"]: ["retry"]}}, headers=_auth(token)
     )
     # Only the value already held is let through; another value outside the list still is not.
-    refused = await auth_db_client.patch(url, json={"labels": {ids["language"]: "German"}}, headers=_auth(token))
+    refused = await auth_db_client.patch(url, json={"labels": {ids["language"]: ["German"]}}, headers=_auth(token))
 
     assert kept.status_code == status.HTTP_200_OK
     assert [(label["name"], label["value"]) for label in kept.json()["labels"]] == [
@@ -1487,7 +1572,7 @@ async def test_a_deleted_category_drops_its_label_from_the_lists(
         {
             "name": "g",
             "models": [{"evaluation_ai_model_id": str(assignment.id)}],
-            "labels": {ids["language"]: "English", ids["note"]: "kept"},
+            "labels": {ids["language"]: ["English"], ids["note"]: ["kept"]},
         },
     )
     category = await db_session.get(EvaluationLabelCategory, UUID(ids["language"]))

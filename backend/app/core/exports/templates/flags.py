@@ -43,7 +43,7 @@ class FlagRow:
     # Raw flagged-message list (not pre-serialized): the CSV column's `formatter` JSON-encodes it to
     # a string cell, while the JSON export emits it as a real nested array via the column's `value`.
     messages: list[dict[str, str | dict[str, str] | None]]
-    labels: dict[str, str]
+    labels: dict[str, list[str]]
 
 
 async def _fetch_flags(session: AsyncSession, scope: ExportScope) -> AsyncIterator[FlagRow]:

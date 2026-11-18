@@ -39,6 +39,7 @@ from app.core.conversations.services.messages import open_turn
 from app.core.conversations.tags import TAG_CONTEXT_PREAMBLE
 from app.core.conversations.tags import render_tag_context
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
@@ -124,8 +125,9 @@ async def _evaluation_for(
     *,
     owner_id: UUID | None = None,
     access_level: EvaluationGroupAccessLevel = EvaluationGroupAccessLevel.PUBLIC,
+    status: PublicationStatus = PublicationStatus.PUBLISHED,
 ) -> Evaluation:
-    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id)
+    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id, status=status)
     row = Evaluation(title="Eval", description="d", evaluation_group_id=group.id, created_by_id=group.created_by_id)
     db_session.add(row)
     await db_session.flush()

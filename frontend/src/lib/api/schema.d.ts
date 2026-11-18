@@ -4742,15 +4742,17 @@ export interface components {
             models: components["schemas"]["ConversationGroupModelEntry"][];
             /**
              * Labels
-             * @description Labels, keyed by a label category of the evaluation. A category with values takes one of them; one without takes free text. Labels are never sent to the model.
+             * @description Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category with values takes any number of them; one without is selected by listing it with an empty list. Labels are never sent to the model.
              */
             labels?: {
-                [key: string]: string;
+                [key: string]: string[];
             };
         };
         /**
          * ConversationGroupLabelResponse
          * @description One label on a group, under a live label category of its evaluation.
+         *
+         *     A group holding several values in one category has one entry per value.
          */
         ConversationGroupLabelResponse: {
             /**
@@ -4766,9 +4768,9 @@ export interface components {
             name: string;
             /**
              * Value
-             * @description The value.
+             * @description The value; `null` when the category is selected on its own.
              */
-            value: string;
+            value: string | null;
         };
         /**
          * ConversationGroupModelEntry
@@ -4918,10 +4920,10 @@ export interface components {
             name?: string | null;
             /**
              * Labels
-             * @description Replacement label set, keyed by label category; a blank value clears that category. A value the group already holds is accepted even after it was dropped from its category's list.
+             * @description Replacement label set, keyed by label category, each with the list of values picked there; a category left out is cleared, and so is one with values listed with none. A category without values is selected by listing it with an empty list. A value the group already holds is accepted even after it was dropped from its category's list.
              */
             labels?: {
-                [key: string]: string;
+                [key: string]: string[];
             } | null;
         };
         /**
@@ -21217,7 +21219,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's. */
+            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's; or the evaluation group is not open for conversations (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21714,7 +21716,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description client_message_id already used in another conversation. */
+            /** @description client_message_id already used in another conversation; or the evaluation group is not open for prompts (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21968,6 +21970,16 @@ export interface operations {
             };
             /** @description The path scenario does not exist (or is outside the caller's scope / not visible), or a model assignment is not part of its evaluation. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The evaluation group is not open for conversations (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22440,7 +22452,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Target message is already superseded or not in the conversation's last turn. */
+            /** @description Target message is already superseded or not in the conversation's last turn; or the evaluation group is not open for prompts, or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -22544,7 +22556,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Target message is already superseded or not in the conversation's last turn. */
+            /** @description Target message is already superseded or not in the conversation's last turn; or the evaluation group is not open for prompts, or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;

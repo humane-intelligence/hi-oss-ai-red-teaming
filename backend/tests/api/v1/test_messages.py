@@ -68,8 +68,10 @@ from app.core.conversations.services.generation import MASKED_ERROR_DETAIL
 from app.core.conversations.services.messages import finalize_message
 from app.core.conversations.tags import TAG_CONTEXT_PREAMBLE
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
+from app.core.evaluations.models import EvaluationGroup
 from app.core.evaluations.models import EvaluationLabelCategory
 from app.core.evaluations.models import EvaluationTagKey
 from app.core.evaluations.models import Scenario
@@ -361,6 +363,23 @@ async def test_send_with_multiple_images_keeps_attachment_order(
     turns = await _turns(db_session, conversation)
     user_msg = next(m for m in await _messages(db_session, turns[0]) if m.role is MessageRole.USER)
     assert await _attached_keys(db_session, user_msg.id) == [first.key, second.key]
+
+
+async def test_send_in_a_finished_group_returns_409_even_for_its_owner(
+    async_client_with_db: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await _user(db_session, ["conversations:update"])
+    conversation = await _conversation(db_session, user)
+    evaluation = await db_session.get_one(Evaluation, conversation.evaluation_id)
+    group = await db_session.get_one(EvaluationGroup, evaluation.evaluation_group_id)
+    group.status = PublicationStatus.INACTIVE
+    await db_session.flush()
+
+    with as_user(user):
+        response = await async_client_with_db.post(_url(conversation), json={"content": "one more"})
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "finished" in response.json()["detail"]
 
 
 async def test_send_rejects_more_than_five_images(async_client_with_db: AsyncClient, db_session: AsyncSession) -> None:

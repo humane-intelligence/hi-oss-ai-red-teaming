@@ -28,7 +28,10 @@ import { ConversationsSection } from '@/features/conversations/conversations-sec
 import { StartConversationDialog } from '@/features/conversations/start-conversation-dialog'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
-import { groupAcceptsEvaluations } from '@/features/evaluation-groups/lifecycle'
+import {
+  groupAcceptsEvaluations,
+  promptsBlockedReason,
+} from '@/features/evaluation-groups/lifecycle'
 import { LicenseValue } from '@/features/licenses/license-value'
 import { humanizeError } from '@/lib/api/problem'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
@@ -98,6 +101,15 @@ export function EvaluationDetailPage() {
       : scenarios.data?.items.length === 0
         ? 'Add a scenario first'
         : undefined
+  const lifecycleBlocked = promptsBlockedReason(
+    group?.status,
+    evaluation?.status,
+    has('evaluations:update') &&
+      (has('evaluation_groups:manage') ||
+        (group?.user_permissions ?? []).includes('evaluations:update')),
+  )
+  const startReason =
+    lifecycleBlocked ?? (startBlocked ? `${startBlocked} to start a conversation.` : undefined)
   const approve = useApproveEvaluation(id ?? '')
   const reject = useRejectEvaluation(id ?? '')
   const unassign = useUnassignModel(id ?? '')
@@ -217,10 +229,8 @@ export function EvaluationDetailPage() {
             )}
 
             {/* A disabled button shows no tooltip and takes no focus, so its reason is spelled out. */}
-            {conversationPerms.has('conversations:create') && startBlocked && (
-              <p className="text-muted-foreground text-sm">
-                {startBlocked} to start a conversation.
-              </p>
+            {conversationPerms.has('conversations:create') && startReason && (
+              <p className="text-muted-foreground text-sm">{startReason}</p>
             )}
             <PageActions
               primary={
@@ -228,8 +238,12 @@ export function EvaluationDetailPage() {
                   {conversationPerms.has('conversations:create') && (
                     <Button
                       size="sm"
-                      disabled={startBlocked !== undefined || !scenarios.data}
-                      title={startBlocked}
+                      disabled={
+                        lifecycleBlocked !== undefined ||
+                        startBlocked !== undefined ||
+                        !scenarios.data
+                      }
+                      title={lifecycleBlocked ?? startBlocked}
                       onClick={() => {
                         // One scenario leaves nothing to choose, so the dialog would be a dead click.
                         const only = scenarioItems.length === 1 ? scenarioItems[0] : undefined
