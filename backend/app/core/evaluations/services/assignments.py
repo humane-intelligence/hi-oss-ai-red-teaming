@@ -90,8 +90,8 @@ async def get_assignment(
 def _name_column(masked: bool) -> Mapped[str | None]:
     """The column the listing surfaces as the model name.
 
-    Masking-aware: a masked evaluation never exposes the real model name, so it
-    reads `model_display_mask`; otherwise it reads the joined `AiModel.name`.
+    Masking-aware: a caller the evaluation masks models from never gets the real
+    name, so it reads `model_display_mask`; otherwise it reads the joined `AiModel.name`.
     """
     return col(EvaluationAiModel.model_display_mask) if masked else col(AiModel.name)
 
@@ -124,7 +124,7 @@ def _apply_models_order_by(
     return apply_order_by(statement, EvaluationAiModel, order_by)
 
 
-async def list_evaluation_models(
+async def list_evaluation_models(  # noqa: PLR0913 — keyword-only args mirror the route's query surface
     session: AsyncSession,
     *,
     evaluation_id: UUID,
@@ -134,13 +134,17 @@ async def list_evaluation_models(
     limit: int,
     offset: int,
     deleted_cutoff: datetime,
+    unmask: bool = False,
 ) -> tuple[list[EvaluationAiModel], int, bool]:
     """List one page of an evaluation's model assignments, masking-aware.
 
+    ``unmask`` lifts the evaluation's masking for a caller the route cleared
+    (`may_see_model_identities`), so search, sort and the projection all use real names.
+
     Resolves the evaluation under the same visibility rule as the detail read
     (parent group public or caller-owned) — a non-visible evaluation surfaces as
-    a 404. The returned mask flag (`mask_models_enabled`) drives the search/sort
-    column selection here and the response projection at the route.
+    a 404. The returned mask flag (`mask_models_enabled`, unless ``unmask`` lifted it)
+    drives the search/sort column selection here and the response projection at the route.
 
     `ai_model` is eager-loaded (joined) on every listing: the response projection
     reads `warmup_enabled` off the model regardless of masking
@@ -152,7 +156,7 @@ async def list_evaluation_models(
 
     Returns:
         The page of assignments (with `ai_model` eager-loaded), the total count,
-        and the evaluation's masking flag.
+        and whether models are masked from this caller.
 
     Raises:
         NotFoundError: If the evaluation does not exist or is not visible.
@@ -160,7 +164,7 @@ async def list_evaluation_models(
     the global settings here would let the listing and the restore disagree on the window.
     """
     evaluation = await get_evaluation(session, evaluation_id, caller_id=caller_id, with_models=False)
-    masked = evaluation.mask_models_enabled
+    masked = evaluation.mask_models_enabled and not unmask
     base = (
         deleted_select(EvaluationAiModel, deleted_cutoff, deleted_by=None)
         if filters.deleted

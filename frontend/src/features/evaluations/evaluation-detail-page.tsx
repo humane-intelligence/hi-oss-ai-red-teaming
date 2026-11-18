@@ -320,6 +320,13 @@ export function EvaluationDetailPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
+                      {evaluation.mask_models_enabled &&
+                        (evaluation.models ?? []).some((m) => m.provider_model_id) && (
+                          <p className="text-muted-foreground text-xs">
+                            You see the real names because you manage this evaluation. Participants
+                            see these models masked.
+                          </p>
+                        )}
                       {(evaluation.models ?? []).map((model) => (
                         <div
                           key={model.assignment_id}

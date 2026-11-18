@@ -52,6 +52,7 @@ from app.core.evaluations.services.evaluation_groups import assert_group_write_a
 from app.core.evaluations.services.label_categories import list_label_categories
 from app.core.evaluations.services.loaders import evaluation_models_loader
 from app.core.exceptions import ConflictError
+from app.core.exceptions import ForbiddenError
 from app.core.exceptions import NotFoundError
 from app.core.licenses.catalog import effective_license
 from app.core.licenses.models import DataLicense
@@ -99,6 +100,32 @@ def _scope_to_groups(
     if not can_manage:
         statement = statement.where(group_visible_to(caller_id))
     return statement
+
+
+async def may_see_model_identities(
+    session: AsyncSession, evaluation_id: UUID, *, caller_id: UUID, permissions: Iterable[str]
+) -> bool:
+    """Whether a masked evaluation still shows this caller its models' real identities.
+
+    The same rule as the unmasked by-id assignment read: the global `evaluations:update`
+    permission plus write access to the parent group (an in-group role granting it, or the
+    `evaluation_groups:manage` break-glass). Masking hides which model is which from the
+    people testing them, not from the people who set the evaluation up.
+    """
+    held = set(permissions)
+    if Permission.EVALUATIONS_UPDATE not in held:
+        return False
+    try:
+        await authorize_evaluation_mutation(
+            session,
+            evaluation_id,
+            caller_id=caller_id,
+            can_manage=Permission.EVALUATION_GROUPS_MANAGE in held,
+            permission=Permission.EVALUATIONS_UPDATE,
+        )
+    except ForbiddenError, NotFoundError:
+        return False
+    return True
 
 
 async def authorize_evaluation_mutation(

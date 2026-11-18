@@ -574,14 +574,18 @@ async def test_list_models_returns_200_with_masked_items(
     auth_db_client: AsyncClient,
     db_session: AsyncSession,
     updater_role: Role,
+    reader_role: Role,
     evaluation: Evaluation,
     ai_model: AiModel,
 ) -> None:
     caller = await _caller(db_session, updater_role, email="listmasked@example.com")
     headers = {"Authorization": f"Bearer {_token(caller)}"}
     assignment_id = await _assign(auth_db_client, evaluation, ai_model, headers, mask="Alpha")
+    reader = await _caller(db_session, reader_role, email="listmasked-reader@example.com")
 
-    response = await auth_db_client.get(f"/api/v1/evaluations/{evaluation.id}/models", headers=headers)
+    response = await auth_db_client.get(
+        f"/api/v1/evaluations/{evaluation.id}/models", headers={"Authorization": f"Bearer {_token(reader)}"}
+    )
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
@@ -591,6 +595,82 @@ async def test_list_models_returns_200_with_masked_items(
     assert item["name"] == "Alpha"  # display mask, not the real name
     assert item["provider"] is None
     assert item["provider_model_id"] is None
+
+
+async def _model_as_seen(client: AsyncClient, evaluation_id: UUID, caller: User) -> dict[str, object]:
+    """What one caller is shown of the evaluation's single assigned model, on each read that carries it."""
+    headers = {"Authorization": f"Bearer {_token(caller)}"}
+    base = f"/api/v1/evaluations/{evaluation_id}"
+    detail = (await client.get(base, headers=headers)).json()["models"][0]
+    listed = (await client.get(f"{base}/models", headers=headers)).json()["items"][0]
+    by_real_name = (await client.get(f"{base}/models?search=clau", headers=headers)).json()["total"]
+    in_list = (await client.get("/api/v1/evaluations?limit=100", headers=headers)).json()["items"]
+    embedded = next(e for e in in_list if e["id"] == str(evaluation_id))["models"][0]
+    return {
+        "detail": (detail["name"], detail["provider_model_id"]),
+        "listed": (listed["name"], listed["provider_model_id"]),
+        "found_by_real_name": by_real_name,
+        "evaluations_list": embedded["name"],
+    }
+
+
+_UNMASKED = {
+    "detail": ("Claude", "claude-3-5-sonnet-20240620"),
+    "listed": ("Claude", "claude-3-5-sonnet-20240620"),
+    "found_by_real_name": 1,
+    # Only the detail and the model list unmask; every other projection keeps the alias.
+    "evaluations_list": "Alpha",
+}
+_MASKED = {"detail": ("Alpha", None), "listed": ("Alpha", None), "found_by_real_name": 0, "evaluations_list": "Alpha"}
+
+
+@pytest.mark.integration
+async def test_masked_evaluation_shows_real_identities_to_a_manager_and_the_mask_to_a_reader(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    updater_role: Role,
+    reader_role: Role,
+    evaluation: Evaluation,
+    ai_model: AiModel,
+) -> None:
+    manager = await _caller(db_session, updater_role, email="unmask-manager@example.com")
+    reader = await _caller(db_session, reader_role, email="unmask-reader@example.com")
+    await _assign(auth_db_client, evaluation, ai_model, {"Authorization": f"Bearer {_token(manager)}"}, mask="Alpha")
+
+    assert await _model_as_seen(auth_db_client, evaluation.id, manager) == _UNMASKED
+    assert await _model_as_seen(auth_db_client, evaluation.id, reader) == _MASKED
+
+
+@pytest.mark.integration
+async def test_masked_evaluation_unmasks_for_the_group_owner_only_with_the_update_permission(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    owner_updater_role: Role,
+    reader_role: Role,
+    ai_model: AiModel,
+) -> None:
+    # Both halves of the by-id read's rule: write access to the group and the global permission.
+    owner = await _caller(db_session, owner_updater_role, email="unmask-owner@example.com")
+    outsider = await _caller(db_session, owner_updater_role, email="unmask-outsider@example.com")
+    read_only_owner = await _caller(db_session, reader_role, email="unmask-readonly-owner@example.com")
+    seen = {}
+    for who, group_owner, caller in (
+        ("owner", owner, owner),
+        ("update holder outside the group", owner, outsider),
+        ("owner without evaluations:update", read_only_owner, read_only_owner),
+    ):
+        evaluation = await _evaluation_in_group(
+            db_session, owner_id=group_owner.id, access_level=EvaluationGroupAccessLevel.PUBLIC
+        )
+        db_session.add(EvaluationAiModel(evaluation_id=evaluation.id, model_id=ai_model.id, model_display_mask="Alpha"))
+        await db_session.flush()
+        seen[who] = await _model_as_seen(auth_db_client, evaluation.id, caller)
+
+    assert seen == {
+        "owner": _UNMASKED,
+        "update holder outside the group": _MASKED,
+        "owner without evaluations:update": _MASKED,
+    }
 
 
 @pytest.mark.integration
@@ -650,6 +730,7 @@ async def test_list_models_search_param_filters(
     auth_db_client: AsyncClient,
     db_session: AsyncSession,
     updater_role: Role,
+    reader_role: Role,
     evaluation: Evaluation,
     ai_model: AiModel,
 ) -> None:
@@ -658,6 +739,8 @@ async def test_list_models_search_param_filters(
     caller = await _caller(db_session, updater_role, email="searchwiring@example.com")
     headers = {"Authorization": f"Bearer {_token(caller)}"}
     await _assign(auth_db_client, evaluation, ai_model, headers, mask="Alpha")
+    reader = await _caller(db_session, reader_role, email="searchwiring-reader@example.com")
+    headers = {"Authorization": f"Bearer {_token(reader)}"}
 
     hit = await auth_db_client.get(f"/api/v1/evaluations/{evaluation.id}/models?search=alph", headers=headers)
     miss = await auth_db_client.get(f"/api/v1/evaluations/{evaluation.id}/models?search=nope", headers=headers)
@@ -671,6 +754,7 @@ async def test_list_models_paginates(
     auth_db_client: AsyncClient,
     db_session: AsyncSession,
     updater_role: Role,
+    reader_role: Role,
     evaluation: Evaluation,
     ai_model: AiModel,
 ) -> None:
@@ -681,9 +765,11 @@ async def test_list_models_paginates(
     await db_session.flush()
     await _assign(auth_db_client, evaluation, ai_model, headers, mask="Bravo")
     await _assign(auth_db_client, evaluation, second, headers, mask="Alpha")
+    reader = await _caller(db_session, reader_role, email="paginate-reader@example.com")
 
     response = await auth_db_client.get(
-        f"/api/v1/evaluations/{evaluation.id}/models?order_by=name&limit=1&offset=0", headers=headers
+        f"/api/v1/evaluations/{evaluation.id}/models?order_by=name&limit=1&offset=0",
+        headers={"Authorization": f"Bearer {_token(reader)}"},
     )
 
     body = response.json()

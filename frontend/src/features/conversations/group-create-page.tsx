@@ -132,8 +132,11 @@ export function GroupCreatePage() {
     // A category deleted after its field was filled would 400 the create, with no field left to clear.
     const liveIds = new Set((labelCategories.data ?? []).map((c) => c.id))
     const liveLabels = Object.fromEntries(Object.entries(labels).filter(([id]) => liveIds.has(id)))
-    const modelNames = rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')
-    const fallbackName = `Compare: ${modelNames} · ${startedStamp(new Date())}`
+    // The name is stored and shown to every reader, so on a masked evaluation it never names the models.
+    const compared = evaluation.data?.mask_models_enabled
+      ? `${rows.length} ${rows.length === 1 ? 'model' : 'models'}`
+      : rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')
+    const fallbackName = `Compare: ${compared} · ${startedStamp(new Date())}`
     createGroup.mutate(
       {
         scenarioId: chosenScenarioId,

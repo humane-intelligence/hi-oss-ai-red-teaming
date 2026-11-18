@@ -193,6 +193,34 @@ describe('GroupCreatePage', () => {
     )
   })
 
+  it('keeps model names out of the default name on a masked evaluation, even for who sees them', async () => {
+    let captured: unknown = null
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ ...evaluation, mask_models_enabled: true }),
+      ),
+      ...baseHandlers(),
+      http.post(
+        `http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`,
+        async ({ request }) => {
+          captured = await request.json()
+          return HttpResponse.json(groupResponse(), { status: 201 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect((captured as { name: string }).name).toMatch(
+      /^Compare: 1 model · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+    )
+  })
+
   it('sends a typed name, trimmed', async () => {
     let captured: unknown = null
     server.use(

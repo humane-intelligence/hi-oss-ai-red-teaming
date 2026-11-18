@@ -149,8 +149,8 @@ class EvaluationAiModelFilters(BaseModel):
     """Optional filters for `GET /v1/evaluations/{evaluation_id}/models`.
 
     `search` is masking-aware: the service matches it against `model_display_mask`
-    when the parent evaluation masks models, and against the real model name
-    otherwise (see `list_evaluation_models`).
+    when the parent evaluation masks models from the caller, and against the real
+    model name otherwise (see `list_evaluation_models`).
 
     `deleted` swaps in the assignments this evaluation unassigned inside the restore
     window — narrowed to those whose model is still live, since those are the only

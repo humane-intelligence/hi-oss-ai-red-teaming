@@ -391,6 +391,42 @@ const evaluationWithModel: EvaluationResponse = {
   ],
 }
 
+describe('EvaluationDetailPage — masked models', () => {
+  const NOTE = /participants see these models masked/i
+
+  it('tells whoever is shown the real names that participants see them masked', async () => {
+    server.use(...baseHandlers({ ...evaluationWithModel, mask_models_enabled: true }))
+    renderPage(['evaluations:read', 'evaluations:update', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+  })
+
+  it('says nothing to a viewer who gets the masked names', async () => {
+    const masked = (evaluationWithModel.models ?? []).map((m) => ({
+      ...m,
+      name: 'Model A',
+      provider: null,
+      provider_model_id: null,
+    }))
+    server.use(
+      ...baseHandlers({ ...evaluationWithModel, mask_models_enabled: true, models: masked }),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('Model A')).toBeInTheDocument()
+    expect(screen.queryByText(NOTE)).toBeNull()
+  })
+
+  it('says nothing when the evaluation does not mask its models', async () => {
+    server.use(...baseHandlers(evaluationWithModel))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
+    expect(screen.queryByText(NOTE)).toBeNull()
+  })
+})
+
 describe('EvaluationDetailPage — edit model parameters', () => {
   it('opens the edit dialog prefilled with the assignment mask and params', async () => {
     server.use(

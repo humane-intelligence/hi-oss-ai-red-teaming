@@ -1056,7 +1056,7 @@ export interface paths {
         };
         /**
          * Get evaluation
-         * @description Fetch one evaluation with its assigned models. When the evaluation masks models, each model's identifying fields are withheld and the display mask is surfaced as the name.
+         * @description Fetch one evaluation with its assigned models. When the evaluation masks models, each model's identifying fields are withheld and the display mask is surfaced as the name — except for a caller holding `evaluations:update` with write access to the parent group (an in-group role granting it, or `evaluation_groups:manage`), who sees the real identities. Only this read and the model list do so; every other evaluation response stays masked.
          */
         get: operations["get_evaluation_endpoint_api_v1_evaluations__evaluation_id__get"];
         put?: never;
@@ -1084,7 +1084,7 @@ export interface paths {
         };
         /**
          * List models assigned to an evaluation
-         * @description Return a paginated list of the models assigned to an evaluation, with optional name search and ordering. When the evaluation masks models, each model's identity is withheld and its display mask is surfaced as the name; search and name ordering then run against the display mask. `deleted=true` serves the assignments unassigned inside the restore window instead — the set `POST …/{assignment_id}/restore` can act on, so it requires exactly what the unassign and the restore do: the `evaluations:update` permission **and** write access to the parent group.
+         * @description Return a paginated list of the models assigned to an evaluation, with optional name search and ordering. When the evaluation masks models, each model's identity is withheld and its display mask is surfaced as the name; search and name ordering then run against the display mask. A caller holding `evaluations:update` with write access to the parent group sees real identities instead, as on the evaluation detail. `deleted=true` serves the assignments unassigned inside the restore window instead — the set `POST …/{assignment_id}/restore` can act on, so it requires exactly what the unassign and the restore do: the `evaluations:update` permission **and** write access to the parent group.
          */
         get: operations["list_evaluation_models_endpoint_api_v1_evaluations__evaluation_id__models_get"];
         put?: never;
@@ -5488,7 +5488,9 @@ export interface components {
          *
          *     When the parent evaluation masks models, `name` carries the assignment's
          *     `model_display_mask` (possibly `null` when none is set) and the identifying
-         *     fields (`provider`, `provider_model_id`) are withheld as `null`. The
+         *     fields (`provider`, `provider_model_id`) are withheld as `null` — except on the
+         *     evaluation detail and model list reads for a caller who may edit the evaluation,
+         *     which surface the real identity (`may_see_model_identities`). The
          *     `assignment_id` is always present — it addresses the assignment without
          *     correlating the underlying model across evaluations. `warmup_enabled` is
          *     surfaced even under masking: it's an operational flag (does this endpoint
@@ -5519,14 +5521,14 @@ export interface components {
             assignment_id: string;
             /**
              * Name
-             * @description Model display name, or its mask alias when the evaluation masks models.
+             * @description Model display name, or its mask alias when the evaluation masks models from the caller.
              */
             name?: string | null;
-            /** @description Vendor whose API backs the model; `null` when the evaluation masks models. */
+            /** @description Vendor whose API backs the model; `null` when the evaluation masks models from the caller. */
             provider?: components["schemas"]["ProviderVendor"] | null;
             /**
              * Provider Model Id
-             * @description Provider-side model identifier; `null` when the evaluation masks models.
+             * @description Provider-side model identifier; `null` when the evaluation masks models from the caller.
              */
             provider_model_id?: string | null;
             /**
@@ -5554,7 +5556,7 @@ export interface components {
             web_access: boolean;
             /**
              * Effective Parameters
-             * @description Inference params inherited by conversations under this assignment: the model baseline merged with the per-assignment overrides. Under model masking, restricted to the identity-safe numeric sampling knobs — the system prompt and provider-specific keys are withheld. Empty when `advanced_params_disabled` is set — nothing below inherits params the gateway will not send.
+             * @description Inference params inherited by conversations under this assignment: the model baseline merged with the per-assignment overrides. When models are masked from the caller, restricted to the identity-safe numeric sampling knobs — the system prompt and provider-specific keys are withheld. Empty when `advanced_params_disabled` is set — nothing below inherits params the gateway will not send.
              */
             effective_parameters?: {
                 [key: string]: unknown;
