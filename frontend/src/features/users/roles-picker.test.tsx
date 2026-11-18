@@ -33,19 +33,14 @@ const CUSTOM: RoleResponse = {
   is_object_assignable: false,
 }
 
-// Stands in for the endpoint's `is_object_assignable` filter, so the test exercises the
-// same contract the backend implements rather than a client-side filter.
-function rolesHandler(items: RoleResponse[], seen?: { query: string | null }) {
-  return http.get('http://localhost/api/v1/roles', ({ request }) => {
-    const param = new URL(request.url).searchParams.get('is_object_assignable')
-    if (seen) seen.query = param
-    const filtered =
-      param === null ? items : items.filter((r) => r.is_object_assignable === (param === 'true'))
-    return HttpResponse.json({ items: filtered, total: filtered.length, limit: 100, offset: 0 })
+function rolesHandler(items: RoleResponse[], seen?: { called: boolean }) {
+  return http.get('http://localhost/api/v1/roles', () => {
+    if (seen) seen.called = true
+    return HttpResponse.json({ items, total: items.length, limit: 100, offset: 0 })
   })
 }
 
-function renderPicker(extra: { objectAssignableOnly?: boolean } = {}) {
+function renderPicker(extra: { groupId?: string } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
@@ -56,31 +51,35 @@ function renderPicker(extra: { objectAssignableOnly?: boolean } = {}) {
 
 describe('RolesPicker', () => {
   it('shows the whole catalog by default, including custom roles (global assignment)', async () => {
-    const seen = { query: null as string | null }
-    server.use(rolesHandler([SYSTEM, CUSTOM], seen))
+    server.use(rolesHandler([SYSTEM, CUSTOM]))
     renderPicker()
 
     await waitFor(() => expect(screen.getByText('Red Teamer')).toBeInTheDocument())
     expect(screen.getByText('Lead Reviewer')).toBeInTheDocument()
-    expect(seen.query).toBeNull()
   })
 
-  it('objectAssignableOnly asks the server for the in-group subset', async () => {
-    const seen = { query: null as string | null }
-    server.use(rolesHandler([SYSTEM, ADMIN, CUSTOM], seen))
-    renderPicker({ objectAssignableOnly: true })
+  it('with a groupId offers the roles assignable in that group, without reading the catalog', async () => {
+    const seen = { called: false }
+    server.use(
+      rolesHandler([SYSTEM, ADMIN, CUSTOM], seen),
+      http.get('http://localhost/api/v1/evaluation-groups/grp-1/assignable-roles', () =>
+        HttpResponse.json({ items: [SYSTEM], total: 1, limit: 100, offset: 0 }),
+      ),
+    )
+    renderPicker({ groupId: 'grp-1' })
 
     await waitFor(() => expect(screen.getByText('Red Teamer')).toBeInTheDocument())
-    expect(seen.query).toBe('true')
-    // admin and the global-only custom role are filtered out server-side, so the
-    // component never has to know which roles those are.
     expect(screen.queryByText('Admin')).toBeNull()
-    expect(screen.queryByText('Lead Reviewer')).toBeNull()
+    expect(seen.called).toBe(false)
   })
 
-  it('renders an empty-state when the filtered catalog comes back empty', async () => {
-    server.use(rolesHandler([ADMIN]))
-    renderPicker({ objectAssignableOnly: true })
+  it('renders an empty-state when the group offers no roles', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/evaluation-groups/grp-1/assignable-roles', () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+    )
+    renderPicker({ groupId: 'grp-1' })
 
     await waitFor(() => expect(screen.getByText(/no roles available to pick/i)).toBeInTheDocument())
   })

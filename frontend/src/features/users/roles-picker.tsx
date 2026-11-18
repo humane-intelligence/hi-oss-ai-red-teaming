@@ -1,9 +1,10 @@
+import { useGroupAssignableRoles } from '@/features/evaluation-groups/queries'
 import { useRoles } from './queries'
 
 export function RolesPicker({
   selected,
   onChange,
-  objectAssignableOnly,
+  groupId,
   describedBy,
   invalid,
 }: {
@@ -14,16 +15,13 @@ export function RolesPicker({
   // prop list and would swallow them.
   describedBy?: string
   invalid?: boolean
-  // In-group pickers offer exactly what object-role assignment accepts — the catalog
-  // filtered server-side on `is_object_assignable`. The backend owns that policy
-  // (code-managed for system roles, an operator opt-in for custom ones), so the
-  // platform-only admin drops out without the FE naming or re-deriving it.
-  objectAssignableOnly?: boolean
+  // Set for an in-group picker: it then offers the roles assignable in that group, which the
+  // backend lists to whoever manages its members. Omitted, it offers the whole catalog.
+  groupId?: string
 }) {
-  // `false` and omitted both mean "whole catalog" — only `true` narrows.
-  const { data, isPending } = useRoles({
-    objectAssignable: objectAssignableOnly ? true : undefined,
-  })
+  const catalog = useRoles({ enabled: groupId === undefined })
+  const inGroup = useGroupAssignableRoles(groupId ?? '')
+  const { data, isPending } = groupId === undefined ? catalog : inGroup
   const roles = data?.items ?? []
 
   const toggle = (id: string) =>

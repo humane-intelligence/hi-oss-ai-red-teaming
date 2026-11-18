@@ -223,3 +223,19 @@ export function useGroupAnnotators(
       ),
   })
 }
+
+// The roles a member of the group can be given. Gated like member management, so it loads for an
+// in-group owner who lacks the global `roles:read` the role catalog needs. Under the `['roles']`
+// prefix: editing a role invalidates it together with the catalog.
+export function useGroupAssignableRoles(groupId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['roles', 'group-assignable', groupId],
+    enabled: groupId !== '' && (options?.enabled ?? true),
+    queryFn: async () =>
+      unwrap(
+        await apiClient.GET('/api/v1/evaluation-groups/{group_id}/assignable-roles', {
+          params: { path: { group_id: groupId }, query: { limit: 100 } },
+        }),
+      ),
+  })
+}

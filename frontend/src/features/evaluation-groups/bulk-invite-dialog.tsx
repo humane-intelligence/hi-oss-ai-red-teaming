@@ -184,7 +184,7 @@ export function BulkInviteDialog({
                 <RolesPicker
                   selected={field.value}
                   onChange={field.onChange}
-                  objectAssignableOnly
+                  groupId={groupId}
                   // Wired by hand: `Controller` renders through a prop, so cloned aria props from
                   // `FormField` would land on it and go nowhere.
                   describedBy={formState.errors.role_ids ? ROLES_ERROR_ID : undefined}

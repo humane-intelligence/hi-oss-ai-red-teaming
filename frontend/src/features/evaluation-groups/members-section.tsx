@@ -40,7 +40,7 @@ function EditMemberDialog({
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label>Roles</Label>
-          <RolesPicker selected={roleIds} onChange={setRoleIds} objectAssignableOnly />
+          <RolesPicker selected={roleIds} onChange={setRoleIds} groupId={groupId} />
         </div>
       </div>
       <div className="flex justify-end gap-2">
@@ -114,11 +114,7 @@ export function MembersSection({
   const canPickUsers = hasGlobal('users:read')
   // Organization members come from `/organizations/{id}/members` (`organizations:read`).
   const canPickOrganization = hasGlobal('organizations:read') && !!organizationId
-  // Every role dialog (add, edit, invite) lists roles from `/roles`, which is gated on the global
-  // `roles:read` — an in-group owner without it would open a dialog that can only 403.
-  const canAssignRoles = hasGlobal('roles:read')
-  const canAddExisting = canManageMembers && canAssignRoles && (canPickUsers || canPickOrganization)
-  const canEditRoles = canManageMembers && canAssignRoles
+  const canAddExisting = canManageMembers && (canPickUsers || canPickOrganization)
   const [addOpen, setAddOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<ObjectMemberResponse | null>(null)
@@ -130,7 +126,7 @@ export function MembersSection({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Members ({members.data?.total ?? 0})</h2>
-        {canManageMembers && canAssignRoles && (
+        {canManageMembers && (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
               <Mail className="size-4" /> Invite by email
@@ -165,16 +161,14 @@ export function MembersSection({
             </div>
             {canManageMembers && (
               <>
-                {canEditRoles && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Edit roles"
-                    onClick={() => setEditTarget(m)}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit roles"
+                  onClick={() => setEditTarget(m)}
+                >
+                  <Pencil className="size-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -214,7 +208,7 @@ export function MembersSection({
         />
       )}
       <BulkInviteDialog groupId={groupId} open={inviteOpen} onOpenChange={setInviteOpen} />
-      {canEditRoles && (
+      {canManageMembers && (
         <EditMemberDialog
           groupId={groupId}
           member={editTarget}
