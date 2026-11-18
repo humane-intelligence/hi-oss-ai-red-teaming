@@ -37,6 +37,10 @@ change between minor versions.
 - `POST /evaluation-groups/{group_id}/members/bulk` loads the envelope's users once and resolves
   each distinct set of `role_ids` once, instead of both per row: about half the statements of an
   "add all members" (10 per row down to 5, savepoints included). Per-row outcomes are unchanged.
+- `GET /auth/users?search=` also matches a first and last name typed together (`ada love`), not
+  only one column at a time.
+- The 409 that refuses a model added to a prompted or full conversation group no longer carries
+  the group's id in `detail`, and the 409 for a deactivated user no longer names an API route.
 
 - The health check that followed a save ran only for models declaring image input; it now follows
   every create, every patch that moves the call, and setting the API key. Bulk create still starts

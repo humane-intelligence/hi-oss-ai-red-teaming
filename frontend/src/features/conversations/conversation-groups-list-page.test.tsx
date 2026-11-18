@@ -151,6 +151,14 @@ describe('ConversationGroupsListPage', () => {
     expect(within(emptied).getByText('No messages')).toBeInTheDocument()
   })
 
+  it("marks a row that is another member's", async () => {
+    server.use(...handlers([{ ...groupRow, user_id: 'someone-else' }]))
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('GPT-4o vs Claude')).toBeInTheDocument())
+    expect(screen.getByText("Another member's")).toBeInTheDocument()
+  })
+
   it('offers only the data columns in the Columns menu', async () => {
     const user = userEvent.setup()
     server.use(...handlers([ownRow]))

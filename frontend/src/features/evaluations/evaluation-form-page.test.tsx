@@ -106,6 +106,23 @@ function renderEdit() {
   )
 }
 
+describe('EvaluationFormPage — edit, record unavailable', () => {
+  it('shows the error instead of a blank form that would save defaults over the record', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 }),
+      ),
+      ...handlers(['evaluations:update']),
+    )
+    renderEdit()
+
+    expect(
+      await screen.findByText('Something went wrong on the server. Try again in a moment.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+})
+
 describe('EvaluationFormPage — the trail on the edit path', () => {
   it('names the group being edited inside, and the evaluation, which the title does not', async () => {
     server.use(

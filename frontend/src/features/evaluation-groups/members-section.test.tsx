@@ -609,6 +609,64 @@ describe('MembersSection — add flow', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
+  it('tells a deactivated row from an existing member, though both are a 409', async () => {
+    handlers({ users: [user3] })
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/bulk`, () =>
+        HttpResponse.json({
+          dry_run: false,
+          total: 1,
+          succeeded: 0,
+          failed: 1,
+          results: [
+            {
+              row_key: USER_ID_3,
+              status: 'failed',
+              error: {
+                title: 'Conflict',
+                status: 409,
+                detail: 'User is deactivated. Reactivate the account first.',
+              },
+            },
+          ],
+        }),
+      ),
+    )
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 1' }))
+
+    expect(await within(dialog).findByRole('status')).toHaveTextContent(
+      'carol@example.com — Deactivated',
+    )
+  })
+
+  it('shows why the whole add was refused instead of failing silently', async () => {
+    handlers({ users: [user3] })
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/bulk`, () =>
+        HttpResponse.json(
+          {
+            title: 'Unprocessable Entity',
+            status: 422,
+            detail: 'Request body failed validation.',
+            errors: [{ loc: ['body', 'rows'], msg: 'At most 1000 rows.', type: 'too_long' }],
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 1' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('At most 1000 rows.')
+  })
+
   it('loads the next page of users on demand', async () => {
     handlers()
     server.use(
@@ -782,16 +840,22 @@ describe('MembersSection — add flow', () => {
     )
   })
 
-  it('says when the list shows only the first page of a large group', async () => {
+  it('pages through a group larger than one page', async () => {
+    const offsets: (string | null)[] = []
     server.use(
-      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, () =>
-        HttpResponse.json({ items: [member], total: 150, limit: 100, offset: 0 }),
-      ),
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, ({ request }) => {
+        offsets.push(new URL(request.url).searchParams.get('offset'))
+        return HttpResponse.json({ items: [member], total: 150, limit: 50, offset: 0 })
+      }),
       ...baseHandlers(),
     )
+    const user = userEvent.setup()
     renderSection(['evaluation_groups:read'])
 
-    expect(await screen.findByText('Showing the first 1 of 150 members.')).toBeInTheDocument()
+    expect(await screen.findByText('1–50 of 150')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    await waitFor(() => expect(offsets).toContain('50'))
   })
 })
 

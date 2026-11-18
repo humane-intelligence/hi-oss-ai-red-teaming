@@ -172,8 +172,8 @@ export function EditTagsDialog({
       <div className="space-y-4">
         <p className="text-muted-foreground text-sm">
           {allowedKeys === null
-            ? 'Free-form key/value context tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s tagging policy no longer allows.'
-            : 'Key/value context tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s tagging policy no longer allows. This evaluation restricts context tags, so keys are picked from the ones it allows.'}
+            ? 'Free-form key/value context tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s context-tag policy no longer allows.'
+            : 'Key/value context tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s context-tag policy no longer allows. This evaluation restricts context tags, so keys are picked from the ones it allows.'}
         </p>
         {allowedKeys !== null && keysStatus === 'pending' && (
           <p className="text-muted-foreground text-xs">Loading allowed keys…</p>
@@ -255,7 +255,7 @@ export function EditTagsDialog({
             // control stays in the tab order, so it has to stay readable.
             className={cn(addBlocked && 'text-muted-foreground')}
           >
-            Add tag
+            Add context tag
           </Button>
           {addBlockedReason && (
             <p id={addReasonId} className="text-muted-foreground text-xs">

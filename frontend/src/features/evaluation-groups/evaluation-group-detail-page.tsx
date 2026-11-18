@@ -24,7 +24,7 @@ import {
 import { useUserLookup } from '@/features/users/queries'
 import { LicenseValue } from '@/features/licenses/license-value'
 import { humanizeError } from '@/lib/api/problem'
-import { formatCalendarDate } from '@/lib/format-date'
+import { formatCalendarDate, formatDateTime } from '@/lib/format-date'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { GroupIdentityHeading } from './group-trail'
 import { PublicationStatusBadge } from './status-badge'
@@ -392,7 +392,7 @@ export function EvaluationGroupDetailPage() {
                       <Field label="Analytics (after finish)">
                         {METRICS_ACCESS_LABELS[group.metrics_access_after]}
                       </Field>
-                      <Field label="Created">{new Date(group.created_at).toLocaleString()}</Field>
+                      <Field label="Created">{formatDateTime(group.created_at)}</Field>
                     </dl>
                   </CardContent>
                 </Card>

@@ -189,7 +189,7 @@ describe('GroupCreatePage', () => {
 
     await waitFor(() => expect(captured).not.toBeNull())
     expect((captured as { name: string }).name).toMatch(
-      /^Compare: gpt-4o vs claude-3-opus · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+      /^Compare: gpt-4o vs claude-3-opus · \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     )
   })
 
@@ -217,8 +217,68 @@ describe('GroupCreatePage', () => {
 
     await waitFor(() => expect(captured).not.toBeNull())
     expect((captured as { name: string }).name).toMatch(
-      /^Compare: 1 model · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+      /^Compare: 1 model · \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     )
+  })
+
+  it('shows a refused field instead of going quiet, whichever field it is', async () => {
+    server.use(
+      ...baseHandlers(),
+      http.post(`http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`, () =>
+        HttpResponse.json(
+          {
+            title: 'Unprocessable Entity',
+            status: 422,
+            errors: [{ loc: ['body', 'models'], msg: 'At most 4 models.', type: 'too_long' }],
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('At most 4 models.')
+  })
+
+  it('stops at four model rows and caps the name, as the server does', async () => {
+    server.use(...baseHandlers())
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    expect(screen.getByLabelText('Name (optional)')).toHaveAttribute('maxlength', '255')
+    const add = screen.getByRole('button', { name: /add model/i })
+    await user.click(add)
+    await user.click(add)
+    await user.click(add)
+
+    expect(screen.getByLabelText('Model 4')).toBeInTheDocument()
+    expect(add).toBeDisabled()
+  })
+
+  it('numbers masked models so two of them can be told apart', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({
+          ...evaluation,
+          mask_models_enabled: true,
+          models: (evaluation.models ?? []).map((m) => ({ ...m, name: null })),
+        }),
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByLabelText('Model 1'))
+
+    expect(await screen.findByRole('option', { name: 'Masked model 1' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Masked model 2' })).toBeInTheDocument()
   })
 
   it('sends a typed name, trimmed', async () => {

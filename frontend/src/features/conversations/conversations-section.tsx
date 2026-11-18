@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth/auth-context'
 import { applyApiError } from '@/lib/api/form'
 import { humanizeError } from '@/lib/api/problem'
 import { copyText } from '@/lib/clipboard'
+import { formatDateTime } from '@/lib/format-date'
 import { useEvaluationScenarios } from '@/features/scenarios/queries'
 import { useConversationGroups, useDeletedConversations } from './queries'
 import {
@@ -339,7 +340,7 @@ function GroupCard({
           </span>
         </Field>
         <Field inline label="Started">
-          <time dateTime={group.created_at}>{new Date(group.created_at).toLocaleString()}</time>
+          <time dateTime={group.created_at}>{formatDateTime(group.created_at)}</time>
         </Field>
         <Field inline label="Scenario">
           {scenarioName ?? '—'}

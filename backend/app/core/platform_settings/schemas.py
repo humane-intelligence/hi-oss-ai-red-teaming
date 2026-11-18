@@ -30,7 +30,7 @@ class PlatformSettingsResponse(BaseModel):
                 "password_require_symbol": False,  # nosec B105
                 "password_reset_cooldown_seconds": 60,  # nosec B105
                 "password_reset_max_per_day": 5,  # nosec B105
-                "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
+                "logo_light_key": "2026/11/17/3f2a00000000400080000000000000a1.png",
                 "logo_dark_key": None,
                 "updated_at": "2026-06-24T08:00:00Z",
             }
@@ -131,7 +131,7 @@ class PublicPlatformSettingsResponse(BaseModel):
                     "require_symbol": False,
                 },
                 "conversation_tags_enabled": True,
-                "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
+                "logo_light_key": "2026/11/17/3f2a00000000400080000000000000a1.png",
                 "logo_dark_key": None,
             }
         }

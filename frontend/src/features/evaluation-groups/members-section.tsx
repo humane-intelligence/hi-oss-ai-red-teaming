@@ -8,11 +8,14 @@ import { RolesPicker } from '@/features/users/roles-picker'
 import { useOrganization } from '@/features/organizations/queries'
 import { displayName, fullName } from '@/features/users/names'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Pagination } from '@/components/shared/pagination'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useObjectPermissions, usePermissions } from '@/lib/auth/use-permissions'
 import type { EvaluationGroupAccessLevel, ObjectMemberResponse } from '@/lib/api/types'
+
+const PAGE_SIZE = 50
 
 function EditMemberDialog({
   groupId,
@@ -98,7 +101,8 @@ export function MembersSection({
   organizationId: string | null | undefined
   userPermissions: readonly string[]
 }) {
-  const members = useGroupMembers(groupId)
+  const [offset, setOffset] = useState(0)
+  const members = useGroupMembers(groupId, { limit: PAGE_SIZE, offset })
   const remove = useRemoveGroupMember(groupId)
   const { has: hasGlobal } = usePermissions()
   // Member management is object-scoped: the server grants it via the in-group
@@ -187,10 +191,13 @@ export function MembersSection({
             )}
           </div>
         ))}
-        {members.data && members.data.total > memberList.length && (
-          <p className="text-muted-foreground text-sm">
-            Showing the first {memberList.length} of {members.data.total} members.
-          </p>
+        {members.data && members.data.total > PAGE_SIZE && (
+          <Pagination
+            offset={offset}
+            limit={PAGE_SIZE}
+            total={members.data.total}
+            onOffsetChange={setOffset}
+          />
         )}
         {!members.isPending && memberList.length === 0 && (
           <p className="text-muted-foreground text-sm">

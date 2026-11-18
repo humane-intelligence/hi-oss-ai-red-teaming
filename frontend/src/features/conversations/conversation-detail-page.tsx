@@ -49,6 +49,7 @@ import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { StatusPill } from '@/components/shared/status-pill'
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
+import { TagsUnknownNote } from './tags-unknown-note'
 import type { BubbleTagProps } from './bubble'
 
 export function ConversationDetailPage() {
@@ -237,6 +238,7 @@ export function ConversationDetailPage() {
 
   const chatColumn = (
     <div className="space-y-3">
+      <TagsUnknownNote evaluationAllowsTags={tagsEnabled} />
       {selectMode && canFlag && (
         <div className="border-primary/40 bg-primary/5 flex items-center justify-between rounded-md border px-3 py-2 text-sm">
           <span className="font-medium">{selected.length} selected</span>
@@ -269,7 +271,8 @@ export function ConversationDetailPage() {
                   isSelected && 'bg-primary/5 ring-primary/30 ring-1',
                 )}
               >
-                {assistant && canFlag && (
+                {/* Same rule as the flag button: a failed or still-streaming reply is not a reply to flag. */}
+                {assistant && canFlag && m.status !== 'error' && m.status !== 'streaming' && (
                   <input
                     type="checkbox"
                     className={cn(

@@ -222,7 +222,7 @@ async def invite_to_platform(
         if existing.status is UserStatus.PENDING:
             raise ConflictError("User registration in progress.")
         if existing.status is UserStatus.INACTIVE:
-            raise ConflictError("User is deactivated. Reactivate via PATCH /users/{id} first.")
+            raise ConflictError("User is deactivated. Reactivate the account first.")
         if not _roles_match(existing, role_id_list):
             raise ConflictError(
                 "User has different role assignment. Use PATCH /users/{id} to change roles, then reissue invitation.",

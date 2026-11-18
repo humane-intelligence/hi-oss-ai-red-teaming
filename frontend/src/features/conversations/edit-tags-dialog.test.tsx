@@ -128,7 +128,7 @@ describe('EditTagsDialog — the allow-list query is not settled', () => {
       // rather than repeating it.
       renderDialog({}, { allowedKeys: [], keysStatus })
 
-      const addTag = screen.getByRole('button', { name: /^add tag$/i })
+      const addTag = screen.getByRole('button', { name: /^add context tag$/i })
       expect(addTag).toHaveAttribute('aria-disabled', 'true')
       expect(screen.queryByText(/already used/i)).toBeNull()
       const reasonId = addTag.getAttribute('aria-describedby')
@@ -177,9 +177,9 @@ describe('EditTagsDialog — the counter and a blocked "Add tag"', () => {
     const user = userEvent.setup()
     renderDialog({ env: 'prod' })
 
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
 
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     expect(
       document.getElementById(addTag.getAttribute('aria-describedby') as string),
@@ -192,7 +192,7 @@ describe('EditTagsDialog — the counter and a blocked "Add tag"', () => {
     // `aria-disabled` rather than `disabled`, so a keyboard user can reach it and hear that reason.
     renderDialog({ env: 'prod' }, { allowedKeys: ['env'] })
 
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     const reasonId = addTag.getAttribute('aria-describedby')
     expect(document.getElementById(reasonId as string)).toHaveTextContent(

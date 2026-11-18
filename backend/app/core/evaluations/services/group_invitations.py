@@ -141,7 +141,7 @@ async def invite_to_group(
     existing = await get_user_by_email(session, email)
 
     if existing is not None and existing.status is UserStatus.INACTIVE:
-        raise ConflictError("User is deactivated. Reactivate via PATCH /users/{id} first.")
+        raise ConflictError("User is deactivated. Reactivate the account first.")
 
     if existing is not None and existing.status is UserStatus.ACTIVE:
         await _assign_roles(session, group.id, existing, roles, by_id=inviter.id)
