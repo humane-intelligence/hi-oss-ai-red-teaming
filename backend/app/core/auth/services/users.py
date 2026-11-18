@@ -353,6 +353,16 @@ async def get_user(
     return user
 
 
+async def get_users_by_ids(session: AsyncSession, user_ids: list[UUID]) -> dict[UUID, User]:
+    """Fetch the live users among `user_ids` in one pass, keyed by id, loaded as `get_user` loads one.
+
+    An id with no live row is simply absent; the caller decides what a miss means.
+    """
+    statement = User.live_select().options(*user_projection_options()).where(col(User.id).in_(user_ids))
+    result = await session.execute(statement)
+    return {user.id: user for user in result.scalars().all()}
+
+
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     """Fetch one live user by email, with roles eagerly loaded.
 

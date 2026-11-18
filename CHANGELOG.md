@@ -34,6 +34,10 @@ change between minor versions.
 
 ### Changed
 
+- `POST /evaluation-groups/{group_id}/members/bulk` loads the envelope's users once and resolves
+  each distinct set of `role_ids` once, instead of both per row: about half the statements of an
+  "add all members" (10 per row down to 5, savepoints included). Per-row outcomes are unchanged.
+
 - The health check that followed a save ran only for models declaring image input; it now follows
   every create, every patch that moves the call, and setting the API key. Bulk create still starts
   none.
