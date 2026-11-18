@@ -76,7 +76,7 @@ describe('ScenariosSection — RBAC gates', () => {
     ]) {
       expect(screen.queryByRole('button', { name })).toBeNull()
     }
-    expect(screen.queryByText('Required reviewers')).toBeNull()
+    expect(screen.queryByText('Required reviewers:')).toBeNull()
   })
 
   it('with evaluations:update — Add scenario button visible, icon buttons in scenario rows', async () => {
@@ -111,9 +111,9 @@ describe('ScenariosSection — cards', () => {
       screen.getByRole('heading', { level: 3, name: 'Scenario 1: Prompt injection' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Task 1:')).toBeInTheDocument()
-    expect(screen.getByText('Date added')).toBeInTheDocument()
-    expect(screen.getByText('Required reviewers')).toBeInTheDocument()
-    expect(screen.getByText('Scenario description')).toBeInTheDocument()
+    expect(screen.getByText('Date added:')).toBeInTheDocument()
+    expect(screen.getByText('Required reviewers:')).toBeInTheDocument()
+    expect(screen.getByText('Scenario description:')).toBeInTheDocument()
   })
 
   it('keeps scenario, task and control order across several scenarios', async () => {

@@ -223,11 +223,17 @@ export function ScenariosSection({ evaluationId }: { evaluationId: string }) {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <dl className="grid gap-4 sm:grid-cols-3">
-                    <Field label="Date added">{formatDate(s.created_at)}</Field>
+                    <Field inline label="Date added">
+                      {formatDate(s.created_at)}
+                    </Field>
                     {/* Reviewer consensus is set up by whoever runs the evaluation, not a red teamer's concern. */}
-                    {canMutate && <Field label="Required reviewers">{s.required_reviews}</Field>}
+                    {canMutate && (
+                      <Field inline label="Required reviewers">
+                        {s.required_reviews}
+                      </Field>
+                    )}
                     {s.description && (
-                      <Field label="Scenario description" className="sm:col-span-3">
+                      <Field inline label="Scenario description" className="sm:col-span-3">
                         <span className="whitespace-pre-line">{s.description}</span>
                       </Field>
                     )}

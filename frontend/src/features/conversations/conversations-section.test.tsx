@@ -306,18 +306,40 @@ describe('ConversationsSection — groups', () => {
 
     const card = (await screen.findByText('GPT-4o vs Claude')).closest('li')!
     expect(within(card).getByTitle(GROUP_MULTI).textContent).toBe(GROUP_MULTI.slice(0, 8))
-    expect(within(card).getByText('Started')).toBeInTheDocument()
+    expect(within(card).getByText('Started:')).toBeInTheDocument()
     expect(within(card).getByText('Prompt injection')).toBeInTheDocument()
     expect(within(card).getByText('3')).toBeInTheDocument()
-    expect(within(card).getByText('Models')).toBeInTheDocument()
+    expect(within(card).getByText('Models:')).toBeInTheDocument()
 
     const single = screen.getByText('Quick probe').closest('li')!
     expect(within(single).getByText('No messages')).toBeInTheDocument()
-    expect(within(single).getByText('Model')).toBeInTheDocument()
+    expect(within(single).getByText('Model:')).toBeInTheDocument()
 
     await user.click(within(card).getByRole('button', { name: 'Copy conversation ID' }))
     // user-event installs its own clipboard stub per setup, so nothing leaks past this test.
     expect(await navigator.clipboard.readText()).toBe(GROUP_MULTI)
+  })
+
+  it('collapses a card to its title row and opens it again', async () => {
+    server.use(groupsHandler([singleGroup]))
+    const user = userEvent.setup()
+    renderSection()
+
+    const card = (await screen.findByText('Quick probe')).closest('li')!
+    const toggle = within(card).getByRole('button', { name: 'Collapse conversation: Quick probe' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(within(card).getByText('Scenario:')).toBeVisible()
+
+    await user.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveAccessibleName('Expand conversation: Quick probe')
+    expect(within(card).getByText('Scenario:')).not.toBeVisible()
+    expect(within(card).getByText('Quick probe')).toBeVisible()
+
+    await user.click(toggle)
+
+    expect(within(card).getByText('Scenario:')).toBeVisible()
   })
 
   it('loads ten groups at a time, counting all of them in the heading', async () => {

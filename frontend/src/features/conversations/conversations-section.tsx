@@ -1,10 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link } from 'react-router-dom'
-import { Check, ChevronDown, ChevronRight, Columns2, Copy, Pencil, Trash2 } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Columns2,
+  Copy,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissions'
 import { useAuth } from '@/lib/auth/auth-context'
 import { applyApiError } from '@/lib/api/form'
@@ -258,10 +268,12 @@ function GroupCard({
   const groupPath = `/evaluations/${evaluationId}/conversation-groups/${group.id}`
   // Side-by-side members share every turn, so the longest member is the conversation's length.
   const turns = Math.max(0, ...members.map((c) => c.turn_count))
+  const [open, setOpen] = useState(true)
+  const detailsId = useId()
 
   return (
     <li className="bg-card rounded-lg border">
-      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+      <div className={cn('flex items-center justify-between gap-2 px-3 py-2', open && 'border-b')}>
         <div className="flex min-w-0 items-center gap-2">
           <Link to={groupPath} className="min-w-0 truncate font-medium hover:underline">
             {group.name}
@@ -281,6 +293,16 @@ function GroupCard({
               <Columns2 className="size-4" /> Open side-by-side
             </Link>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-expanded={open}
+            aria-controls={detailsId}
+            aria-label={`${open ? 'Collapse' : 'Expand'} conversation: ${group.name}`}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+          </Button>
           {onRename && (
             <Button
               variant="ghost"
@@ -303,8 +325,12 @@ function GroupCard({
           )}
         </div>
       </div>
-      <dl className="grid gap-x-6 gap-y-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Field label="Conversation ID">
+      <dl
+        id={detailsId}
+        hidden={!open}
+        className="grid gap-x-6 gap-y-2 p-3 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        <Field inline label="Conversation ID">
           <span className="inline-flex items-center gap-1">
             <code className="font-mono" title={group.id}>
               {group.id.slice(0, 8)}
@@ -312,15 +338,20 @@ function GroupCard({
             <CopyIdButton id={group.id} />
           </span>
         </Field>
-        <Field label="Started">
+        <Field inline label="Started">
           <time dateTime={group.created_at}>{new Date(group.created_at).toLocaleString()}</time>
         </Field>
-        <Field label="Scenario">{scenarioName ?? '—'}</Field>
-        <Field label="Number of turns">{turns > 0 ? turns : 'No messages'}</Field>
-        <Field label={members.length > 1 ? 'Models' : 'Model'}>
-          <ul className="space-y-0.5">
-            {members.map((c) => (
-              <li key={c.id}>
+        <Field inline label="Scenario">
+          {scenarioName ?? '—'}
+        </Field>
+        <Field inline label="Number of turns">
+          {turns > 0 ? turns : 'No messages'}
+        </Field>
+        <Field inline label={members.length > 1 ? 'Models' : 'Model'}>
+          <ul className="inline">
+            {members.map((c, i) => (
+              <li key={c.id} className="inline">
+                {i > 0 && ', '}
                 <Link
                   to={`/evaluations/${evaluationId}/conversations/${c.id}`}
                   className="font-medium hover:underline"
@@ -338,8 +369,8 @@ function GroupCard({
           </ul>
         </Field>
         {(group.labels?.length ?? 0) > 0 && (
-          <Field label="Labels" className="col-span-full">
-            <GroupLabels labels={group.labels} />
+          <Field inline label="Labels" className="col-span-full">
+            <GroupLabels labels={group.labels} className="inline-flex align-middle" />
           </Field>
         )}
       </dl>

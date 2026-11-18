@@ -120,13 +120,13 @@ describe('EvaluationDetailPage — group link', () => {
 })
 
 describe('EvaluationDetailPage — summary', () => {
-  const summary = () => screen.getByText('Evaluation group').closest('dl') as HTMLElement
+  const summary = () => screen.getByText('Evaluation group:').closest('dl') as HTMLElement
 
   it('labels the group, the dates and the description, and drops the author', async () => {
     server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak', { end_date: '2026-12-02' }))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    expect(await screen.findByText('Complete by')).toBeInTheDocument()
+    expect(await screen.findByText('Complete by:')).toBeInTheDocument()
     const dl = within(summary())
     expect(dl.getByRole('link', { name: 'Spring jailbreak' })).toHaveAttribute(
       'href',
@@ -135,13 +135,13 @@ describe('EvaluationDetailPage — summary', () => {
     // Built from calendar parts, not by parsing the same strings the page parses: a date-only
     // value read as UTC would land on the previous day west of Greenwich.
     const long = (d: Date) => d.toLocaleDateString(undefined, { dateStyle: 'long' })
-    expect(dl.getByText('Date added').nextElementSibling).toHaveTextContent(
+    expect(dl.getByText('Date added:').nextElementSibling).toHaveTextContent(
       long(new Date(baseEvaluation.created_at)),
     )
-    expect(dl.getByText('Complete by').nextElementSibling).toHaveTextContent(
+    expect(dl.getByText('Complete by:').nextElementSibling).toHaveTextContent(
       long(new Date(2026, 11, 2)),
     )
-    expect(dl.getByText('Evaluation description').nextElementSibling).toHaveTextContent(
+    expect(dl.getByText('Evaluation description:').nextElementSibling).toHaveTextContent(
       'A test evaluation',
     )
     expect(screen.queryByText(/^by /)).toBeNull()
@@ -152,7 +152,7 @@ describe('EvaluationDetailPage — summary', () => {
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
     await screen.findAllByRole('link', { name: 'Spring jailbreak' })
-    expect(within(summary()).queryByText('Complete by')).toBeNull()
+    expect(within(summary()).queryByText('Complete by:')).toBeNull()
   })
 })
 

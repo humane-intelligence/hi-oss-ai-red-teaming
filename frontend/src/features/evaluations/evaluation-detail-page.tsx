@@ -173,7 +173,7 @@ export function EvaluationDetailPage() {
             <Card>
               <CardContent className="pt-6">
                 <dl className="grid gap-4 sm:grid-cols-3">
-                  <Field label="Evaluation group">
+                  <Field inline label="Evaluation group">
                     <Link
                       to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
                       className="underline underline-offset-2"
@@ -181,13 +181,17 @@ export function EvaluationDetailPage() {
                       {group ? (group.title ?? 'Untitled draft') : '…'}
                     </Link>
                   </Field>
-                  <Field label="Date added">{formatDate(evaluation.created_at)}</Field>
+                  <Field inline label="Date added">
+                    {formatDate(evaluation.created_at)}
+                  </Field>
                   {/* Evaluations carry no deadline of their own; the group's end date is it. */}
                   {group?.end_date && (
-                    <Field label="Complete by">{formatDate(`${group.end_date}T00:00:00`)}</Field>
+                    <Field inline label="Complete by">
+                      {formatDate(`${group.end_date}T00:00:00`)}
+                    </Field>
                   )}
                   {evaluation.description && (
-                    <Field label="Evaluation description" className="sm:col-span-3">
+                    <Field inline label="Evaluation description" className="sm:col-span-3">
                       <span className="whitespace-pre-line">{evaluation.description}</span>
                     </Field>
                   )}
