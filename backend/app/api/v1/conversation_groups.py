@@ -54,6 +54,7 @@ from app.core.conversations.services.groups import soft_delete_conversation_grou
 from app.core.conversations.services.groups import touch_conversation_group
 from app.core.conversations.services.labels import labels_by_group
 from app.core.conversations.services.labels import set_group_labels
+from app.core.conversations.services.lifecycle import assert_accepts_prompts
 from app.core.dependencies import DbSession
 from app.core.dependencies import PaginationDep
 from app.core.dependencies import transactional
@@ -119,6 +120,10 @@ _OrderBy = Annotated[
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _CREATE_NOT_FOUND,
+        status.HTTP_409_CONFLICT: problem_response(
+            "The evaluation group is not open for conversations (not published yet for a caller who "
+            "may not edit the evaluation, or finished), or the evaluation is rejected or completed."
+        ),
     },
 )
 @transactional
@@ -153,6 +158,7 @@ async def create_conversation_group_endpoint(
     ]
     can_manage = _can_manage(caller)
     scenario = await get_scenario_by_id(db, scenario_id, caller_id=caller.id, can_manage=can_manage)
+    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, can_manage=can_manage)
     conversation_group, conversations = await create_conversation_group(
         db,
         user_id=caller.id,

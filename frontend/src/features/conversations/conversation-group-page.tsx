@@ -62,7 +62,7 @@ export function ConversationGroupPage() {
   const gid = groupId ?? ''
 
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions } = authority
+  const { allows, canManage, groupPermissions, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
   const groupQuery = useConversationGroup(evalId, gid, { groupPermissions })
@@ -255,12 +255,18 @@ export function ConversationGroupPage() {
                   // The create posts to the group's scenario, so a tombstoned one is a
                   // route-level 404: dead-end, don't offer it. After the first prompt the
                   // backend refuses (409): a late model would not have seen the earlier turns.
-                  disabled: scenarioMissing || prompted || members.length >= MAX_MODELS,
-                  title: prompted
-                    ? ADD_MODEL_LOCKED
-                    : members.length >= MAX_MODELS
-                      ? `A conversation compares up to ${MAX_MODELS} models.`
-                      : undefined,
+                  disabled:
+                    scenarioMissing ||
+                    prompted ||
+                    members.length >= MAX_MODELS ||
+                    promptsBlocked !== undefined,
+                  title: promptsBlocked
+                    ? promptsBlocked
+                    : prompted
+                      ? ADD_MODEL_LOCKED
+                      : members.length >= MAX_MODELS
+                        ? `A conversation compares up to ${MAX_MODELS} models.`
+                        : undefined,
                   when: allows('conversations:create') && canWrite,
                 },
                 {
@@ -319,7 +325,7 @@ export function ConversationGroupPage() {
                     prompt={prompt}
                     promptNonce={promptNonce}
                     groupPermissions={groupPermissions}
-                    canWrite={canWrite}
+                    canWrite={canWrite && !promptsBlocked}
                     // Per member, and without the `canManage` arm `canWrite` carries: the flag
                     // services filter on the conversation's own `user_id`, so a break-glass
                     // viewer offered the control would get a 404.
@@ -330,7 +336,10 @@ export function ConversationGroupPage() {
 
               {/* Broadcasting writes to every member conversation, which `read_any` never widens —
                   so a group surfaced to its owner read-only carries no send form. */}
-              {canWrite && (
+              {canWrite && promptsBlocked && (
+                <p className="text-muted-foreground text-sm">{promptsBlocked}</p>
+              )}
+              {canWrite && !promptsBlocked && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault()

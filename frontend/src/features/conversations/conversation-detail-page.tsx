@@ -65,7 +65,7 @@ export function ConversationDetailPage() {
   const [tagsOpen, setTagsOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions } = authority
+  const { allows, canManage, groupPermissions, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const labelCategories = useEvaluationLabelCategories(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
@@ -328,7 +328,10 @@ export function ConversationDetailPage() {
 
         {/* `read_any` widens reads only, so a member's transcript read by their group owner shows
             no composer rather than one whose every send fails as a lost connection. */}
-        {canWrite && (
+        {canWrite && promptsBlocked && (
+          <p className="text-muted-foreground border-t p-3 text-sm">{promptsBlocked}</p>
+        )}
+        {canWrite && !promptsBlocked && (
           <div className="bg-card/50 border-t p-3">
             {lastAssistant && !stream.streaming && (
               <AssistantActions

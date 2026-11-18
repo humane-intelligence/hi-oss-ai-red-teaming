@@ -49,6 +49,7 @@ from app.core.conversations.services.conversations import restore_conversation
 from app.core.conversations.services.conversations import soft_delete_conversation
 from app.core.conversations.services.conversations import update_conversation
 from app.core.conversations.services.groups import acquire_group_for_conversation
+from app.core.conversations.services.lifecycle import assert_accepts_prompts
 from app.core.conversations.services.messages import image_keys_for_messages
 from app.core.conversations.services.messages import list_conversation_messages
 from app.core.dependencies import DbSession
@@ -86,7 +87,9 @@ _CONVERSATION_NOT_FOUND = problem_response(
 _GROUP_FULL = problem_response("The target group already holds the maximum number of conversations.")
 _GROUP_CONFLICT = problem_response(
     "The target group already holds the maximum number of conversations, already has prompts, "
-    "or its scenario does not match the conversation's."
+    "or its scenario does not match the conversation's; or the evaluation group is not open for "
+    "conversations (not published yet for a caller who may not edit the evaluation, or finished), "
+    "or the evaluation is rejected or completed."
 )
 _MOVE_CONFLICT = problem_response(
     "The target group already holds the maximum number of conversations, already has prompts, "
@@ -172,6 +175,7 @@ async def create_conversation_endpoint(
     """
     can_manage = _can_manage(caller)
     scenario = await get_scenario_by_id(db, scenario_id, caller_id=caller.id, can_manage=can_manage)
+    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, can_manage=can_manage)
     conversation = await create_conversation(
         db,
         user_id=caller.id,

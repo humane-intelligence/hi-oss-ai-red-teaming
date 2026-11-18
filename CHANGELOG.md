@@ -34,6 +34,11 @@ change between minor versions.
 
 ### Changed
 
+- Starting a conversation and sending, regenerating or continuing a prompt now need the
+  evaluation's group to be open for them, and answer 409 otherwise: a published group takes them
+  from anyone who can reach it; before publication only from a caller who may edit the evaluation
+  (to try a scenario out); a finished group and a rejected or completed evaluation from nobody.
+  Conversations already recorded stay readable.
 - `GET /auth/users?search=` also matches a first and last name typed together (`ada love`), not
   only one column at a time.
 - The 409 that refuses a model added to a prompted or full conversation group no longer carries

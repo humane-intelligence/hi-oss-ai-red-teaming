@@ -21217,7 +21217,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's. */
+            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's; or the evaluation group is not open for conversations (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21714,7 +21714,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description client_message_id already used in another conversation. */
+            /** @description client_message_id already used in another conversation; or the evaluation group is not open for prompts (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21968,6 +21968,16 @@ export interface operations {
             };
             /** @description The path scenario does not exist (or is outside the caller's scope / not visible), or a model assignment is not part of its evaluation. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The evaluation group is not open for conversations (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22440,7 +22450,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Target message is already superseded or not in the conversation's last turn. */
+            /** @description Target message is already superseded or not in the conversation's last turn; or the evaluation group is not open for prompts, or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -22544,7 +22554,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Target message is already superseded or not in the conversation's last turn. */
+            /** @description Target message is already superseded or not in the conversation's last turn; or the evaluation group is not open for prompts, or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;

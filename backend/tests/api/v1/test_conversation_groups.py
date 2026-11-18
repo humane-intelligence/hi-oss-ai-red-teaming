@@ -30,6 +30,7 @@ from app.core.conversations.models import ConversationGroup
 from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.services.messages import open_turn
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationLabelCategory
@@ -85,8 +86,9 @@ async def _evaluation_for(
     *,
     owner_id: UUID | None = None,
     access_level: EvaluationGroupAccessLevel = EvaluationGroupAccessLevel.PUBLIC,
+    status: PublicationStatus = PublicationStatus.PUBLISHED,
 ) -> Evaluation:
-    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id)
+    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id, status=status)
     row = Evaluation(title="Eval", description="d", evaluation_group_id=group.id, created_by_id=group.created_by_id)
     db_session.add(row)
     await db_session.flush()
@@ -180,6 +182,52 @@ async def test_create_returns_201_location_and_grouped_conversations(
     assert by_assignment[str(first.id)]["parameters"] == {}
     assert by_assignment[str(second.id)]["parameters"] == {"temperature": 0.9}
     assert response.headers["Location"] == f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{body['id']}"
+
+
+@pytest.mark.parametrize(
+    "group_status",
+    [PublicationStatus.APPROVED, PublicationStatus.INACTIVE],
+)
+async def test_create_in_a_group_that_is_not_published_returns_409_for_a_participant(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role, group_status: PublicationStatus
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="early@example.com")
+    evaluation = await _evaluation_for(db_session, status=group_status)
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
+
+    response = await _create_group(
+        auth_db_client,
+        _token(caller),
+        scenario.id,
+        {"name": "too early or too late", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert str(evaluation.id) not in response.json()["detail"]
+
+
+async def test_a_manager_may_try_a_scenario_before_publication_but_not_after_the_group_finished(
+    auth_db_client: AsyncClient, db_session: AsyncSession, manager_role: Role
+) -> None:
+    manager = await _caller(db_session, manager_role, email="tryout@example.com")
+    outcomes = {}
+    for group_status in (PublicationStatus.APPROVED, PublicationStatus.INACTIVE):
+        evaluation = await _evaluation_for(db_session, status=group_status)
+        assignment = await _assignment(db_session, evaluation.id)
+        scenario = await _scenario(db_session, evaluation.id)
+        response = await _create_group(
+            auth_db_client,
+            _token(manager),
+            scenario.id,
+            {"name": "tryout", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+        )
+        outcomes[group_status] = response.status_code
+
+    assert outcomes == {
+        PublicationStatus.APPROVED: status.HTTP_201_CREATED,
+        PublicationStatus.INACTIVE: status.HTTP_409_CONFLICT,
+    }
 
 
 async def test_create_rejects_scenario_id_left_in_the_body_422(
