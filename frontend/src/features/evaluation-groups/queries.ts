@@ -132,13 +132,22 @@ export function useGroupMembers(
     search?: string
     roleId?: string
     limit?: number
+    offset?: number
     enabled?: boolean
     keepPrevious?: boolean
   } = {},
 ) {
   const limit = opts.limit ?? 100
+  const offset = opts.offset ?? 0
   return useQuery({
-    queryKey: ['evaluation-group-members', groupId, opts.search ?? '', opts.roleId ?? '', limit],
+    queryKey: [
+      'evaluation-group-members',
+      groupId,
+      opts.search ?? '',
+      opts.roleId ?? '',
+      limit,
+      offset,
+    ],
     enabled: groupId !== '' && (opts.enabled ?? true),
     // Opt-in for the debounced pickers (each keystroke is a new key) so the listbox doesn't blank per
     // char. Off by default: the group-detail views key only on groupId, on an unkeyed route, so keeping
@@ -149,7 +158,12 @@ export function useGroupMembers(
         await apiClient.GET('/api/v1/evaluation-groups/{group_id}/members', {
           params: {
             path: { group_id: groupId },
-            query: { limit, search: opts.search || undefined, role_id: opts.roleId || undefined },
+            query: {
+              limit,
+              offset: offset || undefined,
+              search: opts.search || undefined,
+              role_id: opts.roleId || undefined,
+            },
           },
         }),
       ),
