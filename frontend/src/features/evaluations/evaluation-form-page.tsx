@@ -144,6 +144,14 @@ export function EvaluationFormPage() {
         <p className="text-destructive">{humanizeError(presetGroup.error)}</p>
       </div>
     )
+  // An edit form drawn before (or without) its record would save the blank defaults over it.
+  if (isEdit && existing.isPending) return <DetailSkeleton />
+  if (isEdit && existing.isError)
+    return (
+      <div className="mx-auto max-w-2xl">
+        <p className="text-destructive">{humanizeError(existing.error)}</p>
+      </div>
+    )
   if (!canCreateHere) return <NotAuthorized />
   // Lifecycle, not authority: a deep link to a non-accepting group would only 409 on
   // submit, so explain the state up front instead of rendering a doomed form.

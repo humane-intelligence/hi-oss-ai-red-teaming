@@ -74,37 +74,40 @@ export function AuthShell({
         {/* Held invisible until everything above and below the fields has its final size (the
             settings read, the logo images, and the version note shown below lg): anything arriving
             after the form painted would move the fields under a user who is already typing. */}
-        <div className={cn('w-full max-w-sm', holding && 'invisible')}>
+        <div className="w-full max-w-sm">
           {/* Below lg the decorative aside is gone; keep the brand above the form and the version
-              below it so both stay visible on mobile. */}
+              below it so both stay visible on mobile. Outside the hold: its size is final, and
+              without it a phone shows a blank page for as long as the hold lasts. */}
           <Wordmark className="mb-8 text-xl lg:hidden" />
-          {logo.light && logo.dark && (
-            <ClientLogo
-              light={logo.light}
-              dark={logo.dark}
-              alt=""
-              onReady={markLogoReady}
-              className="mb-6 max-h-[100px] max-w-[200px]"
-            />
-          )}
-          {/* `role="status"` implies `aria-live="polite"`. Only announces a title that mutates
-              after mount — one already in its final state on first render never announces this way. */}
-          <header className="mb-6" role="status">
-            <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>
-            {subtitle && (
-              <p id="auth-shell-subtitle" className="text-muted-foreground mt-1 text-sm">
-                {subtitle}
-              </p>
+          <div className={cn(holding && 'invisible')}>
+            {logo.light && logo.dark && (
+              <ClientLogo
+                light={logo.light}
+                dark={logo.dark}
+                alt=""
+                onReady={markLogoReady}
+                className="mb-6 max-h-[100px] max-w-[200px]"
+              />
             )}
-          </header>
-          {children}
-          {/* Complementary, not part of the form: a screen reader on a phone can skip it instead of
+            {/* `role="status"` implies `aria-live="polite"`. Only announces a title that mutates
+              after mount — one already in its final state on first render never announces this way. */}
+            <header className="mb-6" role="status">
+              <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>
+              {subtitle && (
+                <p id="auth-shell-subtitle" className="text-muted-foreground mt-1 text-sm">
+                  {subtitle}
+                </p>
+              )}
+            </header>
+            {children}
+            {/* Complementary, not part of the form: a screen reader on a phone can skip it instead of
               hearing it as primary content after the submit button. */}
-          {shownVersion && (
-            <aside aria-label="console version" className="mt-8 border-t pt-6 lg:hidden">
-              <VersionNote version={shownVersion} />
-            </aside>
-          )}
+            {shownVersion && (
+              <aside aria-label="console version" className="mt-8 border-t pt-6 lg:hidden">
+                <VersionNote version={shownVersion} />
+              </aside>
+            )}
+          </div>
         </div>
       </main>
     </div>

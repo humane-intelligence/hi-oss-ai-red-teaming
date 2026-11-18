@@ -216,6 +216,12 @@ export function EvaluationDetailPage() {
               </div>
             )}
 
+            {/* A disabled button shows no tooltip and takes no focus, so its reason is spelled out. */}
+            {conversationPerms.has('conversations:create') && startBlocked && (
+              <p className="text-muted-foreground text-sm">
+                {startBlocked} to start a conversation.
+              </p>
+            )}
             <PageActions
               primary={
                 <>

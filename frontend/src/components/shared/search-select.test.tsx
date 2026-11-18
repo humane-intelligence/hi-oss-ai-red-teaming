@@ -321,6 +321,35 @@ describe('SearchSelect (typeahead combobox)', () => {
     expect(input).toHaveValue('')
   })
 
+  it('after a pick, text typed over the selected label becomes the new search', async () => {
+    const onSearchChange = vi.fn()
+    function Controlled() {
+      const [value, setValue] = useState('')
+      return (
+        <SearchSelect
+          label="Red-teamer"
+          htmlFor="rt"
+          value={value}
+          onChange={setValue}
+          onSearchChange={onSearchChange}
+          options={OPTS}
+          isPending={false}
+          isError={false}
+        />
+      )
+    }
+    render(<Controlled />)
+    const u = userEvent.setup()
+    const input = screen.getByLabelText<HTMLInputElement>('Red-teamer')
+
+    await u.click(input)
+    await u.click(screen.getByRole('option', { name: 'bob@ex.com' }))
+    input.setSelectionRange(0, input.value.length)
+    await u.keyboard('al')
+
+    expect(input).toHaveValue('al')
+  })
+
   it('shows loading / error / empty states while open', () => {
     const { rerender } = render(
       <SearchSelect

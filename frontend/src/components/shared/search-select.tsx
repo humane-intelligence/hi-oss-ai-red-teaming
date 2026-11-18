@@ -152,7 +152,13 @@ export function SearchSelect({
             const text = event.target.value
             // After a pick the box holds its label, which no search matches: keep only what was
             // typed after it, so Backspace empties the box and a new letter starts a new search.
-            setTerm(value ? (text.startsWith(term) ? text.slice(term.length) : '') : text)
+            // Text that replaced the label (select-all and type, or a paste) is the new search.
+            const afterPick = text.startsWith(term)
+              ? text.slice(term.length)
+              : term.startsWith(text)
+                ? ''
+                : text
+            setTerm(value ? afterPick : text)
             if (listRef.current) listRef.current.scrollTop = 0 // a new term starts from its first page
             setOpen(true)
             setActive(-1)
