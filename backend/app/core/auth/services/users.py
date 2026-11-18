@@ -382,6 +382,8 @@ def _apply_user_filters(statement: Select[tuple[User]], filters: UserFilters) ->
                 col(User.email).ilike(like, escape="\\"),
                 col(User.first_name).ilike(like, escape="\\"),
                 col(User.last_name).ilike(like, escape="\\"),
+                # "Ada Lovelace" matches neither column on its own.
+                func.concat_ws(" ", col(User.first_name), col(User.last_name)).ilike(like, escape="\\"),
             )
         )
     if filters.role_id is not None:

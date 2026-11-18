@@ -34,6 +34,11 @@ change between minor versions.
 
 ### Changed
 
+- `GET /auth/users?search=` also matches a first and last name typed together (`ada love`), not
+  only one column at a time.
+- The 409 that refuses a model added to a prompted or full conversation group no longer carries
+  the group's id in `detail`, and the 409 for a deactivated user no longer names an API route.
+
 - The health check that followed a save ran only for models declaring image input; it now follows
   every create, every patch that moves the call, and setting the API key. Bulk create still starts
   none.
