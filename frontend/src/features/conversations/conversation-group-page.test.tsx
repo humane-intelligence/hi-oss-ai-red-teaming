@@ -1526,7 +1526,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     expect(within(list).getByText('note: roleplay')).toBeInTheDocument()
   })
 
-  it('edits labels, keeping a value no longer listed and sending a cleared one blank', async () => {
+  it('edits labels as checkboxes, keeping a value no longer listed and leaving a cleared category out', async () => {
     let captured: unknown = null
     server.use(
       http.get(groupUrl, () => HttpResponse.json(labelled)),
@@ -1542,13 +1542,13 @@ describe('ConversationGroupPage — conversation labels', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('polish (not in the list)')
-    await user.clear(within(dialog).getByLabelText('note'))
+    expect(within(dialog).getByLabelText('language: polish (not in the list)')).toBeChecked()
+    await user.click(within(dialog).getByLabelText('language: english'))
+    await user.click(within(dialog).getByLabelText('note: roleplay (not in the list)'))
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    await waitFor(() =>
-      expect(captured).toEqual({ labels: { 'cat-lang': 'polish', 'cat-note': '' } }),
-    )
+    // Two tags in one category; the cleared category is left out of the replacement set.
+    await waitFor(() => expect(captured).toEqual({ labels: { 'cat-lang': ['polish', 'english'] } }))
   })
 
   it('says why the server refused the labels instead of failing silently', async () => {
@@ -1610,13 +1610,13 @@ describe('ConversationGroupPage — conversation labels', () => {
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
     await waitFor(() => expect(within(dialog).queryByLabelText('note')).toBeNull())
-    expect(within(dialog).getByLabelText('language')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('language: english')).toBeInTheDocument()
 
     await waitFor(() => expect(screen.queryByText('note: roleplay')).toBeNull())
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
     await waitFor(() => expect(bodies).toHaveLength(2))
-    expect(bodies[1]).toEqual({ labels: { 'cat-lang': 'polish' } })
+    expect(bodies[1]).toEqual({ labels: { 'cat-lang': ['polish'] } })
   })
 
   it('shows a held value spelled differently from the list as that listed value', async () => {
@@ -1635,7 +1635,8 @@ describe('ConversationGroupPage — conversation labels', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('english')
+    expect(within(dialog).getByLabelText('language: english')).toBeChecked()
+    expect(within(dialog).queryByLabelText(/not in the list/)).toBeNull()
   })
 
   it('keeps a held label whose category the cached list does not know yet', async () => {
@@ -1664,7 +1665,7 @@ describe('ConversationGroupPage — conversation labels', () => {
 
     await waitFor(() =>
       expect(captured).toEqual({
-        labels: { 'cat-lang': 'polish', 'cat-note': 'roleplay', 'cat-new': 'x' },
+        labels: { 'cat-lang': ['polish'], 'cat-note': ['roleplay'], 'cat-new': ['x'] },
       }),
     )
   })

@@ -148,7 +148,7 @@ export function GroupCreatePage() {
         body: {
           name: name.trim() || fallbackName.slice(0, NAME_MAX),
           models: payloadModels,
-          labels: labelPayload(liveLabels, { keepBlanks: false }),
+          labels: labelPayload(liveLabels),
         },
       },
       { onSuccess: (group) => navigate(`/evaluations/${evalId}/conversation-groups/${group.id}`) },

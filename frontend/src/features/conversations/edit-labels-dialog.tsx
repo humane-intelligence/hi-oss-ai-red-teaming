@@ -3,22 +3,17 @@ import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { ApiError, humanizeError } from '@/lib/api/problem'
 import type { ConversationGroupResponse, EvaluationLabelCategoryResponse } from '@/lib/api/types'
-import { labelPayload, type LabelValues } from './label-values'
+import { heldLabels, labelPayload, type LabelValues } from './label-values'
 import { LabelsFields } from './labels-fields'
 import { useSetGroupLabels } from './mutations'
 
-const heldLabels = (group: ConversationGroupResponse): LabelValues =>
-  Object.fromEntries((group.labels ?? []).map((l) => [l.category_id, l.value]))
-
-// The server matches a listed value ignoring case, so a held `polish` under a list now spelling it
-// `Polish` is that option; seeded as stored, the select would show none and could not clear it.
+// The server matches a listed tag ignoring case, so a held `polish` under a list now spelling it
+// `Polish` is that option; seeded as stored, its checkbox would show unticked and could not clear it.
 const seed = (held: LabelValues, categories: EvaluationLabelCategoryResponse[]): LabelValues =>
   Object.fromEntries(
-    Object.entries(held).map(([id, v]) => {
-      const listed = categories
-        .find((c) => c.id === id)
-        ?.values.find((x) => x.toLowerCase() === v.toLowerCase())
-      return [id, listed ?? v]
+    Object.entries(held).map(([id, picked]) => {
+      const listed = categories.find((c) => c.id === id)?.values ?? []
+      return [id, picked.map((v) => listed.find((x) => x.toLowerCase() === v.toLowerCase()) ?? v)]
     }),
   )
 
@@ -51,19 +46,22 @@ export function EditLabelsDialog({
       title={group.labels?.length ? 'Edit tags' : 'Add tags'}
       onOpen={() => {
         save.reset()
-        setValue(seed(heldLabels(group), categories))
+        setValue(seed(heldLabels(group.labels), categories))
       }}
     >
       <form
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
-          // Every category, so one left blank is cleared rather than kept — plus every one the group
-          // holds: the set is replaced, so a category missing from a stale list would lose its label.
-          const ids = new Set([...categories.map((c) => c.id), ...Object.keys(heldLabels(group))])
+          // Every category on offer plus every one the group holds: the set is replaced, so a tag
+          // under a category missing from a stale list must be sent back, while one whose category
+          // was deleted since the dialog opened must not be.
+          const ids = new Set([
+            ...categories.map((c) => c.id),
+            ...Object.keys(heldLabels(group.labels)),
+          ])
           const labels = labelPayload(
-            Object.fromEntries([...ids].map((id) => [id, value[id] ?? ''])),
-            { keepBlanks: true },
+            Object.fromEntries(Object.entries(value).filter(([id]) => ids.has(id))),
           )
           save.mutate({ groupId: group.id, labels }, { onSuccess: () => onOpenChange(false) })
         }}
@@ -76,7 +74,7 @@ export function EditLabelsDialog({
           categories={categories}
           value={value}
           onChange={setValue}
-          held={heldLabels(group)}
+          held={heldLabels(group.labels)}
           idPrefix="edit-label"
         />
         {rejected && (

@@ -38,6 +38,7 @@ from app.core.conversations.models import recorded_tag_context
 from app.core.conversations.tags import TAG_KEY_PATTERN
 from app.core.conversations.tags import is_valid_tag_key
 from app.core.evaluations.schemas import MAX_LABEL_CATEGORIES
+from app.core.evaluations.schemas import MAX_LABEL_VALUES
 from app.core.helpers import sanitise_single_line
 from app.core.licenses.models import DataLicense
 from app.core.licenses.schemas import DataLicenseSummary
@@ -522,7 +523,7 @@ class ConversationUpdate(BaseModel):
 
 
 GroupLabelsInput = Annotated[
-    dict[UUID, Annotated[str, Field(max_length=200)]],
+    dict[UUID, Annotated[list[Annotated[str, Field(max_length=200)]], Field(max_length=MAX_LABEL_VALUES)]],
     Field(max_length=MAX_LABEL_CATEGORIES),
 ]
 
@@ -576,8 +577,9 @@ class ConversationGroupCreate(BaseModel):
     labels: GroupLabelsInput = Field(
         default_factory=dict,
         description=(
-            "Labels, keyed by a label category of the evaluation. A category with values takes one of "
-            "them; one without takes free text. Labels are never sent to the model."
+            "Labels, keyed by a label category of the evaluation, each with the list of values picked "
+            "there. A category with values takes any number of them; one without is selected by "
+            "listing it with an empty list. Labels are never sent to the model."
         ),
     )
 
@@ -616,8 +618,10 @@ class ConversationGroupUpdate(BaseModel):
     labels: GroupLabelsInput | None = Field(
         default=None,
         description=(
-            "Replacement label set, keyed by label category; a blank value clears that category. "
-            "A value the group already holds is accepted even after it was dropped from its category's list."
+            "Replacement label set, keyed by label category, each with the list of values picked there; "
+            "a category left out is cleared, and so is one with values listed with none. A category "
+            "without values is selected by listing it with an empty list. A value the group already "
+            "holds is accepted even after it was dropped from its category's list."
         ),
     )
 
@@ -644,11 +648,14 @@ class ConversationGroupUpdate(BaseModel):
 
 
 class ConversationGroupLabelResponse(BaseModel):
-    """One label on a group, under a live label category of its evaluation."""
+    """One label on a group, under a live label category of its evaluation.
+
+    A group holding several values in one category has one entry per value.
+    """
 
     category_id: UUID = Field(description="Label category the value is set under.")
     name: str = Field(description="Category name.")
-    value: str = Field(description="The value.")
+    value: str | None = Field(description="The value; `null` when the category is selected on its own.")
 
 
 _EXAMPLE_GROUP_RESPONSE: dict[str, Any] = {

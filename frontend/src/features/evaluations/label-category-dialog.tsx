@@ -124,8 +124,8 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
           htmlFor="lc-values"
           description={
             category
-              ? 'One tag per line. Leave empty for free text. Conversations keep a tag you remove here.'
-              : 'One tag per line. Leave empty to let each conversation take any text.'
+              ? 'One tag per line. Leave empty for a category that is picked on its own. Conversations keep a tag you remove here.'
+              : 'One tag per line. Leave empty for a category that is picked on its own.'
           }
           error={formState.errors.values?.message}
         >

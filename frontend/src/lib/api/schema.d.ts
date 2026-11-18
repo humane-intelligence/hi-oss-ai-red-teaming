@@ -4742,15 +4742,17 @@ export interface components {
             models: components["schemas"]["ConversationGroupModelEntry"][];
             /**
              * Labels
-             * @description Labels, keyed by a label category of the evaluation. A category with values takes one of them; one without takes free text. Labels are never sent to the model.
+             * @description Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category with values takes any number of them; one without is selected by listing it with an empty list. Labels are never sent to the model.
              */
             labels?: {
-                [key: string]: string;
+                [key: string]: string[];
             };
         };
         /**
          * ConversationGroupLabelResponse
          * @description One label on a group, under a live label category of its evaluation.
+         *
+         *     A group holding several values in one category has one entry per value.
          */
         ConversationGroupLabelResponse: {
             /**
@@ -4766,9 +4768,9 @@ export interface components {
             name: string;
             /**
              * Value
-             * @description The value.
+             * @description The value; `null` when the category is selected on its own.
              */
-            value: string;
+            value: string | null;
         };
         /**
          * ConversationGroupModelEntry
@@ -4918,10 +4920,10 @@ export interface components {
             name?: string | null;
             /**
              * Labels
-             * @description Replacement label set, keyed by label category; a blank value clears that category. A value the group already holds is accepted even after it was dropped from its category's list.
+             * @description Replacement label set, keyed by label category, each with the list of values picked there; a category left out is cleared, and so is one with values listed with none. A category without values is selected by listing it with an empty list. A value the group already holds is accepted even after it was dropped from its category's list.
              */
             labels?: {
-                [key: string]: string;
+                [key: string]: string[];
             } | null;
         };
         /**

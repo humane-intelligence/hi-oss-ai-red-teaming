@@ -408,7 +408,7 @@ erDiagram
     conversation_group_labels {
         conversation_group_id UUID PK,FK
         category_id UUID PK,FK
-        value VARCHAR(200)
+        value VARCHAR(200) PK
     }
     conversations {
         parameters JSONB

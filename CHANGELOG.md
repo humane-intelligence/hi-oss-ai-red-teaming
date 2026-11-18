@@ -34,6 +34,13 @@ change between minor versions.
 
 ### Changed
 
+- **Breaking:** conversation-group labels take several values per category. `labels` on
+  `POST /scenarios/{scenario_id}/conversation-groups` and on the group PATCH is now
+  `{category_id: [values]}` instead of `{category_id: value}`; a category left out is cleared. A
+  category without values no longer takes free text: it is selected on its own, by listing it with
+  an empty list, and reads back with `value: null`. Text stored there earlier stays readable and
+  can be kept. The `Labels` export column is `{category: [values]}`. Migration `51936c9ff5f4`
+  widens the table's primary key; no data is rewritten.
 - Starting a conversation and sending, regenerating or continuing a prompt now need the
   evaluation's group to be open for them, and answer 409 otherwise: a published group takes them
   from anyone who can reach it; before publication only from a caller who may edit the evaluation

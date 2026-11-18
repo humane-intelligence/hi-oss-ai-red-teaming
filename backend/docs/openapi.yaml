@@ -18333,15 +18333,19 @@ components:
           description: One entry per conversation to open in the group.
         labels:
           additionalProperties:
-            type: string
-            maxLength: 200
+            items:
+              type: string
+              maxLength: 200
+            type: array
+            maxItems: 50
           propertyNames:
             format: uuid
           type: object
           maxProperties: 20
           title: Labels
-          description: Labels, keyed by a label category of the evaluation. A category with values takes one of them; one
-            without takes free text. Labels are never sent to the model.
+          description: Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category
+            with values takes any number of them; one without is selected by listing it with an empty list. Labels are never
+            sent to the model.
       additionalProperties: false
       type: object
       required:
@@ -18383,16 +18387,21 @@ components:
           title: Name
           description: Category name.
         value:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Value
-          description: The value.
+          description: The value; `null` when the category is selected on its own.
       type: object
       required:
       - category_id
       - name
       - value
       title: ConversationGroupLabelResponse
-      description: One label on a group, under a live label category of its evaluation.
+      description: 'One label on a group, under a live label category of its evaluation.
+
+
+        A group holding several values in one category has one entry per value.'
     ConversationGroupModelEntry:
       properties:
         evaluation_ai_model_id:
@@ -18536,16 +18545,21 @@ components:
         labels:
           anyOf:
           - additionalProperties:
-              type: string
-              maxLength: 200
+              items:
+                type: string
+                maxLength: 200
+              type: array
+              maxItems: 50
             propertyNames:
               format: uuid
             type: object
             maxProperties: 20
           - type: 'null'
           title: Labels
-          description: Replacement label set, keyed by label category; a blank value clears that category. A value the group
-            already holds is accepted even after it was dropped from its category's list.
+          description: Replacement label set, keyed by label category, each with the list of values picked there; a category
+            left out is cleared, and so is one with values listed with none. A category without values is selected by listing
+            it with an empty list. A value the group already holds is accepted even after it was dropped from its category's
+            list.
       type: object
       title: ConversationGroupUpdate
       description: 'Payload for `PATCH /v1/evaluations/{evaluation_id}/conversation-groups/{id}`.

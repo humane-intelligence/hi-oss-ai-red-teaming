@@ -21,7 +21,7 @@ function category(name: string, values: string[] = []) {
 }
 
 describe('LabelsCard', () => {
-  it('lists categories with their values, and free-text ones as such', async () => {
+  it('lists categories with their values, and ones without tags as picked on their own', async () => {
     server.use(
       http.get(url, () =>
         HttpResponse.json([category('language', ['english', 'polish']), category('notes')]),
@@ -32,7 +32,7 @@ describe('LabelsCard', () => {
     expect(await screen.findByText('language')).toBeInTheDocument()
     expect(screen.getByText('english')).toBeInTheDocument()
     expect(screen.getByText('polish')).toBeInTheDocument()
-    expect(screen.getByText('Free text')).toBeInTheDocument()
+    expect(screen.getByText('No tags — picked on its own')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Custom tags (2)' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add tag category' })).toBeNull()
     expect(screen.queryByRole('button', { name: /delete language/i })).toBeNull()

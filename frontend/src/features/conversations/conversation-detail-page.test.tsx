@@ -1879,9 +1879,9 @@ describe('ConversationDetailPage — conversation labels', () => {
     expect(within(list).getByText('language: english')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
-    await user.selectOptions(within(dialog).getByLabelText('language'), 'polish')
+    await user.click(within(dialog).getByLabelText('language: polish'))
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(captured).toEqual({ labels: { 'cat-lang': 'polish' } }))
+    await waitFor(() => expect(captured).toEqual({ labels: { 'cat-lang': ['english', 'polish'] } }))
   })
 })
