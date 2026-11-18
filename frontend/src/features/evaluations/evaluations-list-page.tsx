@@ -1,3 +1,4 @@
+import { sentenceCase } from '@/lib/sentence-case'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useEvaluations, type EvaluationOrderBy } from './queries'
@@ -35,7 +36,7 @@ export function EvaluationsListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Evaluations"
-        description="An evaluation is a set of scenarios to test against chosen models, inside an evaluation group."
+        description="Evaluations are where red teamers test models. Each one belongs to an evaluation group."
       />
       <EvaluationsContent />
     </div>
@@ -103,7 +104,7 @@ export function EvaluationsContent() {
           <Link
             to={`/evaluation-groups/${e.evaluation_group_id}`}
             onClick={(ev) => ev.stopPropagation()}
-            className="text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+            className="hover:text-primary underline underline-offset-2"
           >
             {name}
           </Link>
@@ -147,7 +148,7 @@ export function EvaluationsContent() {
           value={view.filters.status}
           onChange={(v) => view.setFilter('status', v as EvaluationStatus | '')}
           allLabel="All statuses"
-          options={EVALUATION_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
+          options={EVALUATION_STATUSES.map((s) => ({ value: s, label: sentenceCase(s) }))}
         />
         <ResetViewButton view={view} />
 

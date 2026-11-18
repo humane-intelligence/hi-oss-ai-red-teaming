@@ -1,3 +1,4 @@
+import { sentenceCase } from '@/lib/sentence-case'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
@@ -173,7 +174,7 @@ export function EvaluationGroupDetailPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <GroupIdentityHeading groupId={group.id} />
                   <PublicationStatusBadge status={group.status} />
-                  <Badge variant="outline">{group.access_level.replace(/_/g, ' ')}</Badge>
+                  <Badge variant="outline">{sentenceCase(group.access_level)}</Badge>
                 </div>
                 <p className="text-muted-foreground font-mono text-xs">
                   by <span>{lookup(group.created_by_id)}</span>

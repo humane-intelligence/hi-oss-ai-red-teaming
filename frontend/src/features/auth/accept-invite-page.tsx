@@ -138,7 +138,7 @@ export function AcceptInvitePage() {
       }
     >
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <FormField label="Email" htmlFor="email">
+        <FormField label="Email address" htmlFor="email">
           <Input id="email" value={email} readOnly />
         </FormField>
         {role_names.length > 0 && (

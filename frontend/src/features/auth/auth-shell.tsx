@@ -65,7 +65,7 @@ export function AuthShell({
   const shownVersion = version && version.environment !== 'prod' ? version : undefined
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
-      <aside className="bg-card hidden flex-col justify-between border-r p-10 lg:flex">
+      <aside className="bg-card hidden flex-col justify-between border-l p-10 lg:order-last lg:flex">
         <Wordmark className="text-2xl" />
         {shownVersion && <VersionNote version={shownVersion} />}
       </aside>

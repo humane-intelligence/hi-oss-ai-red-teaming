@@ -558,9 +558,9 @@ export function EvaluationGroupFormPage() {
                     },
                   })}
                 >
-                  <option value="public">public</option>
-                  <option value="organization">organization</option>
-                  <option value="invitation_only">invitation only</option>
+                  <option value="public">Public</option>
+                  <option value="organization">Organization</option>
+                  <option value="invitation_only">Invitation only</option>
                 </PlainSelect>
               </FormField>
               {accessLevel === 'organization' && (

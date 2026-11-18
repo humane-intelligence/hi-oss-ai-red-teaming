@@ -35,7 +35,7 @@ describe('LoginPage', () => {
       </Routes>,
       { route: '/login' },
     )
-    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Email address'), 'test@example.com')
     await user.type(screen.getByLabelText('Password'), 'longenough123')
     await user.click(screen.getByRole('button', { name: /sign in/i }))
     expect(await screen.findByText('OVERVIEW')).toBeInTheDocument()
@@ -77,7 +77,7 @@ describe('LoginPage', () => {
     )
     const user = userEvent.setup()
     renderWithProviders(<LoginPage />, { route: '/login' })
-    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Email address'), 'test@example.com')
     await user.type(screen.getByLabelText('Password'), 'longenough123')
     await user.click(screen.getByRole('button', { name: /sign in/i }))
     expect(await screen.findByText('Invalid email or password.')).toBeInTheDocument()

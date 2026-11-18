@@ -51,7 +51,7 @@ export function PasswordResetRequestPage() {
   return (
     <AuthShell title="Reset password" subtitle="We'll email you a reset link.">
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <FormField label="Email" htmlFor="email" error={formState.errors.email?.message}>
+        <FormField label="Email address" htmlFor="email" error={formState.errors.email?.message}>
           <Input id="email" type="email" autoComplete="email" {...register('email')} />
         </FormField>
         {formError && <p className="text-destructive text-sm">{formError}</p>}

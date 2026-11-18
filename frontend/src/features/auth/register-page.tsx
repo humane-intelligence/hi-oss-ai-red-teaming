@@ -171,7 +171,7 @@ export function RegisterPage() {
   return (
     <AuthShell title="Create account">
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <FormField label="Email" htmlFor="email" error={formState.errors.email?.message}>
+        <FormField label="Email address" htmlFor="email" error={formState.errors.email?.message}>
           <Input id="email" type="email" autoComplete="email" {...register('email')} />
         </FormField>
         <FormField label="Password" htmlFor="password" error={formState.errors.password?.message}>
