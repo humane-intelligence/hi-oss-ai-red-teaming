@@ -429,14 +429,17 @@ export function ConversationDetailPage() {
                 },
                 {
                   key: 'tags',
-                  label: Object.keys(conv?.tags ?? {}).length > 0 ? 'Edit tags' : 'Add tags',
+                  label:
+                    Object.keys(conv?.tags ?? {}).length > 0
+                      ? 'Edit context tags'
+                      : 'Add context tags',
                   icon: Tag,
                   onSelect: () => setTagsOpen(true),
                   when: allows('conversations:update') && canWrite && tagsEnabled,
                 },
                 {
                   key: 'labels',
-                  label: group.data?.labels?.length ? 'Edit labels' : 'Add labels',
+                  label: group.data?.labels?.length ? 'Edit tags' : 'Add tags',
                   icon: Tags,
                   onSelect: () => setLabelsOpen(true),
                   when:
@@ -467,7 +470,7 @@ export function ConversationDetailPage() {
                   semantics with it. Without the label these chips read as loose text before the transcript. */}
               <ul
                 role="list"
-                aria-label="Tags"
+                aria-label="Context tags"
                 aria-describedby={unsentTags.size > 0 ? unsentHintId : undefined}
                 className="flex flex-wrap gap-1.5"
                 data-testid="conversation-tags"
@@ -497,7 +500,8 @@ export function ConversationDetailPage() {
                 // has not read yet. Carries the id too — with tagging off every key is unsent, so this is
                 // the paragraph the list's `aria-describedby` resolves to.
                 <p id={unsentHintId} className="text-muted-foreground text-xs">
-                  Tagging is off for this evaluation — these are kept but not sent to the model.
+                  Context tags are off for this evaluation — these are kept but not sent to the
+                  model.
                 </p>
               ) : (
                 // Named as well as marked per chip: the list is jumpable (a reader can land on it
@@ -509,8 +513,8 @@ export function ConversationDetailPage() {
                         columns, which render `TagFoldPolicy.unsent`. */}
                     Kept but not sent to the model: {[...unsentTags].sort().join(', ')} —{' '}
                     {allowedTagKeys === null
-                      ? 'a tag with no value.'
-                      : 'a key this evaluation no longer allows, or a tag with no value.'}
+                      ? 'a context tag with no value.'
+                      : 'a key this evaluation no longer allows, or a context tag with no value.'}
                   </p>
                 )
               )}

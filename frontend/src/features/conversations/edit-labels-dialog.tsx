@@ -48,7 +48,7 @@ export function EditLabelsDialog({
       open={open}
       onOpenChange={onOpenChange}
       busy={save.isPending}
-      title={group.labels?.length ? 'Edit labels' : 'Add labels'}
+      title={group.labels?.length ? 'Edit tags' : 'Add tags'}
       onOpen={() => {
         save.reset()
         setValue(seed(heldLabels(group), categories))
@@ -69,7 +69,7 @@ export function EditLabelsDialog({
         }}
       >
         <p className="text-muted-foreground text-sm">
-          Labels describe this conversation for exports and reports. They are never sent to the
+          Custom tags describe this conversation for exports and reports. They are never sent to the
           model.
         </p>
         <LabelsFields

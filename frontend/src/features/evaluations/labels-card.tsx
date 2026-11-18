@@ -49,7 +49,9 @@ export function LabelsCard({
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1">
-            <CardTitle as="h3">Labels{categories.isSuccess ? ` (${rows.length})` : ''}</CardTitle>
+            <CardTitle as="h3">
+              Custom tags{categories.isSuccess ? ` (${rows.length})` : ''}
+            </CardTitle>
             <InfoHint text={LABELS_HINT} />
           </div>
           {canManage && categories.isSuccess && (
@@ -57,7 +59,7 @@ export function LabelsCard({
               ref={addRef}
               size="sm"
               variant="outline"
-              aria-label="Add label category"
+              aria-label="Add tag category"
               disabled={atCap}
               onClick={() => setEditing(null)}
             >
@@ -71,7 +73,9 @@ export function LabelsCard({
           {readFailed ? (
             <div className="flex items-center gap-2">
               <p className="text-destructive text-sm">
-                {categories.isFetching ? 'Retrying the labels…' : "Couldn't load the labels."}
+                {categories.isFetching
+                  ? 'Retrying the custom tags…'
+                  : "Couldn't load the custom tags."}
               </p>
               {retry}
             </div>
@@ -79,17 +83,17 @@ export function LabelsCard({
             // Nothing else retries (no refetch on focus), and the list may be stale, e.g. still showing a row just deleted.
             <div className="flex items-center gap-2">
               <p className="text-destructive text-sm">
-                Couldn't refresh the labels — showing the last ones loaded.
+                Couldn't refresh the custom tags — showing the last ones loaded.
               </p>
               {retry}
             </div>
           ) : categories.isPending ? (
-            <p className="text-muted-foreground text-sm">Loading labels…</p>
+            <p className="text-muted-foreground text-sm">Loading custom tags…</p>
           ) : rows.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               {canManage
-                ? 'No labels yet. Add a category such as “language” to describe conversations in exports and reports. Labels are never sent to the model.'
-                : 'No labels defined for this evaluation.'}
+                ? 'No custom tags yet. Add a tag category such as “language” to describe conversations in exports and reports. Custom tags are never sent to the model.'
+                : 'No custom tags defined for this evaluation.'}
             </p>
           ) : null}
         </div>
@@ -139,7 +143,7 @@ export function LabelsCard({
         ))}
         {canManage && atCap && (
           <p className="text-muted-foreground text-xs">
-            Up to {MAX_LABEL_CATEGORIES} label categories per evaluation.
+            Up to {MAX_LABEL_CATEGORIES} tag categories per evaluation.
           </p>
         )}
       </CardContent>
@@ -162,8 +166,8 @@ export function LabelsCard({
           if (justDeleted.current) addRef.current?.focus()
           justDeleted.current = false
         }}
-        title="Delete label category"
-        description={`Delete "${deleting?.name}"? Conversations lose their ${deleting?.name} label, and it can't be restored.`}
+        title="Delete tag category"
+        description={`Delete "${deleting?.name}"? Conversations lose their ${deleting?.name} tag, and it can't be restored.`}
         confirmLabel="Delete"
         destructive
         pending={remove.isPending}

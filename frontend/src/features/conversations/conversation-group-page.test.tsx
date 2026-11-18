@@ -950,7 +950,7 @@ describe('ConversationGroupPage', () => {
     )
     renderPage()
 
-    const list = await screen.findByRole('list', { name: 'Tags for gpt-4o' })
+    const list = await screen.findByRole('list', { name: 'Context tags for gpt-4o' })
     // The chips render before the allow-list lands, and until it settles no key may be judged — so the
     // marking is what has to be waited for, not the row.
     await waitFor(() => {
@@ -1061,7 +1061,7 @@ describe('ConversationGroupPage', () => {
 
     await waitFor(() => expect(screen.getAllByTestId('pane-conversation-tags')).toHaveLength(2))
     const names = screen
-      .getAllByRole('list', { name: /^Tags for / })
+      .getAllByRole('list', { name: /^Context tags for / })
       .map((el) => el.getAttribute('aria-label'))
     expect(new Set(names).size).toBe(2)
   })
@@ -1079,7 +1079,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     // Named per pane so two rows are distinguishable in a reader's element list.
-    const list = await screen.findByRole('list', { name: 'Tags for gpt-4o' })
+    const list = await screen.findByRole('list', { name: 'Context tags for gpt-4o' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(2)
   })
 
@@ -1124,7 +1124,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
-    const toggles = screen.getAllByRole('button', { name: /^tags/i })
+    const toggles = screen.getAllByRole('button', { name: /^context tags/i })
     expect(toggles).toHaveLength(2)
     await user.click(toggles[0]!)
 
@@ -1521,7 +1521,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     )
     renderPage()
 
-    const list = await screen.findByRole('list', { name: 'Labels' })
+    const list = await screen.findByRole('list', { name: 'Tags' })
     expect(within(list).getByText('language: polish')).toBeInTheDocument()
     expect(within(list).getByText('note: roleplay')).toBeInTheDocument()
   })
@@ -1540,7 +1540,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('polish (not in the list)')
     await user.clear(within(dialog).getByLabelText('note'))
@@ -1572,7 +1572,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
@@ -1604,7 +1604,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('note')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
@@ -1633,7 +1633,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('english')
   })
@@ -1657,7 +1657,7 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: /^save$/i }),
     )

@@ -164,8 +164,8 @@ describe('EvaluationDetailPage — settings row', () => {
     const settings = within(await screen.findByRole('region', { name: 'Evaluation settings' }))
     expect(settings.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Models (0)',
-      expect.stringMatching(/^Allowed tags/),
-      expect.stringMatching(/^Labels/),
+      expect.stringMatching(/^Allowed context tags/),
+      expect.stringMatching(/^Custom tags/),
       'Other details',
     ])
     // Four cards: two by two from lg, one row from 2xl.
@@ -738,7 +738,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
     )
-    expect(screen.getByText(/allowed tags/i)).toBeInTheDocument()
+    expect(screen.getByText(/allowed context tags/i)).toBeInTheDocument()
   })
 
   it('hides the card (and never fetches the keys) when tagging is disabled', async () => {
@@ -755,7 +755,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
     )
-    expect(screen.queryByText(/allowed tags/i)).toBeNull()
+    expect(screen.queryByText(/allowed context tags/i)).toBeNull()
     expect(tagKeyCalls).toBe(0)
     // The three remaining cards take the row between them instead of leaving a gap.
     const settings = screen.getByRole('region', { name: 'Evaluation settings' })
@@ -785,7 +785,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
 
     // The switch reads as off until the settings arrive, so wait for them or this passes vacuously.
     await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
-    expect(screen.queryByText(/allowed tags/i)).toBeNull()
+    expect(screen.queryByText(/allowed context tags/i)).toBeNull()
     const settings = screen.getByRole('region', { name: 'Evaluation settings' })
     expect(settings.lastElementChild).toHaveClass('lg:grid-cols-3')
   })

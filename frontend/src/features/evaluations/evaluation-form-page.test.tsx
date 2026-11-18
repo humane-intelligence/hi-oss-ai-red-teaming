@@ -547,15 +547,15 @@ function captureUpdate(onBody: (body: Record<string, unknown>) => void) {
 
 const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement
 
-describe('EvaluationFormPage — custom tags', () => {
+describe('EvaluationFormPage — context tags', () => {
   it('describes the checkbox, and the hint beside it does not toggle it', async () => {
     server.use(...handlers(['evaluations:create']))
     const user = userEvent.setup()
     renderCreate()
 
-    const box = await screen.findByRole('checkbox', { name: 'Custom tags' })
+    const box = await screen.findByRole('checkbox', { name: 'Context tags' })
     expect(box).toHaveAccessibleDescription(
-      'Checking this box allows custom tags to be added to conversations in this evaluation.',
+      'Checking this box allows context tags to be added to conversations in this evaluation.',
     )
     const before = box.getAttribute('aria-checked')
 
@@ -564,7 +564,7 @@ describe('EvaluationFormPage — custom tags', () => {
     expect(box).toHaveAttribute('aria-checked', before)
   })
 
-  it('offers no Custom tags checkbox when the instance turns tags off', async () => {
+  it('offers no Context tags checkbox when the instance turns tags off', async () => {
     server.use(
       http.get('http://localhost/api/v1/platform-settings/public', () =>
         HttpResponse.json({
@@ -583,7 +583,7 @@ describe('EvaluationFormPage — custom tags', () => {
     renderCreate()
 
     await screen.findByRole('checkbox', { name: /mask assigned model identities/i })
-    expect(screen.queryByRole('checkbox', { name: 'Custom tags' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Context tags' })).toBeNull()
   })
 })
 

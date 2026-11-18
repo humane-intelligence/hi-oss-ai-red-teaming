@@ -207,7 +207,7 @@ describe('ConversationsSection — groups', () => {
     )
     renderSection()
 
-    const lists = await screen.findAllByRole('list', { name: 'Labels' })
+    const lists = await screen.findAllByRole('list', { name: 'Tags' })
     expect(lists).toHaveLength(1)
     expect(lists[0]).toHaveTextContent('language: polish')
   })

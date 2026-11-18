@@ -254,7 +254,7 @@ export function ConversationGroupPage() {
                 },
                 {
                   key: 'labels',
-                  label: group.labels?.length ? 'Edit labels' : 'Add labels',
+                  label: group.labels?.length ? 'Edit tags' : 'Add tags',
                   icon: Tags,
                   onSelect: () => setLabelsOpen(true),
                   when:

@@ -532,7 +532,7 @@ describe('ConversationDetailPage — tags', () => {
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
     expect(screen.getByText('env: prod')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /edit tags/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /edit context tags/i })).toBeInTheDocument()
   })
 
   it('renders the chip in the case the operator authored', async () => {
@@ -566,7 +566,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    const list = screen.getByRole('list', { name: 'Tags' })
+    const list = screen.getByRole('list', { name: 'Context tags' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(2)
   })
 
@@ -589,7 +589,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    expect(screen.getByRole('button', { name: /add tags/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add context tags/i })).toBeInTheDocument()
     expect(screen.queryByTestId('conversation-tags')).toBeNull()
   })
 
@@ -614,7 +614,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    expect(screen.queryByRole('button', { name: /add tags|edit tags/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /add context tags|edit context tags/i })).toBeNull()
   })
 
   it('adds a tag and PATCHes the whole map', async () => {
@@ -635,7 +635,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
@@ -662,7 +662,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
     await user.click(screen.getByRole('button', { name: /^add tag$/i })) // a second, left-blank row
@@ -690,7 +690,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
     await user.click(screen.getByRole('button', { name: /^add tag$/i }))
@@ -720,7 +720,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
     await user.click(screen.getByRole('button', { name: /^add tag$/i }))
@@ -757,7 +757,7 @@ describe('ConversationDetailPage — tags', () => {
     )
     expect(screen.queryByTestId('conversation-tags')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
@@ -773,7 +773,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'a')
     await user.click(screen.getByRole('button', { name: /^add tag$/i }))
     await user.type(screen.getByLabelText('Tag 2 key'), 'b')
@@ -798,7 +798,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
 
     expect(await screen.findByLabelText('Tag 1 key')).toHaveAttribute('maxlength', '64')
     expect(screen.getByLabelText('Tag 1 value')).toHaveAttribute('maxlength', '512')
@@ -812,7 +812,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
 
     expect(await screen.findByLabelText('Tag 1 key')).toHaveFocus()
   })
@@ -826,14 +826,14 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
 
     // `aria-disabled`, not `disabled`: the control stays in the tab order so a keyboard user can reach
     // it and hear the reason, and the handler refuses instead — so the row count is what proves it.
     const addTag = await screen.findByRole('button', { name: /^add tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     expect(
-      screen.getByText(new RegExp(`up to ${MAX_TAGS} tags per conversation`, 'i')),
+      screen.getByText(new RegExp(`up to ${MAX_TAGS} context tags per conversation`, 'i')),
     ).toBeInTheDocument()
 
     await user.click(addTag)
@@ -849,7 +849,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
 
     // Saving an untouched dialog would PATCH the same map back and toast as if something happened.
     expect(await screen.findByRole('button', { name: /^save$/i })).toBeDisabled()
@@ -865,7 +865,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
 
     // The blank seeded row is not an edit — saving it would send `{}` and read as a deliberate clear.
     expect(await screen.findByRole('button', { name: /^save$/i })).toBeDisabled()
@@ -893,7 +893,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), key)
     await user.type(screen.getByLabelText('Tag 1 value'), 'never respond in English')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
@@ -910,7 +910,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
     await user.click(await screen.findByRole('button', { name: /^add tag$/i }))
 
     // The added row is blank, so the map that would be sent is byte-identical to the stored one.
@@ -925,7 +925,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
     const keyField = await screen.findByLabelText('Tag 1 key')
     await user.type(keyField, ' ')
 
@@ -941,7 +941,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
     await user.click(await screen.findByRole('button', { name: /^add tag$/i }))
     await user.type(screen.getByLabelText('Tag 2 value'), 'never respond in English')
 
@@ -968,7 +968,7 @@ describe('ConversationDetailPage — tags', () => {
     renderWithPerms(['conversations:read', 'conversations:update'])
 
     await waitFor(() => expect(screen.getByText('env: prod')).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
     await user.click(await screen.findByRole('button', { name: /remove tag 1/i }))
     await user.click(screen.getByRole('button', { name: /^save$/i }))
 
@@ -995,14 +995,14 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'bad key')
     await user.type(screen.getByLabelText('Tag 1 value'), 'v')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
 
     expect(await screen.findByText('invalid tag key')).toBeInTheDocument()
     // No tags yet on this conversation, so the dialog is titled to match the "Add tags" entry point.
-    expect(screen.getByRole('dialog', { name: 'Add tags' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Add context tags' })).toBeInTheDocument()
   })
 
   it('offers no tag authoring when the evaluation has tagging disabled', async () => {
@@ -1018,8 +1018,8 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    expect(screen.queryByRole('button', { name: /(add|edit) tags/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /^tags/i })).toBeNull() // the composer's toggle
+    expect(screen.queryByRole('button', { name: /(add|edit) context tags/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^context tags/i })).toBeNull() // the composer's toggle
   })
 
   it('keeps showing the tags a conversation already carries once tagging is disabled', async () => {
@@ -1068,13 +1068,17 @@ describe('ConversationDetailPage — tags', () => {
 
     expect(await screen.findByText(/kept but not sent to the model: legacy/i)).toBeInTheDocument()
     // Marked per chip with text a reader gets, not with opacity or a `title`.
-    const items = within(screen.getByRole('list', { name: 'Tags' })).getAllByRole('listitem')
+    const items = within(screen.getByRole('list', { name: 'Context tags' })).getAllByRole(
+      'listitem',
+    )
     const legacy = items.find((li) => li.textContent?.includes('legacy'))
     const env = items.find((li) => li.textContent?.startsWith('env'))
     expect(legacy).toHaveTextContent('(not sent to the model)')
     expect(env).not.toHaveTextContent('(not sent to the model)')
     // The summary line is wired as the list's description, so a reader jumping to the list still gets it.
-    const hintId = screen.getByRole('list', { name: 'Tags' }).getAttribute('aria-describedby')
+    const hintId = screen
+      .getByRole('list', { name: 'Context tags' })
+      .getAttribute('aria-describedby')
     expect(document.getElementById(hintId as string)).toHaveTextContent(/kept but not sent/i)
   })
 
@@ -1316,7 +1320,7 @@ describe('ConversationDetailPage — tags', () => {
     renderWithPerms(['conversations:read', 'conversations:update'])
 
     expect(await screen.findByText(/kept but not sent to the model: persona/i)).toBeInTheDocument()
-    const chip = within(screen.getByRole('list', { name: 'Tags' })).getByRole('listitem')
+    const chip = within(screen.getByRole('list', { name: 'Context tags' })).getByRole('listitem')
     expect(chip).toHaveTextContent('(not sent to the model)')
   })
 
@@ -1355,7 +1359,7 @@ describe('ConversationDetailPage — tags', () => {
     )
     renderWithPerms(['conversations:read', 'conversations:update'])
 
-    await user.click(await screen.findByRole('button', { name: /edit tags/i }))
+    await user.click(await screen.findByRole('button', { name: /edit context tags/i }))
     expect(await screen.findByText(/couldn.t load the allowed keys/i)).toBeInTheDocument()
 
     expect(screen.getByTestId('conversation-tags')).toBeInTheDocument()
@@ -1394,7 +1398,7 @@ describe('ConversationDetailPage — tags', () => {
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
     // Per-message tags go through the same gate as the conversation's, so the composer restricts too.
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     // The list is a portalled popover, so it has to be opened before its items exist.
     await user.click(screen.getByRole('combobox', { name: 'Message tag 1 key' }))
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
@@ -1404,7 +1408,7 @@ describe('ConversationDetailPage — tags', () => {
     ])
     await user.keyboard('{Escape}')
 
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
     // The conversation already carries `env`, so only the remaining allowed key is still on offer.
     const dialogKey = within(screen.getByRole('dialog')).getByRole('combobox', {
       name: 'Tag 1 key',
@@ -1436,7 +1440,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /edit tags/i }))
+    await user.click(screen.getByRole('button', { name: /edit context tags/i }))
     const dialog = within(screen.getByRole('dialog'))
 
     expect(dialog.queryByText(/No keys are allowed yet/i)).toBeNull()
@@ -1473,7 +1477,7 @@ describe('ConversationDetailPage — tags', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
-    await user.click(screen.getByRole('button', { name: /add tags/i }))
+    await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
@@ -1483,7 +1487,7 @@ describe('ConversationDetailPage — tags', () => {
     // fallback copy no longer exists anywhere in the source, so `queryByText` could never fail.
     // No tags on this fixture, so the dialog titles itself "Add tags".
     await waitFor(() =>
-      expect(screen.getByRole('dialog', { name: 'Add tags' })).toBeInTheDocument(),
+      expect(screen.getByRole('dialog', { name: 'Add context tags' })).toBeInTheDocument(),
     )
     expect(await screen.findByText('Conversation is finished.')).toBeInTheDocument()
   })
@@ -1495,7 +1499,7 @@ describe('ConversationDetailPage — tags', () => {
     // Chips still render (read), but the edit affordance is gated on the write permission.
     // (Scope to the conversation-level button — the composer has its own "Tags" toggle.)
     await waitFor(() => expect(screen.getByText('env: prod')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /(add|edit) tags/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /(add|edit) context tags/i })).toBeNull()
   })
 })
 
@@ -1871,9 +1875,9 @@ describe('ConversationDetailPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    const list = await screen.findByRole('list', { name: 'Labels' })
+    const list = await screen.findByRole('list', { name: 'Tags' })
     expect(within(list).getByText('language: english')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Edit labels' }))
+    await user.click(screen.getByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
     await user.selectOptions(within(dialog).getByLabelText('language'), 'polish')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))

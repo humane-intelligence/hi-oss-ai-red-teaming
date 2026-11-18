@@ -178,8 +178,8 @@ export function ConversationPane({
               // in the marker below.
               aria-label={
                 tagsEnabled
-                  ? `Tags for ${a11yLabel}`
-                  : `Tags for ${a11yLabel} — kept but not sent to the model, tagging is off for this evaluation`
+                  ? `Context tags for ${a11yLabel}`
+                  : `Context tags for ${a11yLabel} — kept but not sent to the model, context tags are off for this evaluation`
               }
             >
               {tagEntries.map(([k, v]) => (

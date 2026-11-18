@@ -89,7 +89,7 @@ export function ChatComposer({
   const addBlockedReason = tagsLocked
     ? null
     : atCap
-      ? `Up to ${MAX_TAGS} tags per message`
+      ? `Up to ${MAX_TAGS} context tags per message`
       : noKeysAllowed || keysUnsettled
         ? 'See the note above'
         : noKeyLeft
@@ -167,9 +167,9 @@ export function ChatComposer({
               // phone this is the only way into the tagging surface.
               className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 py-1.5 text-xs"
             >
-              <Tag className="size-3" /> Tags{tagCount ? ` (${tagCount})` : ''}
+              <Tag className="size-3" /> Context tags{tagCount ? ` (${tagCount})` : ''}
             </button>
-            <InfoHint text="Each tag is added to the model's instructions, so it changes how the model answers. Pick one tag per category." />
+            <InfoHint text="Each context tag is added to the model's instructions, so it changes how the model answers. One value per key." />
           </div>
           {tagsOpen && (
             <div id={tagPanelId} className="mt-1 space-y-1">
@@ -184,7 +184,7 @@ export function ChatComposer({
               )}
               {allowedKeysStatus === 'success' && allowedTagKeys?.length === 0 && (
                 <p className="text-muted-foreground text-xs">
-                  This evaluation restricts tags and allows no keys yet.
+                  This evaluation restricts context tags and allows no keys yet.
                 </p>
               )}
               {tagRows.map((row, i) => (

@@ -369,7 +369,7 @@ function GroupCard({
           </ul>
         </Field>
         {(group.labels?.length ?? 0) > 0 && (
-          <Field inline label="Labels" className="col-span-full">
+          <Field inline label="Tags" className="col-span-full">
             <GroupLabels labels={group.labels} className="inline-flex align-middle" />
           </Field>
         )}

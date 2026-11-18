@@ -11,7 +11,7 @@ export function GroupLabels({
 }) {
   if (!labels?.length) return null
   return (
-    <ul aria-label="Labels" className={cn('flex flex-wrap gap-1.5', className)}>
+    <ul aria-label="Tags" className={cn('flex flex-wrap gap-1.5', className)}>
       {labels.map((label) => (
         <li key={label.category_id}>
           {/* Capped and titled because a free-text value runs to 200 chars. */}

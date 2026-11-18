@@ -232,7 +232,7 @@ export function useAddTagKey(evaluationId: string) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['evaluation-tag-keys', evaluationId] })
-      toast.success('Tag key allowed')
+      toast.success('Context tag key allowed')
     },
   })
 }
@@ -248,7 +248,7 @@ export function useRemoveTagKey(evaluationId: string) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['evaluation-tag-keys', evaluationId] })
-      toast.success('Tag key removed')
+      toast.success('Context tag key removed')
     },
   })
 }
@@ -276,7 +276,7 @@ export function useCreateLabelCategory(evaluationId: string) {
       ),
     onSuccess: () => {
       invalidate()
-      toast.success('Label category added')
+      toast.success('Tag category added')
     },
   })
 }
@@ -299,7 +299,7 @@ export function useUpdateLabelCategory(evaluationId: string) {
       ),
     onSuccess: () => {
       invalidate()
-      toast.success('Label category saved')
+      toast.success('Tag category saved')
     },
   })
 }
@@ -316,7 +316,7 @@ export function useDeleteLabelCategory(evaluationId: string) {
       ),
     // Returned so the caller's onSuccess sees the refreshed list: below the cap again, Add is enabled.
     onSuccess: () => {
-      toast.success('Label category deleted')
+      toast.success('Tag category deleted')
       return invalidate()
     },
   })

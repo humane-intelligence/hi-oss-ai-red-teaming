@@ -220,10 +220,10 @@ export function GroupCreatePage() {
 
           {(labelCategories.data?.length ?? 0) > 0 && (
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Labels (optional)</legend>
+              <legend className="text-sm font-medium">Custom tags (optional)</legend>
               <p className="text-muted-foreground text-xs">
-                Describe this conversation for exports and reports. Labels are never sent to the
-                model.
+                Describe this conversation for exports and reports. Custom tags are never sent to
+                the model.
               </p>
               <LabelsFields
                 categories={labelCategories.data ?? []}

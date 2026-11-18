@@ -182,7 +182,7 @@ export function EvaluationFormPage() {
           cover_image: values.cover_image || null,
           mask_models_enabled: values.mask_models_enabled,
           tags_enabled: values.tags_enabled,
-          tags_restricted: false, // opt-in later via the evaluation's Allowed tags card
+          tags_restricted: false, // opt-in later via the evaluation's Allowed context tags card
           data_license_id: values.data_license_id || null,
         })
         navigate(`/evaluations/${created.id}`)
@@ -403,12 +403,12 @@ export function EvaluationFormPage() {
                   {/* Beside the label, not inside it: a button in a label would toggle the box. */}
                   <div className="flex items-center gap-1">
                     <FieldLabel htmlFor="tags_enabled" className="font-normal">
-                      Custom tags
+                      Context tags
                     </FieldLabel>
                     <InfoHint text={TAGS_HINT} />
                   </div>
                   <FieldDescription id={tagsDescriptionId}>
-                    Checking this box allows custom tags to be added to conversations in this
+                    Checking this box allows context tags to be added to conversations in this
                     evaluation.
                   </FieldDescription>
                 </FieldContent>

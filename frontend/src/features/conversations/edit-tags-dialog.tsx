@@ -93,7 +93,7 @@ export function EditTagsDialog({
   // The two allow-list states already have their own copy above, so the button points at it instead of
   // repeating it — one sentence per state on screen, not two.
   const addBlockedReason = atCap
-    ? `Up to ${MAX_TAGS} tags per conversation`
+    ? `Up to ${MAX_TAGS} context tags per conversation`
     : keysExhausted
       ? 'Every key this evaluation allows is already used'
       : noKeysAllowed || keysUnsettled
@@ -160,7 +160,7 @@ export function EditTagsDialog({
     }
   }
 
-  const dialogTitle = Object.keys(currentTags).length > 0 ? 'Edit tags' : 'Add tags'
+  const dialogTitle = Object.keys(currentTags).length > 0 ? 'Edit context tags' : 'Add context tags'
   return (
     <Modal
       open={open}
@@ -172,8 +172,8 @@ export function EditTagsDialog({
       <div className="space-y-4">
         <p className="text-muted-foreground text-sm">
           {allowedKeys === null
-            ? 'Free-form key/value tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s tagging policy no longer allows.'
-            : 'Key/value tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s tagging policy no longer allows. This evaluation restricts tags, so keys are picked from the ones it allows.'}
+            ? 'Free-form key/value context tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s tagging policy no longer allows.'
+            : 'Key/value context tags stored on the conversation and folded into the model’s context alongside the prompt, minus any the evaluation’s tagging policy no longer allows. This evaluation restricts context tags, so keys are picked from the ones it allows.'}
         </p>
         {allowedKeys !== null && keysStatus === 'pending' && (
           <p className="text-muted-foreground text-xs">Loading allowed keys…</p>
@@ -187,7 +187,8 @@ export function EditTagsDialog({
         )}
         {keysStatus === 'success' && allowedKeys?.length === 0 && (
           <p className="text-muted-foreground text-xs">
-            No keys are allowed yet — an evaluation admin has to add some before tags can be saved.
+            No keys are allowed yet — an evaluation admin has to add some before context tags can be
+            saved.
           </p>
         )}
         {/* `role="alert"`: this dialog opts the mutation out of the global toast, so a failed Save is

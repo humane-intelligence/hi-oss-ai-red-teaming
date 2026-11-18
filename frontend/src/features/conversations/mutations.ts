@@ -217,7 +217,7 @@ export function useUpdateConversationTags(evaluationId: string) {
       qc.invalidateQueries({ queryKey: ['conversation', updated.id] })
       qc.invalidateQueries({ queryKey: ['conversation-group'] })
       qc.invalidateQueries({ queryKey: ['conversation-groups'] })
-      toast.success('Tags updated')
+      toast.success('Context tags updated')
     },
   })
 }
@@ -260,7 +260,7 @@ export function useSetGroupLabels(evaluationId: string) {
     onSuccess: (group) => {
       qc.invalidateQueries({ queryKey: ['conversation-groups'] })
       qc.invalidateQueries({ queryKey: ['conversation-group', group.id] })
-      toast.success('Labels saved')
+      toast.success('Tags saved')
     },
     onError: (error) => refreshLabelsOnBadRequest(qc, error),
   })
