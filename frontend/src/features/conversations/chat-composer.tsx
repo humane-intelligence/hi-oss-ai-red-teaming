@@ -257,7 +257,7 @@ export function ChatComposer({
                     setTagRows((rows) => [...rows, blankRow()])
                   }}
                 >
-                  Add tag
+                  Add context tag
                 </Button>
                 {addBlockedReason && (
                   <p id={addReasonId} className="text-muted-foreground text-xs">

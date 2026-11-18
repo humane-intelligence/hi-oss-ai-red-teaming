@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { REVERSIBLE_DELETE_NOTE } from '@/lib/restore/restore'
 import { useAuth } from '@/lib/auth/auth-context'
 import { usePermissions } from '@/lib/auth/use-permissions'
+import { formatDateTime } from '@/lib/format-date'
 import type { ConversationGroupResponse } from '@/lib/api/types'
 
 const PAGE_SIZE = 20
@@ -42,6 +43,7 @@ export function ConversationGroupsListPage() {
           {(g.conversations ?? []).every((c) => c.turn_count === 0) && (
             <Badge variant="neutral">No messages</Badge>
           )}
+          {user && g.user_id !== user.id && <Badge variant="neutral">Another member's</Badge>}
         </div>
       ),
     },
@@ -70,9 +72,7 @@ export function ConversationGroupsListPage() {
       label: 'Started',
       header: 'Started',
       hideBelow: 'md',
-      cell: (g) => (
-        <span className="text-muted-foreground">{new Date(g.created_at).toLocaleString()}</span>
-      ),
+      cell: (g) => <span className="text-muted-foreground">{formatDateTime(g.created_at)}</span>,
     },
     {
       header: '',
@@ -105,7 +105,7 @@ export function ConversationGroupsListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Conversations"
-        description="Every session you've run, newest first. Open one to pick up the side-by-side run across models."
+        description="Your conversations, newest first, plus other members' where your role lets you see them. Open one to pick up the side-by-side run across models."
       />
       <div className="flex flex-wrap gap-2">
         <ResetViewButton view={view} />

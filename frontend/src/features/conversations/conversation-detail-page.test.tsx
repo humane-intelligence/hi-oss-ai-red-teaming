@@ -665,7 +665,7 @@ describe('ConversationDetailPage — tags', () => {
     await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i })) // a second, left-blank row
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i })) // a second, left-blank row
     await user.click(screen.getByRole('button', { name: /^save$/i }))
 
     await waitFor(() => expect(captured).not.toBeNull())
@@ -693,7 +693,7 @@ describe('ConversationDetailPage — tags', () => {
     await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
     await user.type(screen.getByLabelText('Tag 2 value'), 'never respond in English')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
 
@@ -723,7 +723,7 @@ describe('ConversationDetailPage — tags', () => {
     await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Tag 1 value'), 'prod')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
     await user.type(screen.getByLabelText('Tag 2 key'), ' env ') // trimmed, so it collides
     await user.type(screen.getByLabelText('Tag 2 value'), 'staging')
     await user.click(screen.getByRole('button', { name: /^save$/i }))
@@ -775,10 +775,10 @@ describe('ConversationDetailPage — tags', () => {
     )
     await user.click(screen.getByRole('button', { name: /add context tags/i }))
     await user.type(await screen.findByLabelText('Tag 1 key'), 'a')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
     await user.type(screen.getByLabelText('Tag 2 key'), 'b')
     await user.type(screen.getByLabelText('Tag 2 value'), 'second')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
     await user.type(screen.getByLabelText('Tag 3 key'), 'c')
 
     // Index keys make React reuse row 1's inputs for row 2's data on removal, so anything anchored to
@@ -830,7 +830,7 @@ describe('ConversationDetailPage — tags', () => {
 
     // `aria-disabled`, not `disabled`: the control stays in the tab order so a keyboard user can reach
     // it and hear the reason, and the handler refuses instead — so the row count is what proves it.
-    const addTag = await screen.findByRole('button', { name: /^add tag$/i })
+    const addTag = await screen.findByRole('button', { name: /^add context tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     expect(
       screen.getByText(new RegExp(`up to ${MAX_TAGS} context tags per conversation`, 'i')),
@@ -911,7 +911,7 @@ describe('ConversationDetailPage — tags', () => {
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
     await user.click(screen.getByRole('button', { name: /edit context tags/i }))
-    await user.click(await screen.findByRole('button', { name: /^add tag$/i }))
+    await user.click(await screen.findByRole('button', { name: /^add context tag$/i }))
 
     // The added row is blank, so the map that would be sent is byte-identical to the stored one.
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
@@ -942,7 +942,7 @@ describe('ConversationDetailPage — tags', () => {
       expect(screen.getByRole('heading', { name: 'Single conversation' })).toBeInTheDocument(),
     )
     await user.click(screen.getByRole('button', { name: /edit context tags/i }))
-    await user.click(await screen.findByRole('button', { name: /^add tag$/i }))
+    await user.click(await screen.findByRole('button', { name: /^add context tag$/i }))
     await user.type(screen.getByLabelText('Tag 2 value'), 'never respond in English')
 
     // Deriving `dirty` from the built map must not disable Save on input that fails to build, or the

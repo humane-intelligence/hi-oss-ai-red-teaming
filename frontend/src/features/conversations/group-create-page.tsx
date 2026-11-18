@@ -42,10 +42,15 @@ type Row = {
 }
 
 // Stored once and shown to every member, so a fixed format; the clock is the creator's own.
+// To the second, so two starts in one minute don't share a name.
 function startedStamp(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+// Both mirror the server's caps, which otherwise answer with a 422.
+const NAME_MAX = 255
+const MAX_MODELS = 4
 
 let rowSeq = 0
 function emptyRow(modelId: string): Row {
@@ -102,12 +107,12 @@ export function GroupCreatePage() {
       rs.map((r) => (r.key === key ? { ...r, params: { ...r.params, [field]: value } } : r)),
     )
 
-  // Surface only field errors (422) inline — anything else double-notifies with the
-  // global toast. A per-row title 422 collides on one `title` key (unreachable: trimmed + capped).
-  const titleError =
+  // Every field error (422) shows here, since the global toast skips them; anything else
+  // would double-notify with it.
+  const fieldErrors =
     createGroup.error instanceof ApiError
-      ? fieldErrorsFromProblem(createGroup.error.problem).title
-      : undefined
+      ? Object.values(fieldErrorsFromProblem(createGroup.error.problem))
+      : []
 
   const canStart =
     models.length > 0 &&
@@ -141,7 +146,7 @@ export function GroupCreatePage() {
       {
         scenarioId: chosenScenarioId,
         body: {
-          name: name.trim() || fallbackName,
+          name: name.trim() || fallbackName.slice(0, NAME_MAX),
           models: payloadModels,
           labels: labelPayload(liveLabels, { keepBlanks: false }),
         },
@@ -193,6 +198,7 @@ export function GroupCreatePage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Auto-named from the models and start time if left blank"
+              maxLength={NAME_MAX}
             />
           </FormField>
 
@@ -251,9 +257,9 @@ export function GroupCreatePage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {models.map((m) => (
+                            {models.map((m, mi) => (
                               <SelectItem key={m.assignment_id} value={m.assignment_id}>
-                                {m.name ?? '— masked —'}
+                                {m.name ?? `Masked model ${mi + 1}`}
                                 {m.web_access ? ' (internet)' : ''}
                               </SelectItem>
                             ))}
@@ -338,11 +344,16 @@ export function GroupCreatePage() {
               type="button"
               variant="outline"
               size="sm"
-              disabled={models.length === 0}
+              disabled={models.length === 0 || rows.length >= MAX_MODELS}
               onClick={() => setRows((rs) => [...rs, emptyRow(models[0]?.assignment_id ?? '')])}
             >
               <Plus className="size-4" /> Add model
             </Button>
+            {rows.length >= MAX_MODELS && (
+              <p className="text-muted-foreground text-xs">
+                A conversation compares up to {MAX_MODELS} models.
+              </p>
+            )}
           </div>
 
           {models.length === 0 && (
@@ -351,7 +362,11 @@ export function GroupCreatePage() {
             </p>
           )}
 
-          {titleError && <p className="text-destructive text-sm">{titleError}</p>}
+          {fieldErrors.map((message) => (
+            <p key={message} role="alert" className="text-destructive text-sm">
+              {message}
+            </p>
+          ))}
 
           <Button onClick={handleStart} disabled={!canStart}>
             {createGroup.isPending ? (

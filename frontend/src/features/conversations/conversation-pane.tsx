@@ -39,6 +39,7 @@ export function ConversationPane({
   allowedKeysStatus,
   tags,
   onWarmupChange,
+  onSendingChange,
   title,
   prompt,
   promptNonce,
@@ -68,6 +69,7 @@ export function ConversationPane({
   // them lives on the full conversation page.
   tags?: ConversationResponse['tags']
   onWarmupChange?: (conversationId: string, blocked: boolean) => void
+  onSendingChange?: (conversationId: string, sending: boolean) => void
   title?: string | null
   prompt: string
   promptNonce: number
@@ -117,6 +119,12 @@ export function ConversationPane({
     onWarmupChange?.(conversationId, warmup.blocked)
   }, [conversationId, warmup.blocked, onWarmupChange])
   useEffect(() => () => onWarmupChange?.(conversationId, false), [conversationId, onWarmupChange])
+
+  // A prompt in flight already counts for the group's model lock; its turn count only says so after the reply.
+  useEffect(() => {
+    onSendingChange?.(conversationId, stream.pending)
+  }, [conversationId, stream.pending, onSendingChange])
+  useEffect(() => () => onSendingChange?.(conversationId, false), [conversationId, onSendingChange])
 
   const sorted = [...(messages.data?.items ?? [])].sort((a, b) =>
     a.created_at.localeCompare(b.created_at),

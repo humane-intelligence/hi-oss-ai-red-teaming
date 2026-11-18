@@ -1596,7 +1596,7 @@ describe('ConversationGroupPage — conversation labels', () => {
         if (bodies.length > 1) return HttpResponse.json(labelled)
         live = categories.slice(0, 1)
         return HttpResponse.json(
-          { title: 'Bad Request', status: 400, detail: 'A label category is not defined.' },
+          { title: 'Bad Request', status: 400, detail: 'A category is not defined.' },
           { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
         )
       }),
