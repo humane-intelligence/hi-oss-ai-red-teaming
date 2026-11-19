@@ -310,8 +310,7 @@ export function ConversationGroupPage() {
                     assignmentId={c.evaluation_ai_model_id}
                     modelName={modelName(c.evaluation_ai_model_id)}
                     nameSuffix={nameSuffixes[i]}
-                    // Until the group's stage is known a pane would warm a model a closed group refuses.
-                    warmupEnabled={lifecycleKnown && warmupEnabled(c.evaluation_ai_model_id)}
+                    warmupEnabled={warmupEnabled(c.evaluation_ai_model_id)}
                     webAccess={webAccess(c.evaluation_ai_model_id)}
                     acceptsImages={acceptsImages(c.evaluation_ai_model_id)}
                     showTags={conversationTagsEnabled}
@@ -325,7 +324,9 @@ export function ConversationGroupPage() {
                     prompt={prompt}
                     promptNonce={promptNonce}
                     groupPermissions={groupPermissions}
-                    canWrite={canWrite && !promptsBlocked}
+                    // Until the group's stage is known a pane would send, or warm a model, where a
+                    // closed group refuses both.
+                    canWrite={canWrite && lifecycleKnown && !promptsBlocked}
                     // Per member, and without the `canManage` arm `canWrite` carries: the flag
                     // services filter on the conversation's own `user_id`, so a break-glass
                     // viewer offered the control would get a 404.
@@ -339,7 +340,7 @@ export function ConversationGroupPage() {
               {canWrite && promptsBlocked && (
                 <p className="text-muted-foreground text-sm">{promptsBlocked}</p>
               )}
-              {canWrite && !promptsBlocked && (
+              {canWrite && lifecycleKnown && !promptsBlocked && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault()

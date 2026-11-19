@@ -28,6 +28,7 @@ from app.core.auth.object_roles.schemas import ObjectMemberUpdate
 from app.core.auth.object_roles.service import ObjectMember
 from app.core.auth.object_roles.service import add_member
 from app.core.auth.object_roles.service import held_roles
+from app.core.auth.object_roles.service import is_member
 from app.core.auth.object_roles.service import list_members
 from app.core.auth.object_roles.service import remove_member
 from app.core.auth.object_roles.service import resolve_assignable_roles
@@ -84,7 +85,7 @@ async def _add_member(
     # A pending account is fine, its roles wait for activation.
     if (
         user.status is UserStatus.INACTIVE
-        and not await held_roles(session, _OBJECT_TYPE, group_id, user.id)
+        and not await is_member(session, _OBJECT_TYPE, group_id, user.id)
         and not (
             removed_since is not None
             and await was_member(session, _OBJECT_TYPE, group_id, user.id, removed_since=removed_since)
@@ -192,7 +193,7 @@ async def add_group_member_endpoint(
     Held roles become the member's *entire* effective permission set on the group
     — never combined with their global permissions. A deactivated user is refused,
     unless they were removed from this group within the restore window, so that Undo
-    can put them back.
+    can put them back; one still holding a role here is answered as already a member.
 
     ### Errors
 

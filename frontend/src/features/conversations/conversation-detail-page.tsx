@@ -352,8 +352,10 @@ export function ConversationDetailPage() {
               placeholder={
                 warmup.blocked
                   ? 'Waiting for the model to warm up…'
-                  : evaluation.isPending
-                    ? 'Loading…'
+                  : !lifecycleKnown
+                    ? authority.error
+                      ? 'Couldn’t check whether this conversation takes prompts.'
+                      : 'Loading…'
                     : 'Type here to message the model.'
               }
               hint="Press return to send. Use shift + return for line breaks."

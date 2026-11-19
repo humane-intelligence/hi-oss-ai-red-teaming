@@ -256,6 +256,11 @@ async def _live_assignments(
     return list((await session.execute(statement)).scalars().all())
 
 
+async def is_member(session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID) -> bool:
+    """Whether the user holds a live assignment on the object — the test `add_member` refuses on."""
+    return bool(await _live_assignments(session, object_type, object_id, user_id))
+
+
 async def was_member(
     session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID, *, removed_since: datetime
 ) -> bool:

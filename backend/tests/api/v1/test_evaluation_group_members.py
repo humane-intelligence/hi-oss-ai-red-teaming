@@ -680,6 +680,28 @@ async def test_single_add_of_a_live_member_since_deactivated_answers_already_a_m
     assert "already" in response.json()["detail"]
 
 
+async def test_single_add_counts_an_assignment_to_a_deleted_role_as_membership(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # The add itself refuses on any live assignment row, so the deactivated check must use the same test.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    member = await _user(db_session)
+    retired = await make_role(db_session)
+    await grant_roles(db_session, ObjectType.EVALUATION_GROUP, group.id, member.id, [retired])
+    retired.deleted_at = datetime.now(UTC)
+    member.status = UserStatus.INACTIVE
+    await db_session.flush()
+
+    with as_user(owner):
+        response = await async_client_with_db.post(
+            _members_url(group), json={"user_id": str(member.id), "role_ids": [str(system_roles["viewer"].id)]}
+        )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["type"] != "urn:redteam:error:user-deactivated"
+
+
 async def test_single_add_refuses_a_deactivated_member_removed_before_the_restore_window(
     async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
 ) -> None:

@@ -20,7 +20,7 @@ import {
   inheritedValue,
 } from './inference-params'
 import { FormField } from '@/components/shared/form-field'
-import { ApiError, fieldErrorsFromProblem } from '@/lib/api/problem'
+import { ApiError, fieldErrorsFromProblem, humanizeError } from '@/lib/api/problem'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -183,7 +183,11 @@ export function GroupCreatePage() {
         <h1 className="text-xl font-semibold">New conversation</h1>
       </div>
 
-      {evaluation.isPending && <p className="text-muted-foreground">Loading…</p>}
+      {!authority.lifecycleKnown && (
+        <p className="text-muted-foreground">
+          {authority.error ? humanizeError(authority.error) : 'Loading…'}
+        </p>
+      )}
 
       {/* Reached by link as well as from the evaluation page, so say why before the form, not after Start. */}
       {authority.promptsBlocked && (
@@ -192,7 +196,7 @@ export function GroupCreatePage() {
         </p>
       )}
 
-      {evaluation.data && !authority.promptsBlocked && (
+      {evaluation.data && authority.lifecycleKnown && !authority.promptsBlocked && (
         <div className="bg-card space-y-5 rounded-lg border p-4">
           <p className="text-muted-foreground text-sm">
             Start a conversation with a model. Add more models to run them side by side — or repeat
