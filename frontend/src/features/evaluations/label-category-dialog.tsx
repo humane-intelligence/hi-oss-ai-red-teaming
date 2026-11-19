@@ -53,6 +53,11 @@ type FormValues = z.infer<typeof schema>
 
 const EMPTY: FormValues = { name: '', values: '' }
 
+const TAGS_HINT =
+  'Write one tag per line. Leave the tag box blank if the category should be standalone. Separate words within a category or tag with a hyphen ( - ) or underscore ( _ ).'
+const REMOVAL_NOTE =
+  'Deleting a tag from a category in this screen prevents the tag from being selected in new conversations. Tags deleted here do not remove the tag from previous conversations.'
+
 type Props = {
   evaluationId: string
   open: boolean
@@ -122,11 +127,7 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
         <FormField
           label="Tags"
           htmlFor="lc-values"
-          description={
-            category
-              ? 'One tag per line. Leave empty for a category that is picked on its own. Conversations keep a tag you remove here.'
-              : 'One tag per line. Leave empty for a category that is picked on its own.'
-          }
+          description={category ? `${TAGS_HINT} ${REMOVAL_NOTE}` : TAGS_HINT}
           error={formState.errors.values?.message}
         >
           <Textarea
