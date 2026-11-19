@@ -30,6 +30,7 @@ from app.core.conversations.models import ConversationGroup
 from app.core.conversations.models import ConversationGroupLabel
 from app.core.conversations.services.messages import open_turn
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import EvaluationStatus
 from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
@@ -207,27 +208,85 @@ async def test_create_in_a_group_that_is_not_published_returns_409_for_a_partici
     assert str(evaluation.id) not in response.json()["detail"]
 
 
-async def test_a_manager_may_try_a_scenario_before_publication_but_not_after_the_group_finished(
+@pytest.mark.parametrize(
+    ("group_status", "expected"),
+    [
+        (PublicationStatus.APPROVED, status.HTTP_201_CREATED),
+        (PublicationStatus.INACTIVE, status.HTTP_409_CONFLICT),
+    ],
+)
+async def test_an_editor_may_try_a_scenario_before_publication_but_not_after_the_group_finished(
+    auth_db_client: AsyncClient, db_session: AsyncSession, group_status: PublicationStatus, expected: int
+) -> None:
+    role = Role(
+        name="conv-editor",
+        description="conversations CRUD + manage + evaluations:update",
+        permissions=[
+            *_CONVERSATION_PERMS,
+            Permission.EVALUATION_GROUPS_MANAGE.value,
+            Permission.EVALUATIONS_UPDATE.value,
+        ],
+    )
+    db_session.add(role)
+    await db_session.flush()
+    editor = await _caller(db_session, role, email="tryout@example.com")
+    evaluation = await _evaluation_for(db_session, status=group_status)
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
+
+    response = await _create_group(
+        auth_db_client,
+        _token(editor),
+        scenario.id,
+        {"name": "tryout", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+    )
+
+    assert response.status_code == expected
+
+
+async def test_trying_a_scenario_out_needs_the_global_update_permission_as_editing_the_evaluation_does(
     auth_db_client: AsyncClient, db_session: AsyncSession, manager_role: Role
 ) -> None:
-    manager = await _caller(db_session, manager_role, email="tryout@example.com")
-    outcomes = {}
-    for group_status in (PublicationStatus.APPROVED, PublicationStatus.INACTIVE):
-        evaluation = await _evaluation_for(db_session, status=group_status)
-        assignment = await _assignment(db_session, evaluation.id)
-        scenario = await _scenario(db_session, evaluation.id)
-        response = await _create_group(
-            auth_db_client,
-            _token(manager),
-            scenario.id,
-            {"name": "tryout", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
-        )
-        outcomes[group_status] = response.status_code
+    # The same rule as the evaluation edit routes: write access to the group is not enough on its own.
+    manager = await _caller(db_session, manager_role, email="no-update@example.com")
+    evaluation = await _evaluation_for(db_session, owner_id=manager.id, status=PublicationStatus.APPROVED)
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
 
-    assert outcomes == {
-        PublicationStatus.APPROVED: status.HTTP_201_CREATED,
-        PublicationStatus.INACTIVE: status.HTTP_409_CONFLICT,
-    }
+    response = await _create_group(
+        auth_db_client,
+        _token(manager),
+        scenario.id,
+        {"name": "tryout", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "not published yet" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("evaluation_status", [EvaluationStatus.REJECTED, EvaluationStatus.COMPLETED])
+async def test_create_on_a_closed_evaluation_returns_409_in_a_published_group(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    red_teamer_role: Role,
+    evaluation_status: EvaluationStatus,
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="closed@example.com")
+    evaluation = await _evaluation_for(db_session)
+    evaluation.status = evaluation_status
+    await db_session.flush()
+    assignment = await _assignment(db_session, evaluation.id)
+    scenario = await _scenario(db_session, evaluation.id)
+
+    response = await _create_group(
+        auth_db_client,
+        _token(caller),
+        scenario.id,
+        {"name": "too late", "models": [{"evaluation_ai_model_id": str(assignment.id)}]},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "closed" in response.json()["detail"]
 
 
 async def test_create_rejects_scenario_id_left_in_the_body_422(

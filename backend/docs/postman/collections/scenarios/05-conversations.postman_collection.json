@@ -818,7 +818,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('→ 409', () => pm.response.to.have.status(409));",
-                  "pm.test('names the cap', () => pm.expect(pm.response.json().detail).to.include('already holds the maximum'));"
+                  "pm.test('names the cap', () => pm.expect(pm.response.json().detail).to.include('already compares the maximum'));"
                 ]
               }
             }

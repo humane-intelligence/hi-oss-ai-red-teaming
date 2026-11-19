@@ -496,8 +496,9 @@ class EvaluationAiModelView(BaseModel):
     When the parent evaluation masks models, `name` carries the assignment's
     `model_display_mask` (possibly `null` when none is set) and the identifying
     fields (`provider`, `provider_model_id`) are withheld as `null` — except on the
-    evaluation detail and model list reads for a caller who may edit the evaluation,
-    which surface the real identity (`may_see_model_identities`). The
+    evaluation detail and model list reads for a caller who may edit the evaluation
+    (the global `evaluations:update` plus write access to its group), which surface
+    the real identity. The
     `assignment_id` is always present — it addresses the assignment without
     correlating the underlying model across evaluations. `warmup_enabled` is
     surfaced even under masking: it's an operational flag (does this endpoint
@@ -682,7 +683,7 @@ class EvaluationResponse(BaseModel):
         """Project an `Evaluation` ORM row (with loaded `models`) into the response shape.
 
         `unmask_models` surfaces real model identities on a masked evaluation; only the detail
-        read passes it, for a caller `may_see_model_identities` clears. Every other projection
+        read passes it, for a caller `may_edit_evaluation` clears. Every other projection
         (lists, group embeds, write responses) stays masked.
 
         `effective_license` is the already-resolved cascade licence row (evaluation → group →

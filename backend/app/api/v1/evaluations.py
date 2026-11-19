@@ -64,7 +64,7 @@ from app.core.evaluations.services.evaluations import duplicate_evaluation
 from app.core.evaluations.services.evaluations import get_evaluation
 from app.core.evaluations.services.evaluations import get_restorable_evaluation
 from app.core.evaluations.services.evaluations import list_evaluations
-from app.core.evaluations.services.evaluations import may_see_model_identities
+from app.core.evaluations.services.evaluations import may_edit_evaluation
 from app.core.evaluations.services.evaluations import resolve_effective_license
 from app.core.evaluations.services.evaluations import resolve_effective_licenses
 from app.core.evaluations.services.evaluations import restore_evaluation
@@ -392,7 +392,7 @@ async def get_evaluation_endpoint(
     """
     can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
     evaluation = await get_evaluation(db, evaluation_id, caller_id=caller.id, can_manage=can_manage)
-    unmask = evaluation.mask_models_enabled and await may_see_model_identities(
+    unmask = evaluation.mask_models_enabled and await may_edit_evaluation(
         db, evaluation_id, caller_id=caller.id, permissions=caller.permissions
     )
     return EvaluationResponse.from_model(
@@ -958,7 +958,7 @@ async def list_evaluation_models_endpoint(
         deleted_cutoff=restore_cutoff(settings),
         # The deleted listing was authorized as a write just above, which is the same rule.
         unmask=filters.deleted
-        or await may_see_model_identities(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions),
+        or await may_edit_evaluation(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions),
     )
     return Page[EvaluationAiModelView](
         items=[EvaluationAiModelView.from_assignment(assignment, masked=masked) for assignment in items],

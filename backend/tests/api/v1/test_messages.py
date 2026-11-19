@@ -68,6 +68,7 @@ from app.core.conversations.services.generation import MASKED_ERROR_DETAIL
 from app.core.conversations.services.messages import finalize_message
 from app.core.conversations.tags import TAG_CONTEXT_PREAMBLE
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import EvaluationStatus
 from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
@@ -106,7 +107,10 @@ async def _conversation(  # noqa: PLR0913 — one keyword per cascade layer the 
     group_owner: bool = True,
 ) -> Conversation:
     group = await persist_evaluation_group(
-        db, access_level=EvaluationGroupAccessLevel.PUBLIC, created_by_id=user.id if group_owner else None
+        db,
+        access_level=EvaluationGroupAccessLevel.PUBLIC,
+        created_by_id=user.id if group_owner else None,
+        status=PublicationStatus.PUBLISHED,
     )
     evaluation = Evaluation(
         title="E", description="d", evaluation_group_id=group.id, created_by_id=user.id, mask_models_enabled=mask
@@ -365,21 +369,83 @@ async def test_send_with_multiple_images_keeps_attachment_order(
     assert await _attached_keys(db_session, user_msg.id) == [first.key, second.key]
 
 
+async def _finish_group(db: AsyncSession, conversation: Conversation) -> None:
+    evaluation = await db.get_one(Evaluation, conversation.evaluation_id)
+    group = await db.get_one(EvaluationGroup, evaluation.evaluation_group_id)
+    group.status = PublicationStatus.INACTIVE
+    await db.commit()
+
+
 async def test_send_in_a_finished_group_returns_409_even_for_its_owner(
     async_client_with_db: AsyncClient, db_session: AsyncSession
 ) -> None:
     user = await _user(db_session, ["conversations:update"])
     conversation = await _conversation(db_session, user)
-    evaluation = await db_session.get_one(Evaluation, conversation.evaluation_id)
-    group = await db_session.get_one(EvaluationGroup, evaluation.evaluation_group_id)
-    group.status = PublicationStatus.INACTIVE
-    await db_session.flush()
+    await _finish_group(db_session, conversation)
 
     with as_user(user):
         response = await async_client_with_db.post(_url(conversation), json={"content": "one more"})
 
     assert response.status_code == status.HTTP_409_CONFLICT
     assert "finished" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("evaluation_status", [EvaluationStatus.REJECTED, EvaluationStatus.COMPLETED])
+async def test_send_on_a_closed_evaluation_returns_409(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, evaluation_status: EvaluationStatus
+) -> None:
+    user = await _user(db_session, ["conversations:update"])
+    conversation = await _conversation(db_session, user)
+    evaluation = await db_session.get_one(Evaluation, conversation.evaluation_id)
+    evaluation.status = evaluation_status
+    await db_session.flush()
+
+    with as_user(user):
+        response = await async_client_with_db.post(_url(conversation), json={"content": "one more"})
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "closed" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("operation", ["regenerate", "continue"])
+async def test_re_answering_in_a_finished_group_returns_409(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    user = await _user(db_session, ["conversations:update"])
+    conversation = await _conversation(db_session, user)
+    _patch_provider(monkeypatch, _FakeProvider([_chunk(content="x"), _chunk(finish_reason="stop")]))
+    _keep_open(monkeypatch, db_session)
+    assistant = await _open_assistant(async_client_with_db, db_session, user, conversation)
+    await finalize_message(db_session, assistant.id, content="orig", status=MessageStatus.COMPLETE, encrypted=False)
+    await _finish_group(db_session, conversation)
+
+    with as_user(user):
+        response = await async_client_with_db.post(_url(conversation, f"/{assistant.id}/{operation}"), json=None)
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert "finished" in response.json()["detail"]
+
+
+async def test_a_replay_is_served_after_the_group_finished(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The turn was accepted while the group took prompts; a retry of it reads the stored reply.
+    user = await _user(db_session, ["conversations:update"])
+    conversation = await _conversation(db_session, user)
+    _patch_provider(monkeypatch, _FakeProvider([_chunk(content="x"), _chunk(finish_reason="stop")]))
+    _keep_open(monkeypatch, db_session)
+    cmid = str(uuid4())
+    with as_user(user):
+        await async_client_with_db.post(_url(conversation), json={"content": "hi", "client_message_id": cmid})
+    assistant = await _assistant_of(db_session, conversation)
+    await finalize_message(db_session, assistant.id, content="final", status=MessageStatus.COMPLETE, encrypted=False)
+    await _finish_group(db_session, conversation)
+
+    with as_user(user):
+        replay = await async_client_with_db.post(_url(conversation), json={"content": "hi", "client_message_id": cmid})
+
+    assert replay.status_code == status.HTTP_200_OK
+    assert json.loads(_parse_sse(replay.text)[1]["data"])["finish_reason"] == "replayed"
 
 
 async def test_send_rejects_more_than_five_images(async_client_with_db: AsyncClient, db_session: AsyncSession) -> None:

@@ -102,15 +102,16 @@ def _scope_to_groups(
     return statement
 
 
-async def may_see_model_identities(
+async def may_edit_evaluation(
     session: AsyncSession, evaluation_id: UUID, *, caller_id: UUID, permissions: Iterable[str]
 ) -> bool:
-    """Whether a masked evaluation still shows this caller its models' real identities.
+    """Whether this caller may edit the evaluation — the one rule behind every "may edit" check.
 
-    The same rule as the unmasked by-id assignment read: the global `evaluations:update`
-    permission plus write access to the parent group (an in-group role granting it, or the
-    `evaluation_groups:manage` break-glass). Masking hides which model is which from the
-    people testing them, not from the people who set the evaluation up.
+    The global `evaluations:update` permission plus write access to the parent group (an in-group
+    role granting it, or the `evaluation_groups:manage` break-glass), as the evaluation edit routes
+    require. It also unmasks a masked evaluation's models, since masking hides which model is which
+    from the people testing them, not from the people who set the evaluation up, and lets a group
+    that is not published yet take conversations, so a scenario can be tried out before it goes live.
     """
     held = set(permissions)
     if Permission.EVALUATIONS_UPDATE not in held:

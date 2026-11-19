@@ -733,6 +733,49 @@
           "response": []
         },
         {
+          "name": "11b · Publish the group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('→ 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/{{an_group_id}}/publish",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                "{{an_group_id}}",
+                "publish"
+              ]
+            },
+            "description": "approved → published: conversations start only in a published group (an editor may try one out before)."
+          },
+          "response": []
+        },
+        {
           "name": "12 · Fetch the shared label vocabulary",
           "event": [
             {
