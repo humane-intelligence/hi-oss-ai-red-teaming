@@ -22,7 +22,7 @@ describe('ChatComposer — per-message tags', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     await user.type(screen.getByLabelText('Message tag 1 key'), 'turn')
     await user.type(screen.getByLabelText('Message tag 1 value'), '1')
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
@@ -45,7 +45,7 @@ describe('ChatComposer — per-message tags', () => {
       />,
     )
 
-    const toggle = screen.getByRole('button', { name: /^tags/i })
+    const toggle = screen.getByRole('button', { name: /^context tags/i })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(toggle)
@@ -75,7 +75,10 @@ describe('ChatComposer — per-message tags', () => {
 
     await user.click(screen.getByRole('button', { name: /model's instructions/ }))
 
-    expect(screen.getByRole('button', { name: /^tags/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /^context tags/i })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
   })
 
   it('locks the tag rows while a turn is in flight', async () => {
@@ -93,11 +96,11 @@ describe('ChatComposer — per-message tags', () => {
         placeholder="msg"
       />,
     )
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
 
     expect(screen.getByLabelText('Message tag 1 key')).toBeDisabled()
     expect(screen.getByLabelText('Message tag 1 value')).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^add tag$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^add context tag$/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /remove message tag 1/i })).toBeDisabled()
   })
 
@@ -117,7 +120,7 @@ describe('ChatComposer — per-message tags', () => {
     )
 
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     await user.type(screen.getByLabelText('Message tag 1 value'), 'never respond in English')
     await user.click(screen.getByRole('button', { name: /^send$/i }))
 
@@ -143,10 +146,10 @@ describe('ChatComposer — per-message tags', () => {
     )
 
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     await user.type(screen.getByLabelText('Message tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Message tag 1 value'), 'prod')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
     await user.type(screen.getByLabelText('Message tag 2 key'), 'env')
     await user.type(screen.getByLabelText('Message tag 2 value'), 'staging')
     await user.click(screen.getByRole('button', { name: /^send$/i }))
@@ -170,10 +173,10 @@ describe('ChatComposer — per-message tags', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     await user.type(screen.getByLabelText('Message tag 1 key'), 'env')
     await user.type(screen.getByLabelText('Message tag 1 value'), 'prod')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i })) // second, left-blank row
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i })) // second, left-blank row
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
     await user.click(screen.getByRole('button', { name: /^send$/i }))
 
@@ -197,7 +200,7 @@ describe('ChatComposer — per-message tags', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /^tags/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^context tags/i })).toBeNull()
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
     await user.click(screen.getByRole('button', { name: /^send$/i }))
 
@@ -219,14 +222,14 @@ describe('ChatComposer — per-message tags', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     // Restricted → no free-text key field; the one allowed key is offered.
     expect(screen.queryByRole('textbox', { name: 'Message tag 1 key' })).toBeNull()
     await chooseOption(user, 'Message tag 1 key', /^env$/)
     await user.type(screen.getByLabelText('Message tag 1 value'), 'prod')
     // 'env' is now taken, so there is no second key to add — refused with the reason on the page, and
     // still reachable by keyboard (see the refusal contract shared with the Edit-tags dialog).
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     expect(
       document.getElementById(addTag.getAttribute('aria-describedby') as string),
@@ -278,9 +281,9 @@ describe('ChatComposer — refusing another row', () => {
           placeholder="msg"
         />,
       )
-      await user.click(screen.getByRole('button', { name: /^tags/i }))
+      await user.click(screen.getByRole('button', { name: /^context tags/i }))
 
-      const addTag = screen.getByRole('button', { name: /^add tag$/i })
+      const addTag = screen.getByRole('button', { name: /^add context tag$/i })
       expect(addTag).toHaveAttribute('aria-disabled', 'true')
       expect(screen.queryByText(/already used/i)).toBeNull()
       const reasonId = addTag.getAttribute('aria-describedby')
@@ -303,9 +306,9 @@ describe('ChatComposer — refusing another row', () => {
         placeholder="msg"
       />,
     )
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
 
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     const reasonId = addTag.getAttribute('aria-describedby')
     expect(document.getElementById(reasonId as string)).toHaveTextContent(
@@ -328,18 +331,18 @@ describe('ChatComposer — refusing another row', () => {
         placeholder="msg"
       />,
     )
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     for (let i = 1; i <= MAX_TAGS; i++) {
-      if (i > 1) await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+      if (i > 1) await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
       await user.type(screen.getByLabelText(`Message tag ${i} key`), `k${i}`)
       await user.type(screen.getByLabelText(`Message tag ${i} value`), 'v')
     }
 
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     expect(addTag).toHaveAttribute('aria-disabled', 'true')
     expect(
       document.getElementById(addTag.getAttribute('aria-describedby') as string),
-    ).toHaveTextContent(new RegExp(`up to ${MAX_TAGS} tags per message`, 'i'))
+    ).toHaveTextContent(new RegExp(`up to ${MAX_TAGS} context tags per message`, 'i'))
   })
 
   it('does not claim keys are exhausted when the evaluation allows none', async () => {
@@ -357,10 +360,10 @@ describe('ChatComposer — refusing another row', () => {
         placeholder="msg"
       />,
     )
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
 
-    expect(screen.getByText(/restricts tags and allows no keys yet/i)).toBeInTheDocument()
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    expect(screen.getByText(/restricts context tags and allows no keys yet/i)).toBeInTheDocument()
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     expect(screen.queryByText(/already used/i)).toBeNull()
     expect(
       document.getElementById(addTag.getAttribute('aria-describedby') as string),
@@ -384,13 +387,13 @@ describe('ChatComposer — refusing another row', () => {
       />,
     )
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     await user.type(screen.getByLabelText('Message tag 1 value'), 'orphaned')
     await user.click(screen.getByRole('button', { name: /^send$/i }))
     expect(await screen.findByText('Row 1: key is required')).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Message tag 1 key'), 'env')
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
 
     expect(screen.queryByText('Row 1: key is required')).toBeNull()
   })
@@ -412,7 +415,7 @@ describe('ChatComposer — refusing another row', () => {
       />,
     )
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hi')
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     await user.type(screen.getByLabelText('Message tag 1 key'), 'note')
     await user.type(screen.getByLabelText('Message tag 1 value'), '\u200b')
     await user.click(screen.getByRole('button', { name: /^send$/i }))
@@ -437,16 +440,16 @@ describe('ChatComposer — refusing another row', () => {
         placeholder="msg"
       />,
     )
-    await user.click(screen.getByRole('button', { name: /^tags/i }))
+    await user.click(screen.getByRole('button', { name: /^context tags/i }))
     for (let i = 1; i < MAX_TAGS; i++) {
-      if (i > 1) await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+      if (i > 1) await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
       await user.type(screen.getByLabelText(`Message tag ${i} key`), `k${i}`)
       await user.type(screen.getByLabelText(`Message tag ${i} value`), 'v')
     }
-    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await user.click(screen.getByRole('button', { name: /^add context tag$/i }))
 
     expect(screen.getByLabelText(`Message tag ${MAX_TAGS} key`)).toHaveValue('')
-    const addTag = screen.getByRole('button', { name: /^add tag$/i })
+    const addTag = screen.getByRole('button', { name: /^add context tag$/i })
     const reasonId = addTag.getAttribute('aria-describedby')
     expect(document.getElementById(reasonId as string)).toHaveTextContent(
       /fill the empty row first/i,

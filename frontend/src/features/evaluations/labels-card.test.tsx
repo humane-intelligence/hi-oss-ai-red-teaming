@@ -21,7 +21,7 @@ function category(name: string, values: string[] = []) {
 }
 
 describe('LabelsCard', () => {
-  it('lists categories with their values, and free-text ones as such', async () => {
+  it('lists categories with their values, and ones without tags as picked on their own', async () => {
     server.use(
       http.get(url, () =>
         HttpResponse.json([category('language', ['english', 'polish']), category('notes')]),
@@ -32,9 +32,9 @@ describe('LabelsCard', () => {
     expect(await screen.findByText('language')).toBeInTheDocument()
     expect(screen.getByText('english')).toBeInTheDocument()
     expect(screen.getByText('polish')).toBeInTheDocument()
-    expect(screen.getByText('Free text')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Labels (2)' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Add label category' })).toBeNull()
+    expect(screen.getByText('No tags — picked on its own')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Custom tags (2)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add tag category' })).toBeNull()
     expect(screen.queryByRole('button', { name: /delete language/i })).toBeNull()
   })
 
@@ -60,13 +60,10 @@ describe('LabelsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
 
-    await user.click(await screen.findByRole('button', { name: 'Add label category' }))
+    await user.click(await screen.findByRole('button', { name: 'Add tag category' }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText('Category'), 'language')
-    await user.type(
-      within(dialog).getByLabelText('Allowed values'),
-      'english{Enter}  {Enter}polish ',
-    )
+    await user.type(within(dialog).getByLabelText('Tag category'), 'language')
+    await user.type(within(dialog).getByLabelText('Tags'), 'english{Enter}  {Enter}polish ')
     await user.click(within(dialog).getByRole('button', { name: /^add$/i }))
 
     await waitFor(() => expect(body).toEqual({ name: 'language', values: ['english', 'polish'] }))
@@ -84,10 +81,10 @@ describe('LabelsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
 
-    await user.click(await screen.findByRole('button', { name: 'Add label category' }))
+    await user.click(await screen.findByRole('button', { name: 'Add tag category' }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText('Category'), 'language')
-    await user.type(within(dialog).getByLabelText('Allowed values'), 'Polish{Enter}polish')
+    await user.type(within(dialog).getByLabelText('Tag category'), 'language')
+    await user.type(within(dialog).getByLabelText('Tags'), 'Polish{Enter}polish')
     await user.click(within(dialog).getByRole('button', { name: /^add$/i }))
 
     expect(await within(dialog).findByText(/listed twice/i)).toBeInTheDocument()
@@ -110,16 +107,16 @@ describe('LabelsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
 
-    await user.click(await screen.findByRole('button', { name: 'Add label category' }))
+    await user.click(await screen.findByRole('button', { name: 'Add tag category' }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText('Category'), 'language')
+    await user.type(within(dialog).getByLabelText('Tag category'), 'language')
     await user.click(within(dialog).getByRole('button', { name: /^add$/i }))
 
     await waitFor(() =>
       expect(within(dialog).getByRole('button', { name: /^add$/i })).toBeEnabled(),
     )
     expect(dialog).toBeVisible()
-    expect(within(dialog).getByLabelText('Category')).toHaveValue('language')
+    expect(within(dialog).getByLabelText('Tag category')).toHaveValue('language')
   })
 
   it('edits a category with its current values prefilled', async () => {
@@ -136,12 +133,77 @@ describe('LabelsCard', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit language' }))
     const dialog = await screen.findByRole('dialog')
-    const values = within(dialog).getByLabelText('Allowed values')
+    const values = within(dialog).getByLabelText('Tags')
     expect(values).toHaveValue('english')
     await user.type(values, '{Enter}polish')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(body).toEqual({ name: 'language', values: ['english', 'polish'] }))
+    await waitFor(() => expect(body).toEqual({ values: ['english', 'polish'] }))
+  })
+
+  it('sends a rename without the values, so it cannot overwrite a list changed elsewhere', async () => {
+    let body: unknown = null
+    server.use(
+      http.get(url, () => HttpResponse.json([category('language', ['english'])])),
+      http.patch(`${url}/id-language`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(category('lang', ['english']))
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    const dialog = await screen.findByRole('dialog')
+    const name = within(dialog).getByLabelText('Tag category')
+    await user.clear(name)
+    await user.type(name, 'lang')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(body).toEqual({ name: 'lang' }))
+  })
+
+  it('does not send values that only gained a blank line', async () => {
+    let body: unknown = null
+    server.use(
+      http.get(url, () => HttpResponse.json([category('language', ['english'])])),
+      http.patch(`${url}/id-language`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(category('lang', ['english']))
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Tags'), '{Enter}')
+    const name = within(dialog).getByLabelText('Tag category')
+    await user.clear(name)
+    await user.type(name, 'lang')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(body).toEqual({ name: 'lang' }))
+  })
+
+  it('closes without a request when nothing was edited', async () => {
+    let patched = false
+    server.use(
+      http.get(url, () => HttpResponse.json([category('language', ['english'])])),
+      http.patch(`${url}/id-language`, () => {
+        patched = true
+        return HttpResponse.json(category('language', ['english']))
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(patched).toBe(false)
   })
 
   it('deletes a category only after the delete is confirmed', async () => {
@@ -164,7 +226,7 @@ describe('LabelsCard', () => {
 
     await waitFor(() => expect(deleted).toBe(true))
     await waitFor(() => expect(screen.queryByText('language')).toBeNull())
-    expect(screen.getByRole('button', { name: 'Add label category' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Add tag category' })).toHaveFocus()
   })
 
   it('disables Add at the category cap', async () => {
@@ -177,8 +239,8 @@ describe('LabelsCard', () => {
     )
     renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
 
-    expect(await screen.findByRole('button', { name: 'Add label category' })).toBeDisabled()
-    expect(screen.getByText(/up to 20 label categories/i)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Add tag category' })).toBeDisabled()
+    expect(screen.getByText(/up to 20 tag categories/i)).toBeInTheDocument()
   })
 
   it('returns focus to Add after a delete at the cap, once Add is enabled again', async () => {
@@ -198,7 +260,7 @@ describe('LabelsCard', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: /^delete$/i }),
     )
 
-    const add = screen.getByRole('button', { name: 'Add label category' })
+    const add = screen.getByRole('button', { name: 'Add tag category' })
     await waitFor(() => expect(add).toHaveFocus())
     expect(add).toBeEnabled()
   })
@@ -244,14 +306,14 @@ describe('LabelsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
 
-    await user.click(await screen.findByRole('button', { name: 'Add label category' }))
+    await user.click(await screen.findByRole('button', { name: 'Add tag category' }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText('Category'), 'language')
-    await user.type(within(dialog).getByLabelText('Allowed values'), 'english{Enter}polish')
+    await user.type(within(dialog).getByLabelText('Tag category'), 'language')
+    await user.type(within(dialog).getByLabelText('Tags'), 'english{Enter}polish')
     await user.click(within(dialog).getByRole('button', { name: /^add$/i }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'Value 2: Value error, must not be blank',
+      'Tag 2: Value error, must not be blank',
     )
   })
 
@@ -266,10 +328,10 @@ describe('LabelsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
 
-    await user.click(await screen.findByRole('button', { name: 'Add label category' }))
+    await user.click(await screen.findByRole('button', { name: 'Add tag category' }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText('Category'), 'lang\u200buage')
-    await user.type(within(dialog).getByLabelText('Allowed values'), 'english{Enter}\u200b')
+    await user.type(within(dialog).getByLabelText('Tag category'), 'lang\u200buage')
+    await user.type(within(dialog).getByLabelText('Tags'), 'english{Enter}\u200b')
     await user.click(within(dialog).getByRole('button', { name: /^add$/i }))
 
     await waitFor(() => expect(body).toEqual({ name: 'language', values: ['english'] }))
@@ -296,7 +358,7 @@ describe('LabelsCard', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: /^delete$/i }),
     )
 
-    expect(await screen.findByText(/couldn't refresh the labels/i)).toBeInTheDocument()
+    expect(await screen.findByText(/couldn't refresh the custom tags/i)).toBeInTheDocument()
     expect(screen.getByText('language')).toBeInTheDocument()
     fail = false
     server.use(http.get(url, () => HttpResponse.json([])))

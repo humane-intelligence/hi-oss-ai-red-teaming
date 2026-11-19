@@ -16,7 +16,7 @@ describe('PasswordResetRequestPage', () => {
     )
     const user = userEvent.setup()
     renderWithProviders(<PasswordResetRequestPage />)
-    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Email address'), 'test@example.com')
     await user.click(screen.getByRole('button', { name: /send reset link/i }))
     expect(await screen.findByText(/if an account exists/i)).toBeInTheDocument()
     // A throttled request is a silent no-op, so the flat "we sent a reset link" was sometimes
@@ -33,7 +33,7 @@ describe('PasswordResetRequestPage', () => {
     )
     const user = userEvent.setup()
     renderWithProviders(<PasswordResetRequestPage />)
-    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Email address'), 'test@example.com')
     await user.click(screen.getByRole('button', { name: /send reset link/i }))
     expect(await screen.findByText('Request failed (500)')).toBeInTheDocument()
   })

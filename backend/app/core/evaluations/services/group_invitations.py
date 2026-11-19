@@ -47,6 +47,7 @@ from app.core.auth.schemas import SessionUser
 from app.core.auth.services.invitations import build_accept_url
 from app.core.auth.services.invitations import create_object_invitation
 from app.core.auth.services.roles import get_default_role
+from app.core.auth.services.users import UserDeactivatedError
 from app.core.auth.services.users import get_user_by_email
 from app.core.evaluations.models import EvaluationGroup
 from app.core.exceptions import ConflictError
@@ -141,7 +142,7 @@ async def invite_to_group(
     existing = await get_user_by_email(session, email)
 
     if existing is not None and existing.status is UserStatus.INACTIVE:
-        raise ConflictError("User is deactivated. Reactivate via PATCH /users/{id} first.")
+        raise UserDeactivatedError
 
     if existing is not None and existing.status is UserStatus.ACTIVE:
         await _assign_roles(session, group.id, existing, roles, by_id=inviter.id)

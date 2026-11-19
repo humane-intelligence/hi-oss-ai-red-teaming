@@ -15,6 +15,16 @@ change between minor versions.
   default flag, not its permissions. The console's Add members, Edit roles and Invite by email
   dialogs read it, so an in-group owner who is not a global admin has those three actions again.
 
+- Conversation labels (called custom tags in the console): an evaluation defines up to 20
+  categories under `/evaluations/{evaluation_id}/label-categories`, each with up to 50 allowed
+  values or none. A conversation group carries `labels` as `{category_id: [values]}` on its create
+  (`POST /scenarios/{scenario_id}/conversation-groups`) and PATCH, several values per category; a
+  category without values is picked on its own, by an empty list or a blank entry, and reads back
+  with `value: null`. A category left out is cleared. Labels are archive metadata, never sent to
+  the model; they appear on group reads and in the `Labels` export column as
+  `{category: [values]}`. Duplicating an evaluation, or a group with its children, copies the
+  categories. Migration `51936c9ff5f4` lets a category hold several values.
+
 - `turn_count` on conversation responses, including the member conversations embedded in a
   conversation group: the number of turns sent so far, `0` for a conversation that was started and
   never used.
@@ -40,6 +50,25 @@ change between minor versions.
 
 ### Changed
 
+- Starting a conversation, sending, regenerating or continuing a prompt, and warming a model up
+  (`POST /evaluations/{id}/models/{assignment_id}/warmup`) now need the evaluation's group to be
+  open for them, and answer 409 otherwise: a published group takes them
+  from anyone who can reach it; before publication only from a caller who may edit the evaluation
+  (to try a scenario out); a finished group and a rejected or completed evaluation from nobody.
+  Conversations already recorded stay readable, and a retried send of an already-accepted turn is
+  still answered with the stored reply. "May edit the evaluation" is one rule everywhere: the
+  global `evaluations:update` plus write access to its group.
+- On a masked evaluation, `GET /evaluations/{id}` and `GET /evaluations/{id}/models` show the real
+  model names to a caller who may edit the evaluation. Lists, group embeds and write responses stay
+  masked.
+- The single `POST /evaluation-groups/{group_id}/members` takes a deactivated user only when they
+  were removed from that group within the restore window, so Undo after a removal works; any
+  other deactivated user is still refused. That 409, on the bulk add and the group invitation as well, now
+  carries `type: urn:redteam:error:user-deactivated` and no longer names an API route.
+- `GET /auth/users?search=` also matches a first and last name typed together (`ada love`), not
+  only one column at a time.
+- The 409 that refuses a model added to a prompted or full conversation group no longer carries
+  the group's id in `detail`.
 - The health check that followed a save ran only for models declaring image input; it now follows
   every create, every patch that moves the call, and setting the API key. Bulk create still starts
   none.

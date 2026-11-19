@@ -1,13 +1,15 @@
-import { FormField } from '@/components/shared/form-field'
-import { Input } from '@/components/ui/input'
-import { PlainSelect } from '@/components/ui/plain-select'
-import { MAX_GROUP_LABEL_VALUE_LEN } from '@/lib/api/limits'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import type { EvaluationLabelCategoryResponse } from '@/lib/api/types'
-import type { LabelValues } from './label-values'
+import { BARE, type LabelValues } from './label-values'
 
-// One field per category: a select for a category with listed values, a text input for free text.
-// `held` is what the group stores now: a value since dropped from its category's list stays an
-// option, so editing another label doesn't silently clear it.
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+
+// One checkbox per tag, grouped by category and read as "category: tag"; a category without tags is
+// a single checkbox for the category itself. `held` is what the group stores now: a tag since
+// dropped from its category's list, text from before categories without tags became markers, or
+// the category picked on its own before it gained tags, stays on offer so editing another tag
+// doesn't silently clear it.
 export function LabelsFields({
   categories,
   value,
@@ -21,41 +23,47 @@ export function LabelsFields({
   held?: LabelValues
   idPrefix: string
 }) {
-  const set = (categoryId: string, v: string) => onChange({ ...value, [categoryId]: v })
+  const toggle = (categoryId: string, tag: string, on: boolean) => {
+    const rest = (value[categoryId] ?? []).filter((v) => !same(v, tag))
+    onChange({ ...value, [categoryId]: on ? [...rest, tag] : rest })
+  }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-3">
       {categories.map((category) => {
-        const id = `${idPrefix}-${category.id}`
-        const current = value[category.id] ?? ''
-        const kept = held[category.id]
-        const keptUnlisted =
-          kept && !category.values.some((v) => v.toLowerCase() === kept.toLowerCase())
+        const picked = value[category.id] ?? []
+        const hasTags = category.values.length > 0
+        const unlisted = (held[category.id] ?? []).filter((v) =>
+          v === BARE ? hasTags : !category.values.some((listed) => same(listed, v)),
+        )
+        const options = [
+          ...(hasTags
+            ? category.values.map((tag) => ({ tag, text: `${category.name}: ${tag}` }))
+            : [{ tag: BARE, text: category.name }]),
+          ...unlisted.map((tag) => ({
+            tag,
+            text: `${tag === BARE ? category.name : `${category.name}: ${tag}`} (not in the list)`,
+          })),
+        ]
         return (
-          <FormField key={category.id} label={category.name} htmlFor={id}>
-            {category.values.length > 0 ? (
-              <PlainSelect
-                id={id}
-                value={current}
-                onChange={(e) => set(category.id, e.target.value)}
-              >
-                <option value="">— none —</option>
-                {category.values.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-                {keptUnlisted && <option value={kept}>{kept} (not in the list)</option>}
-              </PlainSelect>
-            ) : (
-              <Input
-                id={id}
-                value={current}
-                maxLength={MAX_GROUP_LABEL_VALUE_LEN}
-                onChange={(e) => set(category.id, e.target.value)}
-              />
-            )}
-          </FormField>
+          <fieldset key={category.id} className="space-y-1.5">
+            <legend className="sr-only">{category.name}</legend>
+            {options.map(({ tag, text }, i) => {
+              const id = `${idPrefix}-${category.id}-${i}`
+              return (
+                <div key={tag} className="flex items-center gap-2">
+                  <Checkbox
+                    id={id}
+                    checked={picked.some((v) => same(v, tag))}
+                    onCheckedChange={(next) => toggle(category.id, tag, next === true)}
+                  />
+                  <Label htmlFor={id} className="font-normal break-words">
+                    {text}
+                  </Label>
+                </div>
+              )
+            })}
+          </fieldset>
         )
       })}
     </div>

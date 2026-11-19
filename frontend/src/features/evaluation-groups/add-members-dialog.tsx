@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { ApiError, fieldErrorsFromProblem, USER_DEACTIVATED_TYPE } from '@/lib/api/problem'
 import type { BulkGroupMemberResponse, UserResponse } from '@/lib/api/types'
 
 type Picked = Pick<UserResponse, 'id' | 'email' | 'first_name' | 'last_name' | 'status'>
@@ -82,6 +83,7 @@ export function AddMembersDialog({
   const [picked, setPicked] = useState<Map<string, Picked>>(new Map())
   const [roleIds, setRoleIds] = useState<Record<string, string[]>>({})
   const [result, setResult] = useState<BulkGroupMemberResponse | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const showOrganization = canPickOrganization && !!organizationId
   const org = useOrganization(organizationId ?? '', {
@@ -112,7 +114,8 @@ export function AddMembersDialog({
   const orgList = orgMembers.data?.items ?? []
   const orgIds = new Set(orgList.map((u) => u.id))
   const orgVisible = orgList.filter(matches)
-  const orgJoinable = orgList.filter((u) => !members.has(u.id) && u.status !== 'inactive')
+  // From the rows the search leaves on screen, so Add all never picks someone the user can't see.
+  const orgJoinable = orgVisible.filter((u) => !members.has(u.id) && u.status !== 'inactive')
   const orgPicked = orgJoinable.filter((u) => picked.has(u.id)).length
   const others = (users.data ?? []).filter((u) => !orgIds.has(u.id))
   const roleList = [...(roles.data?.items ?? [])].sort((a, b) => rank(a.name) - rank(b.name))
@@ -201,6 +204,7 @@ export function AddMembersDialog({
 
   async function submit() {
     let data: BulkGroupMemberResponse
+    setSubmitError(null)
     try {
       data = await add.mutateAsync({
         dry_run: false,
@@ -209,8 +213,13 @@ export function AddMembersDialog({
           data: { user_id: u.id, role_ids: roleIds[u.id] ?? [] },
         })),
       })
-    } catch {
-      return // The global mutation handler has already toasted it.
+    } catch (err) {
+      // The global handler toasts everything except a 422, which is left to the form that caused it.
+      if (err instanceof ApiError && err.status === 422) {
+        const reasons = Object.values(fieldErrorsFromProblem(err.problem))
+        setSubmitError(reasons[0] ?? err.problem.detail ?? 'The request was refused.')
+      }
+      return
     }
     if (data.failed === 0) close()
     else if (mounted.current) {
@@ -231,6 +240,7 @@ export function AddMembersDialog({
     void queryClient.cancelQueries({ queryKey: ['evaluation-group-members', groupId, 'all-ids'] })
     void queryClient.cancelQueries({ queryKey: ['organization-members', organizationId, 'all'] })
     setStep('users')
+    setSubmitError(null)
     setSearch('')
     setServerTerm('')
     setPicked(new Map())
@@ -285,7 +295,7 @@ export function AddMembersDialog({
                         }
                         onCheckedChange={toggleOrganization}
                       />
-                      Add all members
+                      {term ? 'Add all matching' : 'Add all members'}
                     </label>
                   )}
                   {orgMembers.isSuccess && orgList.length === 0 && (
@@ -447,6 +457,11 @@ export function AddMembersDialog({
           >
             {missingRole ? 'Give every user at least one role.' : ''}
           </p>
+          {submitError && (
+            <p role="alert" className="text-destructive text-sm">
+              {submitError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setStep('users')} disabled={add.isPending}>
               Back
@@ -476,9 +491,11 @@ export function AddMembersDialog({
                     <span className="font-medium">{picked.get(r.row_key)?.email ?? r.row_key}</span>
                     {' — '}
                     <span className="text-muted-foreground">
-                      {/* Deactivated users can't be picked, so a 409 is an existing membership; say it as step 1 does. */}
+                      {/* Both refusals are a 409, told apart by type; say each as step 1 does. */}
                       {r.error?.status === 409
-                        ? 'Already a member'
+                        ? r.error.type === USER_DEACTIVATED_TYPE
+                          ? 'Deactivated'
+                          : 'Already a member'
                         : (r.error?.detail ?? r.error?.title ?? 'Unknown error')}
                     </span>
                   </li>

@@ -83,7 +83,7 @@ describe('EvaluationsListPage — status filter', () => {
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /status/i })).toBeInTheDocument(),
     )
-    await chooseOption(user, /status/i, /^draft$/)
+    await chooseOption(user, /status/i, /^Draft$/)
 
     await waitFor(() => {
       const withStatus = captured.find((u) => u.searchParams.get('status') === 'draft')
@@ -102,7 +102,7 @@ describe('EvaluationsListPage — status filter', () => {
       expect(screen.getByRole('combobox', { name: /status/i })).toBeInTheDocument(),
     )
     // first pick a status, then reset
-    await chooseOption(user, /status/i, /^approved$/)
+    await chooseOption(user, /status/i, /^Approved$/)
     await chooseOption(user, /status/i, /^All statuses$/)
 
     await waitFor(() => {
@@ -301,7 +301,7 @@ describe('EvaluationsListPage — first visit', () => {
     )
     renderPage(['evaluations:read', 'evaluations:create'])
 
-    expect(screen.getByText(/an evaluation is a set of scenarios/i)).toBeInTheDocument()
+    expect(screen.getByText(/evaluations are where red teamers test models/i)).toBeInTheDocument()
     expect(await screen.findByText('No evaluations yet.')).toBeInTheDocument()
     expect(screen.getByText(/each evaluation sits in a group/i)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /new evaluation/i })).toHaveLength(2)

@@ -5,7 +5,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
 import { toast } from 'sonner'
-import { useBulkAddGroupMembers, usePublishGroup, useSubmitGroup } from './mutations'
+import { useBulkAddGroupMembers, useJoinGroup, usePublishGroup, useSubmitGroup } from './mutations'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }))
 
@@ -113,5 +113,23 @@ describe('useBulkAddGroupMembers', () => {
 
     expect(spy).toHaveBeenCalledWith({ queryKey: ['evaluation-group-members', GROUP_ID] })
     expect(toast.success).not.toHaveBeenCalled()
+  })
+})
+
+describe('useJoinGroup', () => {
+  it('refreshes the member list the Join button reads', async () => {
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/join`, () =>
+        HttpResponse.json({}, { status: 201 }),
+      ),
+    )
+    const { spy, wrapper } = withClient()
+    const { result } = renderHook(() => useJoinGroup(GROUP_ID), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['evaluation-group-members', GROUP_ID] })
   })
 })

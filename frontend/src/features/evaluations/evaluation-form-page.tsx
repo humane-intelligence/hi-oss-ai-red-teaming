@@ -144,6 +144,14 @@ export function EvaluationFormPage() {
         <p className="text-destructive">{humanizeError(presetGroup.error)}</p>
       </div>
     )
+  // An edit form drawn before (or without) its record would save the blank defaults over it.
+  if (isEdit && existing.isPending) return <DetailSkeleton />
+  if (isEdit && existing.isError)
+    return (
+      <div className="mx-auto max-w-2xl">
+        <p className="text-destructive">{humanizeError(existing.error)}</p>
+      </div>
+    )
   if (!canCreateHere) return <NotAuthorized />
   // Lifecycle, not authority: a deep link to a non-accepting group would only 409 on
   // submit, so explain the state up front instead of rendering a doomed form.
@@ -182,7 +190,7 @@ export function EvaluationFormPage() {
           cover_image: values.cover_image || null,
           mask_models_enabled: values.mask_models_enabled,
           tags_enabled: values.tags_enabled,
-          tags_restricted: false, // opt-in later via the evaluation's Allowed tags card
+          tags_restricted: false, // opt-in later via the evaluation's Allowed context tags card
           data_license_id: values.data_license_id || null,
         })
         navigate(`/evaluations/${created.id}`)
@@ -403,12 +411,12 @@ export function EvaluationFormPage() {
                   {/* Beside the label, not inside it: a button in a label would toggle the box. */}
                   <div className="flex items-center gap-1">
                     <FieldLabel htmlFor="tags_enabled" className="font-normal">
-                      Custom tags
+                      Context tags
                     </FieldLabel>
                     <InfoHint text={TAGS_HINT} />
                   </div>
                   <FieldDescription id={tagsDescriptionId}>
-                    Checking this box allows custom tags to be added to conversations in this
+                    Checking this box allows context tags to be added to conversations in this
                     evaluation.
                   </FieldDescription>
                 </FieldContent>

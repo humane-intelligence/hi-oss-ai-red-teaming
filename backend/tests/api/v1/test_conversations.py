@@ -39,6 +39,7 @@ from app.core.conversations.services.messages import open_turn
 from app.core.conversations.tags import TAG_CONTEXT_PREAMBLE
 from app.core.conversations.tags import render_tag_context
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from app.core.evaluations.models import EvaluationGroup
@@ -124,8 +125,9 @@ async def _evaluation_for(
     *,
     owner_id: UUID | None = None,
     access_level: EvaluationGroupAccessLevel = EvaluationGroupAccessLevel.PUBLIC,
+    status: PublicationStatus = PublicationStatus.PUBLISHED,
 ) -> Evaluation:
-    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id)
+    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id, status=status)
     row = Evaluation(title="Eval", description="d", evaluation_group_id=group.id, created_by_id=group.created_by_id)
     db_session.add(row)
     await db_session.flush()
@@ -412,6 +414,25 @@ async def test_create_scenario_not_matching_group_returns_409(
     _assert_problem(response, status.HTTP_409_CONFLICT)
 
 
+@pytest.mark.parametrize("group_status", [PublicationStatus.APPROVED, PublicationStatus.INACTIVE])
+async def test_adding_a_model_in_a_group_that_is_not_published_returns_409(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role, group_status: PublicationStatus
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="add-model-gate@example.com")
+    evaluation = await _evaluation_for(db_session, status=group_status)
+    assignment = await _assignment(db_session, evaluation.id)
+    group_row = await _group(db_session, owner_id=caller.id, evaluation_id=evaluation.id)
+
+    response = await _create(
+        auth_db_client,
+        _token(caller),
+        group_row.scenario_id,
+        {"evaluation_ai_model_id": str(assignment.id), "conversation_group_id": str(group_row.id)},
+    )
+
+    _assert_problem(response, status.HTTP_409_CONFLICT)
+
+
 async def test_create_into_a_group_with_prompts_returns_409(
     auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
 ) -> None:
@@ -431,6 +452,8 @@ async def test_create_into_a_group_with_prompts_returns_409(
 
     _assert_problem(response, status.HTTP_409_CONFLICT)
     assert "already has prompts" in response.json()["detail"]
+    # The console shows this text as is, and it never shows a raw id.
+    assert body["conversation_group_id"] not in response.json()["detail"]
 
 
 async def test_move_into_a_group_with_prompts_returns_409(

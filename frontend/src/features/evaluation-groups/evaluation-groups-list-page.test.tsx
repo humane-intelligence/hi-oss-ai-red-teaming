@@ -161,7 +161,7 @@ describe('EvaluationGroupsListPage — status filter', () => {
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /status/i })).toBeInTheDocument(),
     )
-    await chooseOption(user, /status/i, /^published$/)
+    await chooseOption(user, /status/i, /^Published$/)
 
     await waitFor(() => {
       const withStatus = captured.find((u) => u.searchParams.get('status') === 'published')
@@ -182,7 +182,7 @@ describe('EvaluationGroupsListPage — status filter', () => {
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /status/i })).toBeInTheDocument(),
     )
-    await chooseOption(user, /status/i, /^draft$/)
+    await chooseOption(user, /status/i, /^Draft$/)
     await chooseOption(user, /status/i, /^All statuses$/)
 
     await waitFor(() => {

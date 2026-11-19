@@ -55,6 +55,12 @@ export function useConversationTagsEnabled(): boolean {
   return usePublicPlatformSettings().data?.conversation_tags_enabled ?? false
 }
 
+// The switch reads as off when its read fails, yet the backend still follows its own setting. A page
+// that sends prompts says so, since tags saved on a conversation may be going out unseen.
+export function useConversationTagsUnknown(): boolean {
+  return usePublicPlatformSettings().isError
+}
+
 export function useSignupEnabled(): boolean {
   return usePublicPlatformSettings().data?.signup_enabled ?? true
 }

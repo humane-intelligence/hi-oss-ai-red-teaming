@@ -1,3 +1,4 @@
+import { sentenceCase } from '@/lib/sentence-case'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
@@ -23,7 +24,7 @@ import {
 import { useUserLookup } from '@/features/users/queries'
 import { LicenseValue } from '@/features/licenses/license-value'
 import { humanizeError } from '@/lib/api/problem'
-import { formatCalendarDate } from '@/lib/format-date'
+import { formatCalendarDate, formatDateTime } from '@/lib/format-date'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { GroupIdentityHeading } from './group-trail'
 import { PublicationStatusBadge } from './status-badge'
@@ -171,7 +172,7 @@ export function EvaluationGroupDetailPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <GroupIdentityHeading groupId={group.id} />
                   <PublicationStatusBadge status={group.status} />
-                  <Badge variant="outline">{group.access_level.replace(/_/g, ' ')}</Badge>
+                  <Badge variant="outline">{sentenceCase(group.access_level)}</Badge>
                 </div>
                 <p className="text-muted-foreground font-mono text-xs">
                   by <span>{lookup(group.created_by_id)}</span>
@@ -354,7 +355,9 @@ export function EvaluationGroupDetailPage() {
                   />
                 </div>
 
+                {/* Keyed so a group switch starts on page one with no previous group's page kept. */}
                 <MembersSection
+                  key={group.id}
                   groupId={group.id}
                   accessLevel={group.access_level}
                   organizationId={group.organization_id}
@@ -389,7 +392,7 @@ export function EvaluationGroupDetailPage() {
                       <Field label="Analytics (after finish)">
                         {METRICS_ACCESS_LABELS[group.metrics_access_after]}
                       </Field>
-                      <Field label="Created">{new Date(group.created_at).toLocaleString()}</Field>
+                      <Field label="Created">{formatDateTime(group.created_at)}</Field>
                     </dl>
                   </CardContent>
                 </Card>

@@ -1,3 +1,4 @@
+import { sentenceCase } from '@/lib/sentence-case'
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { LifecycleBadge } from './lifecycle-badge'
@@ -17,7 +18,7 @@ describe('LifecycleBadge', () => {
     ['new', 'border-dashed'],
   ] as const)('gives %s its stage tone', (status, cls) => {
     render(<LifecycleBadge status={status} />)
-    expect(screen.getByText(status.replace(/_/g, ' '))).toHaveClass(cls)
+    expect(screen.getByText(sentenceCase(status))).toHaveClass(cls)
   })
 
   it('marks only a published stage with a dot', () => {

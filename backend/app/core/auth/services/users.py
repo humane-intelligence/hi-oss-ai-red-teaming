@@ -53,6 +53,15 @@ from app.core.restore import restore_row
 from app.core.soft_delete import with_live
 
 
+class UserDeactivatedError(ConflictError):
+    """A deactivated account was offered a group role — a 409 a client can tell from "already a member"."""
+
+    type = "urn:redteam:error:user-deactivated"
+
+    def __init__(self) -> None:
+        super().__init__("User is deactivated. Reactivate the account first.")
+
+
 class UserUpdateChanges(BaseModel):
     """Service-owned, HTTP-agnostic update contract.
 
@@ -382,6 +391,8 @@ def _apply_user_filters(statement: Select[tuple[User]], filters: UserFilters) ->
                 col(User.email).ilike(like, escape="\\"),
                 col(User.first_name).ilike(like, escape="\\"),
                 col(User.last_name).ilike(like, escape="\\"),
+                # "Ada Lovelace" matches neither column on its own.
+                func.concat_ws(" ", col(User.first_name), col(User.last_name)).ilike(like, escape="\\"),
             )
         )
     if filters.role_id is not None:

@@ -239,7 +239,7 @@ describe('ConversationGroupPage', () => {
 
     await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
     // Type so the send button's only remaining gate is warmup readiness.
-    await user.type(screen.getByLabelText(/message all models/i), 'hello')
+    await user.type(await screen.findByLabelText(/message all models/i), 'hello')
 
     await waitFor(() => expect(screen.getByRole('button', { name: /send to all/i })).toBeDisabled())
   })
@@ -627,6 +627,94 @@ describe('ConversationGroupPage', () => {
     expect(await screen.findByText(/can only be added before the first prompt/)).toBeInTheDocument()
   })
 
+  it('locks Add model while a reply is still streaming', async () => {
+    // The turn exists server-side from the first byte, so a model added now would miss it.
+    server.use(
+      http.post(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversations/:convId/messages`,
+        () =>
+          new HttpResponse(new ReadableStream({ start() {} }), {
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const add = await screen.findByRole('button', { name: /add model/i })
+    expect(add).toBeEnabled()
+    await user.type(await screen.findByLabelText(/message all models/i), 'hello')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send to all' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Send to all' }))
+
+    await waitFor(() => expect(add).toBeDisabled())
+    expect(add).toHaveAttribute('title', expect.stringMatching(/before the first prompt/))
+  })
+
+  it('offers no composer and wakes no model until the group stage is known', async () => {
+    server.use(
+      http.get(
+        `http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`,
+        () => new Promise(() => {}),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
+    // A finished group would refuse both, and the stage is what decides it.
+    expect(screen.queryByLabelText(/message all models/i)).toBeNull()
+    expect(screen.queryByLabelText('Message gpt-4o')).toBeNull()
+    expect(warmupCalls).toBe(0)
+  })
+
+  it('replaces every composer with the reason once the group is finished', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`, () =>
+        HttpResponse.json({
+          id: evaluation.evaluation_group_id,
+          title: 'Engagement',
+          description: '',
+          status: 'inactive',
+          access_level: 'invitation_only',
+          start_date: '2026-01-01',
+          end_date: null,
+          created_by_id: 'user-000-0000-0000-000000000000',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          evaluations: [],
+          user_permissions: [],
+        }),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        'This evaluation group is finished, so its conversations no longer take prompts.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText(/message all models/i)).toBeNull()
+    expect(screen.queryByLabelText('Message gpt-4o')).toBeNull()
+    expect(screen.getByRole('button', { name: /add model/i })).toBeDisabled()
+  })
+
+  it('says context tags are hidden when the instance setting cannot be read', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({ detail: 'boom' }, { status: 500 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(
+      await screen.findByText(/Couldn’t check whether context tags are on for this instance/),
+    ).toBeInTheDocument()
+  })
+
   it('offers Add model before the first prompt', async () => {
     server.use(...baseHandlers())
     renderPage()
@@ -779,7 +867,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Direct ask')).toBeInTheDocument())
-    expect(screen.getByLabelText('Message Direct ask (gpt-4o)')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Message Direct ask (gpt-4o)')).toBeInTheDocument()
     // The model name still shows as a subtitle so the pane's identity isn't lost.
     expect(screen.getByText('gpt-4o')).toBeInTheDocument()
     // Untitled pane still falls back to the plain model name.
@@ -950,7 +1038,7 @@ describe('ConversationGroupPage', () => {
     )
     renderPage()
 
-    const list = await screen.findByRole('list', { name: 'Tags for gpt-4o' })
+    const list = await screen.findByRole('list', { name: 'Context tags for gpt-4o' })
     // The chips render before the allow-list lands, and until it settles no key may be judged — so the
     // marking is what has to be waited for, not the row.
     await waitFor(() => {
@@ -1061,7 +1149,7 @@ describe('ConversationGroupPage', () => {
 
     await waitFor(() => expect(screen.getAllByTestId('pane-conversation-tags')).toHaveLength(2))
     const names = screen
-      .getAllByRole('list', { name: /^Tags for / })
+      .getAllByRole('list', { name: /^Context tags for / })
       .map((el) => el.getAttribute('aria-label'))
     expect(new Set(names).size).toBe(2)
   })
@@ -1079,7 +1167,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     // Named per pane so two rows are distinguishable in a reader's element list.
-    const list = await screen.findByRole('list', { name: 'Tags for gpt-4o' })
+    const list = await screen.findByRole('list', { name: 'Context tags for gpt-4o' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(2)
   })
 
@@ -1124,7 +1212,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
-    const toggles = screen.getAllByRole('button', { name: /^tags/i })
+    const toggles = await screen.findAllByRole('button', { name: /^context tags/i })
     expect(toggles).toHaveLength(2)
     await user.click(toggles[0]!)
 
@@ -1284,7 +1372,7 @@ describe('ConversationGroupPage — a member group surfaced by read_any', () => 
 
     expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^rename$/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/message all models/i)).toBeInTheDocument()
+    expect(await screen.findByLabelText(/message all models/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Message gpt-4o')).toBeInTheDocument()
   })
 })
@@ -1521,12 +1609,12 @@ describe('ConversationGroupPage — conversation labels', () => {
     )
     renderPage()
 
-    const list = await screen.findByRole('list', { name: 'Labels' })
+    const list = await screen.findByRole('list', { name: 'Tags' })
     expect(within(list).getByText('language: polish')).toBeInTheDocument()
     expect(within(list).getByText('note: roleplay')).toBeInTheDocument()
   })
 
-  it('edits labels, keeping a value no longer listed and sending a cleared one blank', async () => {
+  it('edits labels as checkboxes, keeping a value no longer listed and leaving a cleared category out', async () => {
     let captured: unknown = null
     server.use(
       http.get(groupUrl, () => HttpResponse.json(labelled)),
@@ -1540,14 +1628,46 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('polish (not in the list)')
-    await user.clear(within(dialog).getByLabelText('note'))
+    expect(within(dialog).getByLabelText('language: polish (not in the list)')).toBeChecked()
+    await user.click(within(dialog).getByLabelText('language: english'))
+    await user.click(within(dialog).getByLabelText('note: roleplay (not in the list)'))
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    // Two tags in one category; the cleared category is left out of the replacement set.
+    await waitFor(() => expect(captured).toEqual({ labels: { 'cat-lang': ['polish', 'english'] } }))
+  })
+
+  it('keeps a category picked on its own after it gained tags, and sends it back as a blank entry', async () => {
+    let captured: unknown = null
+    const marked = {
+      ...group(),
+      labels: [
+        { category_id: 'cat-lang', name: 'language', value: null },
+        { category_id: 'cat-lang', name: 'language', value: 'english' },
+      ],
+    }
+    server.use(
+      http.get(groupUrl, () => HttpResponse.json(marked)),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+      http.patch(groupUrl, async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json(marked)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('language (not in the list)')).toBeChecked()
+    await user.click(within(dialog).getByLabelText('note'))
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
     await waitFor(() =>
-      expect(captured).toEqual({ labels: { 'cat-lang': 'polish', 'cat-note': '' } }),
+      expect(captured).toEqual({ labels: { 'cat-lang': ['', 'english'], 'cat-note': [''] } }),
     )
   })
 
@@ -1572,11 +1692,51 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Too many label categories')
+  })
+
+  it('reloads the categories and the group when a save is refused over a deleted category', async () => {
+    // The group holds a label under `note`; once that category is gone the server stops returning it.
+    let live = categories
+    const bodies: unknown[] = []
+    server.use(
+      http.get(groupUrl, () =>
+        HttpResponse.json(
+          live.length === 2 ? labelled : { ...labelled, labels: labelled.labels.slice(0, 1) },
+        ),
+      ),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(live)),
+      http.patch(groupUrl, async ({ request }) => {
+        bodies.push(await request.json())
+        if (bodies.length > 1) return HttpResponse.json(labelled)
+        live = categories.slice(0, 1)
+        return HttpResponse.json(
+          { title: 'Bad Request', status: 400, detail: 'A category is not defined.' },
+          { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('note')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(within(dialog).queryByLabelText('note')).toBeNull())
+    expect(within(dialog).getByLabelText('language: english')).toBeInTheDocument()
+
+    await waitFor(() => expect(screen.queryByText('note: roleplay')).toBeNull())
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(bodies).toHaveLength(2))
+    expect(bodies[1]).toEqual({ labels: { 'cat-lang': ['polish'] } })
   })
 
   it('shows a held value spelled differently from the list as that listed value', async () => {
@@ -1593,9 +1753,10 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByLabelText('language')).toHaveDisplayValue('english')
+    expect(within(dialog).getByLabelText('language: english')).toBeChecked()
+    expect(within(dialog).queryByLabelText(/not in the list/)).toBeNull()
   })
 
   it('keeps a held label whose category the cached list does not know yet', async () => {
@@ -1617,14 +1778,14 @@ describe('ConversationGroupPage — conversation labels', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Edit labels' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: /^save$/i }),
     )
 
     await waitFor(() =>
       expect(captured).toEqual({
-        labels: { 'cat-lang': 'polish', 'cat-note': 'roleplay', 'cat-new': 'x' },
+        labels: { 'cat-lang': ['polish'], 'cat-note': ['roleplay'], 'cat-new': ['x'] },
       }),
     )
   })

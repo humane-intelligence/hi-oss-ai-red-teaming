@@ -38,7 +38,7 @@ describe('AllowedTagsCard', () => {
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
 
     await waitFor(() =>
-      expect(screen.getByText(/no conversation tags are allowed/i)).toBeInTheDocument(),
+      expect(screen.getByText(/no context tags are allowed/i)).toBeInTheDocument(),
     )
   })
 
@@ -54,7 +54,7 @@ describe('AllowedTagsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted={false} canManage />)
 
-    await user.click(await screen.findByRole('checkbox', { name: /restrict tags/i }))
+    await user.click(await screen.findByRole('checkbox', { name: /restrict context tags/i }))
     await waitFor(() => expect(body).toEqual({ tags_restricted: true }))
   })
 
@@ -72,7 +72,7 @@ describe('AllowedTagsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
 
-    await user.type(await screen.findByLabelText('New tag key'), 'env')
+    await user.type(await screen.findByLabelText('New context tag key'), 'env')
     await user.click(screen.getByRole('button', { name: /^add$/i }))
     await waitFor(() => expect(screen.getByText('env')).toBeInTheDocument())
   })
@@ -123,9 +123,9 @@ describe('AllowedTagsCard', () => {
     server.use(http.get(url, () => HttpResponse.json([keyRow('env')])))
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
 
-    expect(screen.getByText('Allowed tags')).toBeInTheDocument()
-    expect(screen.queryByText(/Allowed tags \(0\)/)).toBeNull()
-    expect(await screen.findByText('Allowed tags (1)')).toBeInTheDocument()
+    expect(screen.getByText('Allowed context tags')).toBeInTheDocument()
+    expect(screen.queryByText(/Allowed context tags \(0\)/)).toBeNull()
+    expect(await screen.findByText('Allowed context tags (1)')).toBeInTheDocument()
   })
 
   it('is read-only without manage rights (no toggle, add input, or remove buttons)', async () => {
@@ -133,8 +133,8 @@ describe('AllowedTagsCard', () => {
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage={false} />)
 
     await waitFor(() => expect(screen.getByText('env')).toBeInTheDocument())
-    expect(screen.queryByRole('checkbox', { name: /restrict tags/i })).toBeNull()
-    expect(screen.queryByLabelText('New tag key')).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /restrict context tags/i })).toBeNull()
+    expect(screen.queryByLabelText('New context tag key')).toBeNull()
     expect(screen.queryByRole('button', { name: /remove env/i })).toBeNull()
   })
 
@@ -154,7 +154,7 @@ describe('AllowedTagsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
 
-    await user.type(await screen.findByLabelText('New tag key'), 'bad key')
+    await user.type(await screen.findByLabelText('New context tag key'), 'bad key')
     await user.click(screen.getByRole('button', { name: /^add$/i }))
     // Announced, like the conversation dialog's inline error: this is the only surface for a 422 whose
     // problem body names the field, so a silent insertion is a failed action a reader never hears.
@@ -165,7 +165,7 @@ describe('AllowedTagsCard', () => {
     server.use(http.get(url, () => HttpResponse.json([])))
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
 
-    expect(await screen.findByLabelText('New tag key')).toHaveAttribute(
+    expect(await screen.findByLabelText('New context tag key')).toHaveAttribute(
       'maxLength',
       String(MAX_TAG_KEY_LEN),
     )
@@ -224,11 +224,11 @@ describe('AllowedTagsCard', () => {
     const user = userEvent.setup()
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
 
-    await user.type(await screen.findByLabelText('New tag key'), 'bad key')
+    await user.type(await screen.findByLabelText('New context tag key'), 'bad key')
     await user.click(screen.getByRole('button', { name: /^add$/i }))
     expect(await screen.findByText('invalid tag key')).toBeInTheDocument()
 
-    await user.type(screen.getByLabelText('New tag key'), '2')
+    await user.type(screen.getByLabelText('New context tag key'), '2')
 
     expect(screen.queryByText('invalid tag key')).toBeNull()
   })
@@ -302,7 +302,7 @@ describe('AllowedTagsCard', () => {
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
     await waitFor(() => expect(screen.getByText('env')).toBeInTheDocument())
 
-    await user.type(screen.getByLabelText('New tag key'), 'team')
+    await user.type(screen.getByLabelText('New context tag key'), 'team')
     await user.click(screen.getByRole('button', { name: /^add$/i }))
 
     expect(await screen.findByText(/couldn.t refresh the allowed keys/i)).toBeInTheDocument()
@@ -335,7 +335,7 @@ describe('AllowedTagsCard', () => {
     )
     const user = userEvent.setup()
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
-    const input = await screen.findByLabelText('New tag key')
+    const input = await screen.findByLabelText('New context tag key')
     await user.type(input, 'env')
 
     await user.keyboard('{Enter}')
@@ -356,7 +356,7 @@ describe('AllowedTagsCard', () => {
     renderWithProviders(<AllowedTagsCard evaluationId={EVAL} restricted canManage />)
     await waitFor(() => expect(screen.getByText('k0')).toBeInTheDocument())
 
-    await user.type(screen.getByLabelText('New tag key'), 'one-too-many')
+    await user.type(screen.getByLabelText('New context tag key'), 'one-too-many')
 
     expect(screen.getByRole('button', { name: /^add$/i })).toBeDisabled()
     expect(screen.getByText(new RegExp(`up to ${MAX_TAGS} allowed keys`, 'i'))).toBeInTheDocument()

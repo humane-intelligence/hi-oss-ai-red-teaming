@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { ReviewQueuePage } from './review-queue-page'
@@ -182,6 +182,35 @@ describe('ReviewQueuePage — unassigned filter', () => {
     renderQueue('/reviews/queue?offset=-5')
 
     await waitFor(() => expect(lastQueueUrl?.searchParams.get('offset')).toBe('0'))
+  })
+
+  it('steps a past-the-end offset back without leaving it in history, so Back is not bounced', async () => {
+    const user = userEvent.setup()
+    server.use(queueHandler())
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const Wrapper = authWrapper(['reviews:read', 'reviews:create'])
+    function Back() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate(-1)}>go back</button>
+    }
+    render(
+      <Wrapper>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/before', '/reviews/queue?offset=60']}>
+            <Back />
+            <Routes>
+              <Route path="/before" element={<p>BEFORE</p>} />
+              <Route path="/reviews/queue" element={<ReviewQueuePage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Wrapper>,
+    )
+
+    await waitFor(() => expect(lastQueueUrl?.searchParams.get('offset')).toBe('20'))
+    await user.click(screen.getByRole('button', { name: 'go back' }))
+
+    expect(await screen.findByText('BEFORE')).toBeInTheDocument()
   })
 
   it('returns to the first page when the filter changes — page 2 of a narrower list is not page 2', async () => {

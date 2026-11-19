@@ -20,7 +20,7 @@ import {
   inheritedValue,
 } from './inference-params'
 import { FormField } from '@/components/shared/form-field'
-import { ApiError, fieldErrorsFromProblem } from '@/lib/api/problem'
+import { ApiError, fieldErrorsFromProblem, humanizeError } from '@/lib/api/problem'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { MAX_MODELS } from './limits'
 
 type Row = {
   key: string
@@ -42,10 +43,14 @@ type Row = {
 }
 
 // Stored once and shown to every member, so a fixed format; the clock is the creator's own.
+// To the second, so two starts in one minute don't share a name.
 function startedStamp(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+// Mirrors the server's cap, which otherwise answers with a 422.
+const NAME_MAX = 255
 
 let rowSeq = 0
 function emptyRow(modelId: string): Row {
@@ -102,12 +107,12 @@ export function GroupCreatePage() {
       rs.map((r) => (r.key === key ? { ...r, params: { ...r.params, [field]: value } } : r)),
     )
 
-  // Surface only field errors (422) inline — anything else double-notifies with the
-  // global toast. A per-row title 422 collides on one `title` key (unreachable: trimmed + capped).
-  const titleError =
+  // Every field error (422) shows here, since the global toast skips them; anything else
+  // would double-notify with it.
+  const fieldErrors =
     createGroup.error instanceof ApiError
-      ? fieldErrorsFromProblem(createGroup.error.problem).title
-      : undefined
+      ? Object.entries(fieldErrorsFromProblem(createGroup.error.problem))
+      : []
 
   const canStart =
     models.length > 0 &&
@@ -132,15 +137,18 @@ export function GroupCreatePage() {
     // A category deleted after its field was filled would 400 the create, with no field left to clear.
     const liveIds = new Set((labelCategories.data ?? []).map((c) => c.id))
     const liveLabels = Object.fromEntries(Object.entries(labels).filter(([id]) => liveIds.has(id)))
-    const modelNames = rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')
-    const fallbackName = `Compare: ${modelNames} · ${startedStamp(new Date())}`
+    // The name is stored and shown to every reader, so on a masked evaluation it never names the models.
+    const compared = evaluation.data?.mask_models_enabled
+      ? `${rows.length} ${rows.length === 1 ? 'model' : 'models'}`
+      : rows.map((r, i) => modelName(effModel(r, i))).join(' vs ')
+    const fallbackName = `Compare: ${compared} · ${startedStamp(new Date())}`
     createGroup.mutate(
       {
         scenarioId: chosenScenarioId,
         body: {
-          name: name.trim() || fallbackName,
+          name: name.trim() || fallbackName.slice(0, NAME_MAX),
           models: payloadModels,
-          labels: labelPayload(liveLabels, { keepBlanks: false }),
+          labels: labelPayload(liveLabels),
         },
       },
       { onSuccess: (group) => navigate(`/evaluations/${evalId}/conversation-groups/${group.id}`) },
@@ -175,9 +183,20 @@ export function GroupCreatePage() {
         <h1 className="text-xl font-semibold">New conversation</h1>
       </div>
 
-      {evaluation.isPending && <p className="text-muted-foreground">Loading…</p>}
+      {!authority.lifecycleKnown && (
+        <p className="text-muted-foreground">
+          {authority.error ? humanizeError(authority.error) : 'Loading…'}
+        </p>
+      )}
 
-      {evaluation.data && (
+      {/* Reached by link as well as from the evaluation page, so say why before the form, not after Start. */}
+      {authority.promptsBlocked && (
+        <p className="bg-card text-muted-foreground rounded-lg border p-4 text-sm">
+          {authority.promptsBlocked}
+        </p>
+      )}
+
+      {evaluation.data && authority.lifecycleKnown && !authority.promptsBlocked && (
         <div className="bg-card space-y-5 rounded-lg border p-4">
           <p className="text-muted-foreground text-sm">
             Start a conversation with a model. Add more models to run them side by side — or repeat
@@ -190,6 +209,7 @@ export function GroupCreatePage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Auto-named from the models and start time if left blank"
+              maxLength={NAME_MAX}
             />
           </FormField>
 
@@ -217,10 +237,10 @@ export function GroupCreatePage() {
 
           {(labelCategories.data?.length ?? 0) > 0 && (
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Labels (optional)</legend>
+              <legend className="text-sm font-medium">Custom tags (optional)</legend>
               <p className="text-muted-foreground text-xs">
-                Describe this conversation for exports and reports. Labels are never sent to the
-                model.
+                Describe this conversation for exports and reports. Custom tags are never sent to
+                the model.
               </p>
               <LabelsFields
                 categories={labelCategories.data ?? []}
@@ -248,9 +268,9 @@ export function GroupCreatePage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {models.map((m) => (
+                            {models.map((m, mi) => (
                               <SelectItem key={m.assignment_id} value={m.assignment_id}>
-                                {m.name ?? '— masked —'}
+                                {m.name ?? `Masked model ${mi + 1}`}
                                 {m.web_access ? ' (internet)' : ''}
                               </SelectItem>
                             ))}
@@ -335,11 +355,16 @@ export function GroupCreatePage() {
               type="button"
               variant="outline"
               size="sm"
-              disabled={models.length === 0}
+              disabled={models.length === 0 || rows.length >= MAX_MODELS}
               onClick={() => setRows((rs) => [...rs, emptyRow(models[0]?.assignment_id ?? '')])}
             >
               <Plus className="size-4" /> Add model
             </Button>
+            {rows.length >= MAX_MODELS && (
+              <p className="text-muted-foreground text-xs">
+                A conversation compares up to {MAX_MODELS} models.
+              </p>
+            )}
           </div>
 
           {models.length === 0 && (
@@ -348,7 +373,11 @@ export function GroupCreatePage() {
             </p>
           )}
 
-          {titleError && <p className="text-destructive text-sm">{titleError}</p>}
+          {fieldErrors.map(([field, message]) => (
+            <p key={field} role="alert" className="text-destructive text-sm">
+              {message}
+            </p>
+          ))}
 
           <Button onClick={handleStart} disabled={!canStart}>
             {createGroup.isPending ? (

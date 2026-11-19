@@ -205,6 +205,7 @@ async def test_bulk_invite_per_row_failure_is_isolated(
     assert by_key["ok"]["status"] == "ok"
     assert by_key["conflict"]["status"] == "failed"
     assert by_key["conflict"]["error"]["status"] == status.HTTP_409_CONFLICT
+    assert by_key["conflict"]["error"]["type"] == "urn:redteam:error:user-deactivated"
 
     new_user = await get_user_by_email(db_session, "bea@example.com")
     assert new_user is not None

@@ -495,7 +495,10 @@ class EvaluationAiModelView(BaseModel):
 
     When the parent evaluation masks models, `name` carries the assignment's
     `model_display_mask` (possibly `null` when none is set) and the identifying
-    fields (`provider`, `provider_model_id`) are withheld as `null`. The
+    fields (`provider`, `provider_model_id`) are withheld as `null` — except on the
+    evaluation detail and model list reads for a caller who may edit the evaluation
+    (the global `evaluations:update` plus write access to its group), which surface
+    the real identity. The
     `assignment_id` is always present — it addresses the assignment without
     correlating the underlying model across evaluations. `warmup_enabled` is
     surfaced even under masking: it's an operational flag (does this endpoint
@@ -521,15 +524,15 @@ class EvaluationAiModelView(BaseModel):
     assignment_id: UUID = Field(description="Identifier of the model assignment within the evaluation.")
     name: str | None = Field(
         default=None,
-        description="Model display name, or its mask alias when the evaluation masks models.",
+        description="Model display name, or its mask alias when the evaluation masks models from the caller.",
     )
     provider: ProviderVendor | None = Field(
         default=None,
-        description="Vendor whose API backs the model; `null` when the evaluation masks models.",
+        description="Vendor whose API backs the model; `null` when the evaluation masks models from the caller.",
     )
     provider_model_id: str | None = Field(
         default=None,
-        description="Provider-side model identifier; `null` when the evaluation masks models.",
+        description="Provider-side model identifier; `null` when the evaluation masks models from the caller.",
     )
     warmup_enabled: bool = Field(
         default=False,
@@ -554,7 +557,7 @@ class EvaluationAiModelView(BaseModel):
         default_factory=dict,
         description=(
             "Inference params inherited by conversations under this assignment: the model baseline "
-            "merged with the per-assignment overrides. Under model masking, restricted to the "
+            "merged with the per-assignment overrides. When models are masked from the caller, restricted to the "
             "identity-safe numeric sampling knobs — the system prompt and provider-specific keys "
             "are withheld. Empty when `advanced_params_disabled` is set — nothing below inherits "
             "params the gateway will not send."
@@ -674,14 +677,20 @@ class EvaluationResponse(BaseModel):
     )
 
     @classmethod
-    def from_model(cls, evaluation: Evaluation, *, effective_license: DataLicense) -> EvaluationResponse:
+    def from_model(
+        cls, evaluation: Evaluation, *, effective_license: DataLicense, unmask_models: bool = False
+    ) -> EvaluationResponse:
         """Project an `Evaluation` ORM row (with loaded `models`) into the response shape.
+
+        `unmask_models` surfaces real model identities on a masked evaluation; only the detail
+        read passes it, for a caller `may_edit_evaluation` clears. Every other projection
+        (lists, group embeds, write responses) stays masked.
 
         `effective_license` is the already-resolved cascade licence row (evaluation → group →
         platform default) — routes get it from `resolve_effective_license(s)`, the group-detail
         embed computes it in-memory from the loaded parent group.
         """
-        masked = evaluation.mask_models_enabled
+        masked = evaluation.mask_models_enabled and not unmask_models
         return cls(
             id=evaluation.id,
             evaluation_group_id=evaluation.evaluation_group_id,
@@ -1582,7 +1591,7 @@ class EvaluationLabelCategoryCreate(BaseModel):
     values: LabelValues = Field(
         default_factory=list,
         description=f"Allowed values (each ≤100 chars, at most {MAX_LABEL_VALUES}, unique ignoring case). "
-        "Empty means the label takes free text.",
+        "Empty means the category is picked on its own, with no value.",
     )
 
 
@@ -1623,7 +1632,9 @@ class EvaluationLabelCategoryResponse(BaseModel):
     id: UUID = Field(description="Server-assigned identifier.")
     evaluation_id: UUID = Field(description="Evaluation the category belongs to.")
     name: str = Field(description="Category name.")
-    values: list[str] = Field(description="Allowed values, in the order defined; empty means free text.")
+    values: list[str] = Field(
+        description="Allowed values, in the order defined; empty means the category is picked on its own."
+    )
     created_at: datetime = Field(description="UTC timestamp the category was created.")
 
     @classmethod

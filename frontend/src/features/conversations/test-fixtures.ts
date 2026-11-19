@@ -10,7 +10,7 @@ export function parentGroupHandler(groupId: string, userPermissions: string[] = 
       id: groupId,
       title: 'Engagement',
       description: '',
-      status: 'approved',
+      status: 'published',
       access_level: 'invitation_only',
       start_date: '2026-01-01',
       end_date: null,

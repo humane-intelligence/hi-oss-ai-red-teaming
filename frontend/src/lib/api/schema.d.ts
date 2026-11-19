@@ -1056,7 +1056,7 @@ export interface paths {
         };
         /**
          * Get evaluation
-         * @description Fetch one evaluation with its assigned models. When the evaluation masks models, each model's identifying fields are withheld and the display mask is surfaced as the name.
+         * @description Fetch one evaluation with its assigned models. When the evaluation masks models, each model's identifying fields are withheld and the display mask is surfaced as the name — except for a caller holding `evaluations:update` with write access to the parent group (an in-group role granting it, or `evaluation_groups:manage`), who sees the real identities. Only this read and the model list do so; every other evaluation response stays masked.
          */
         get: operations["get_evaluation_endpoint_api_v1_evaluations__evaluation_id__get"];
         put?: never;
@@ -1084,7 +1084,7 @@ export interface paths {
         };
         /**
          * List models assigned to an evaluation
-         * @description Return a paginated list of the models assigned to an evaluation, with optional name search and ordering. When the evaluation masks models, each model's identity is withheld and its display mask is surfaced as the name; search and name ordering then run against the display mask. `deleted=true` serves the assignments unassigned inside the restore window instead — the set `POST …/{assignment_id}/restore` can act on, so it requires exactly what the unassign and the restore do: the `evaluations:update` permission **and** write access to the parent group.
+         * @description Return a paginated list of the models assigned to an evaluation, with optional name search and ordering. When the evaluation masks models, each model's identity is withheld and its display mask is surfaced as the name; search and name ordering then run against the display mask. A caller holding `evaluations:update` with write access to the parent group sees real identities instead, as on the evaluation detail. `deleted=true` serves the assignments unassigned inside the restore window instead — the set `POST …/{assignment_id}/restore` can act on, so it requires exactly what the unassign and the restore do: the `evaluations:update` permission **and** write access to the parent group.
          */
         get: operations["list_evaluation_models_endpoint_api_v1_evaluations__evaluation_id__models_get"];
         put?: never;
@@ -1158,7 +1158,7 @@ export interface paths {
         put?: never;
         /**
          * Define a conversation-label category
-         * @description Add a label category, optionally with its allowed values (none means free text). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
+         * @description Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
          */
         post: operations["create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post"];
         delete?: never;
@@ -1670,7 +1670,7 @@ export interface paths {
         put?: never;
         /**
          * Add group members in bulk
-         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member or is deactivated) land inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls back instead of committing.
+         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member or is deactivated, the latter with `type: urn:redteam:error:user-deactivated`) land inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls back instead of committing.
          */
         post: operations["bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post"];
         delete?: never;
@@ -1714,7 +1714,7 @@ export interface paths {
         put?: never;
         /**
          * Invite users to a group
-         * @description Invite up to 100 users to the group in one request — the only group-invite path, a single invitee is a one-row request. Each row is an email with one or more in-group roles pre-assigned; the roles are assigned on the group immediately, and a row targeting an active account reports `outcome=assigned` while a new or onboarding one reports `outcome=invited`. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for unknown / non-assignable roles, `409` for deactivated users, a concurrent signup race, or a re-invite that would drop the group's last `owner`) land inside `results[].error`. Re-inviting an existing member reconciles their role set; the same email in more than one row is rejected (`422`), like a duplicate `row_key`. Notification emails are dispatched best-effort after the request has committed — a row can report `ok` even if its email could not be queued. `dry_run=true` previews the full processing path and rolls back instead of committing — no emails are sent.
+         * @description Invite up to 100 users to the group in one request — the only group-invite path, a single invitee is a one-row request. Each row is an email with one or more in-group roles pre-assigned; the roles are assigned on the group immediately, and a row targeting an active account reports `outcome=assigned` while a new or onboarding one reports `outcome=invited`. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for unknown / non-assignable roles, `409` for deactivated users (`type: urn:redteam:error:user-deactivated`), a concurrent signup race, or a re-invite that would drop the group's last `owner`) land inside `results[].error`. Re-inviting an existing member reconciles their role set; the same email in more than one row is rejected (`422`), like a duplicate `row_key`. Notification emails are dispatched best-effort after the request has committed — a row can report `ok` even if its email could not be queued. `dry_run=true` previews the full processing path and rolls back instead of committing — no emails are sent.
          */
         post: operations["bulk_create_group_invitations_endpoint_api_v1_evaluation_groups__group_id__invitations_bulk_post"];
         delete?: never;
@@ -2191,7 +2191,7 @@ export interface paths {
         put?: never;
         /**
          * Warm up a model endpoint
-         * @description Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or `error` (a fault a retry won't fix, e.g. bad credentials).
+         * @description Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or `error` (a fault a retry won't fix, e.g. bad credentials). Refused with 409 once the evaluation takes no prompts, by the same rule as sending one: the probe is a call to the model.
          */
         post: operations["warmup_model_endpoint_api_v1_evaluations__evaluation_id__models__assignment_id__warmup_post"];
         delete?: never;
@@ -4793,15 +4793,17 @@ export interface components {
             models: components["schemas"]["ConversationGroupModelEntry"][];
             /**
              * Labels
-             * @description Labels, keyed by a label category of the evaluation. A category with values takes one of them; one without takes free text. Labels are never sent to the model.
+             * @description Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category with values takes any number of them; one without is selected by listing it with an empty list or a blank entry. Labels are never sent to the model.
              */
             labels?: {
-                [key: string]: string;
+                [key: string]: string[];
             };
         };
         /**
          * ConversationGroupLabelResponse
          * @description One label on a group, under a live label category of its evaluation.
+         *
+         *     A group holding several values in one category has one entry per value.
          */
         ConversationGroupLabelResponse: {
             /**
@@ -4817,9 +4819,9 @@ export interface components {
             name: string;
             /**
              * Value
-             * @description The value.
+             * @description The value; `null` when the category is selected on its own.
              */
-            value: string;
+            value: string | null;
         };
         /**
          * ConversationGroupModelEntry
@@ -4969,10 +4971,10 @@ export interface components {
             name?: string | null;
             /**
              * Labels
-             * @description Replacement label set, keyed by label category; a blank value clears that category. A value the group already holds is accepted even after it was dropped from its category's list.
+             * @description Replacement label set, keyed by label category, each with the list of values picked there; a category left out is cleared, and so is one with values listed with none. A category without values is selected by listing it with an empty list or a blank entry. A value the group already holds is accepted even after it was dropped from its category's list, and a blank entry keeps a category the group holds on its own after the category gained values.
              */
             labels?: {
-                [key: string]: string;
+                [key: string]: string[];
             } | null;
         };
         /**
@@ -5539,7 +5541,10 @@ export interface components {
          *
          *     When the parent evaluation masks models, `name` carries the assignment's
          *     `model_display_mask` (possibly `null` when none is set) and the identifying
-         *     fields (`provider`, `provider_model_id`) are withheld as `null`. The
+         *     fields (`provider`, `provider_model_id`) are withheld as `null` — except on the
+         *     evaluation detail and model list reads for a caller who may edit the evaluation
+         *     (the global `evaluations:update` plus write access to its group), which surface
+         *     the real identity. The
          *     `assignment_id` is always present — it addresses the assignment without
          *     correlating the underlying model across evaluations. `warmup_enabled` is
          *     surfaced even under masking: it's an operational flag (does this endpoint
@@ -5570,14 +5575,14 @@ export interface components {
             assignment_id: string;
             /**
              * Name
-             * @description Model display name, or its mask alias when the evaluation masks models.
+             * @description Model display name, or its mask alias when the evaluation masks models from the caller.
              */
             name?: string | null;
-            /** @description Vendor whose API backs the model; `null` when the evaluation masks models. */
+            /** @description Vendor whose API backs the model; `null` when the evaluation masks models from the caller. */
             provider?: components["schemas"]["ProviderVendor"] | null;
             /**
              * Provider Model Id
-             * @description Provider-side model identifier; `null` when the evaluation masks models.
+             * @description Provider-side model identifier; `null` when the evaluation masks models from the caller.
              */
             provider_model_id?: string | null;
             /**
@@ -5605,7 +5610,7 @@ export interface components {
             web_access: boolean;
             /**
              * Effective Parameters
-             * @description Inference params inherited by conversations under this assignment: the model baseline merged with the per-assignment overrides. Under model masking, restricted to the identity-safe numeric sampling knobs — the system prompt and provider-specific keys are withheld. Empty when `advanced_params_disabled` is set — nothing below inherits params the gateway will not send.
+             * @description Inference params inherited by conversations under this assignment: the model baseline merged with the per-assignment overrides. When models are masked from the caller, restricted to the identity-safe numeric sampling knobs — the system prompt and provider-specific keys are withheld. Empty when `advanced_params_disabled` is set — nothing below inherits params the gateway will not send.
              */
             effective_parameters?: {
                 [key: string]: unknown;
@@ -6541,7 +6546,7 @@ export interface components {
             name: string;
             /**
              * Values
-             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free text.
+             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the category is picked on its own, with no value.
              */
             values?: string[];
         };
@@ -6579,7 +6584,7 @@ export interface components {
             name: string;
             /**
              * Values
-             * @description Allowed values, in the order defined; empty means free text.
+             * @description Allowed values, in the order defined; empty means the category is picked on its own.
              */
             values: string[];
             /**
@@ -9976,7 +9981,7 @@ export interface components {
          *       "default_license_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
          *       "email_verification_ttl_hours": 24,
          *       "invite_only": false,
-         *       "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
+         *       "logo_light_key": "2026/11/17/3f2a00000000400080000000000000a1.png",
          *       "password_min_length": 8,
          *       "password_require_digit": false,
          *       "password_require_symbol": false,
@@ -10241,7 +10246,7 @@ export interface components {
          * @description Unauthenticated subset of platform settings — safe to expose to anonymous clients.
          * @example {
          *       "conversation_tags_enabled": true,
-         *       "logo_light_key": "2026/11/17/3f2a0000-0000-0000-0000-000000000000.png",
+         *       "logo_light_key": "2026/11/17/3f2a00000000400080000000000000a1.png",
          *       "password_policy": {
          *         "min_length": 8,
          *         "require_digit": false,
@@ -20112,7 +20117,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The user is already a member of this group, or is deactivated. */
+            /** @description The user is already a member of this group, or is deactivated and was not removed from it within the restore window (`type: urn:redteam:error:user-deactivated`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21367,7 +21372,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's. */
+            /** @description The target group already holds the maximum number of conversations, already has prompts, or its scenario does not match the conversation's; or the evaluation group is not open for conversations (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21864,7 +21869,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description client_message_id already used in another conversation. */
+            /** @description client_message_id already used in another conversation; or the evaluation group is not open for prompts (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. A replay of an already-accepted turn is never refused for the group's state. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -22086,7 +22091,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationGroupResponse"];
                 };
             };
-            /** @description A label category is not defined on the evaluation, or a value is outside its list. */
+            /** @description A label with a value names a category not defined on the evaluation, or the value is outside its list. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -22118,6 +22123,16 @@ export interface operations {
             };
             /** @description The path scenario does not exist (or is outside the caller's scope / not visible), or a model assignment is not part of its evaluation. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The evaluation group is not open for conversations (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22396,7 +22411,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationGroupResponse"];
                 };
             };
-            /** @description A label category is not defined on the evaluation, or a value is outside its list. */
+            /** @description A label with a value names a category not defined on the evaluation, or the value is outside its list. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -22590,7 +22605,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Target message is already superseded or not in the conversation's last turn. */
+            /** @description Target message is already superseded or not in the conversation's last turn; or the evaluation group is not open for prompts, or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -22694,7 +22709,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Target message is already superseded or not in the conversation's last turn. */
+            /** @description Target message is already superseded or not in the conversation's last turn; or the evaluation group is not open for prompts, or the evaluation is rejected or completed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -22779,6 +22794,16 @@ export interface operations {
             };
             /** @description Evaluation or assignment does not exist or is not visible. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The evaluation's group is not open for prompts (finished, or not published yet for a caller who may not edit the evaluation), or the evaluation is closed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

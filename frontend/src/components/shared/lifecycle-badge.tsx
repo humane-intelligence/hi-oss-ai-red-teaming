@@ -1,3 +1,4 @@
+import { sentenceCase } from '@/lib/sentence-case'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import type { EvaluationStatus, PublicationStatus } from '@/lib/api/types'
 
@@ -24,7 +25,7 @@ export function LifecycleBadge({ status }: { status: LifecycleStatus }) {
       {status === 'published' && (
         <span aria-hidden data-testid="published-dot" className="bg-ok size-1.5 rounded-full" />
       )}
-      {status.replace(/_/g, ' ')}
+      {sentenceCase(status)}
     </Badge>
   )
 }

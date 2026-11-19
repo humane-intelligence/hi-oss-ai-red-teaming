@@ -727,13 +727,22 @@ class TestExportTemplates:
         category = EvaluationLabelCategory(evaluation_id=evaluation.id, name="language")
         db_session.add(category)
         await db_session.flush()
-        db_session.add(ConversationGroupLabel(conversation_group_id=group.id, category_id=category.id, value="polish"))
+        marker = EvaluationLabelCategory(evaluation_id=evaluation.id, name="reviewed")
+        db_session.add(marker)
+        await db_session.flush()
+        db_session.add_all(
+            [
+                ConversationGroupLabel(conversation_group_id=group.id, category_id=category.id, value="polish"),
+                ConversationGroupLabel(conversation_group_id=group.id, category_id=category.id, value="english"),
+                ConversationGroupLabel(conversation_group_id=group.id, category_id=marker.id, value=""),
+            ]
+        )
         await db_session.flush()
 
         rows = list(csv.reader(io.StringIO(await _render_eval(db_session, caller, perms, evaluation, template))))
 
         header, data = rows[0], rows[1]
-        assert json.loads(data[header.index("Labels")]) == {"language": "polish"}
+        assert json.loads(data[header.index("Labels")]) == {"language": ["english", "polish"], "reviewed": []}
 
     async def test_conversation_groups_filter_by_scenario_narrows(self, db_session: AsyncSession) -> None:
         # A group targets exactly one scenario, so the dimension the conversations export

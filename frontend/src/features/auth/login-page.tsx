@@ -52,11 +52,11 @@ export function LoginPage() {
   })
 
   return (
-    <AuthShell title="Sign in">
+    <AuthShell title="Sign in to your account">
       <>
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">Email address</Label>
             <Input id="email" type="email" autoComplete="email" {...register('email')} />
             {formState.errors.email && (
               <p className="text-destructive text-xs">{formState.errors.email.message}</p>
@@ -75,23 +75,23 @@ export function LoginPage() {
             )}
           </div>
           {formError && <p className="text-destructive text-sm">{formError}</p>}
+          <div className="text-right text-sm">
+            <Link to="/password-reset" className="text-primary font-medium hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <Button type="submit" className="w-full" disabled={formState.isSubmitting}>
             {formState.isSubmitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
-        <div className="mt-4 space-y-1 text-center text-sm">
-          <Link to="/password-reset" className="text-muted-foreground underline">
-            Forgot password?
-          </Link>
-          {signupEnabled && (
-            <p className="text-muted-foreground">
-              No account?{' '}
-              <Link to="/register" className="underline">
-                Create one
-              </Link>
-            </p>
-          )}
-        </div>
+        {signupEnabled && (
+          <p className="text-muted-foreground mt-4 text-center text-sm">
+            No account?{' '}
+            <Link to="/register" className="underline">
+              Create one
+            </Link>
+          </p>
+        )}
         <OidcButtons />
         {!signupEnabled && (
           <p className="text-muted-foreground mt-6 text-center text-sm">

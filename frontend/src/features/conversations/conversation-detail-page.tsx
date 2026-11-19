@@ -49,6 +49,7 @@ import { NotAuthorized } from '@/lib/auth/not-authorized'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
 import { StatusPill } from '@/components/shared/status-pill'
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
+import { TagsUnknownNote } from './tags-unknown-note'
 import type { BubbleTagProps } from './bubble'
 
 export function ConversationDetailPage() {
@@ -64,7 +65,7 @@ export function ConversationDetailPage() {
   const [tagsOpen, setTagsOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions } = authority
+  const { allows, canManage, groupPermissions, lifecycleKnown, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const labelCategories = useEvaluationLabelCategories(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
@@ -217,13 +218,14 @@ export function ConversationDetailPage() {
   const warmup = useWarmupGate(
     evalId,
     conv?.evaluation_ai_model_id ?? '',
-    Boolean(assignment?.warmup_enabled) && canWrite,
+    // A closed group refuses the probe too, so wait for its stage before probing.
+    Boolean(assignment?.warmup_enabled) && canWrite && lifecycleKnown && !promptsBlocked,
   )
   // The composer renders under the conversation query, but the warmup gate derives
-  // from the evaluation query (which carries the assignment + its warmup flag). Until
-  // that resolves we don't yet know whether the model needs warming, so hold sending —
+  // from the evaluation query (the assignment + its warmup flag) and the group's stage.
+  // Until both resolve we don't yet know whether the model needs warming, so hold sending —
   // otherwise a deep-link could fire the first message into a still-cold endpoint.
-  const composerBlocked = warmup.blocked || evaluation.isPending
+  const composerBlocked = warmup.blocked || !lifecycleKnown
 
   // Keep the latest message in view as the transcript grows / streams.
   useEffect(() => {
@@ -237,6 +239,7 @@ export function ConversationDetailPage() {
 
   const chatColumn = (
     <div className="space-y-3">
+      <TagsUnknownNote evaluationAllowsTags={evaluation.data?.tags_enabled === true} />
       {selectMode && canFlag && (
         <div className="border-primary/40 bg-primary/5 flex items-center justify-between rounded-md border px-3 py-2 text-sm">
           <span className="font-medium">{selected.length} selected</span>
@@ -269,7 +272,8 @@ export function ConversationDetailPage() {
                   isSelected && 'bg-primary/5 ring-primary/30 ring-1',
                 )}
               >
-                {assistant && canFlag && (
+                {/* Same rule as the flag button: a failed or still-streaming reply is not a reply to flag. */}
+                {assistant && canFlag && m.status !== 'error' && m.status !== 'streaming' && (
                   <input
                     type="checkbox"
                     className={cn(
@@ -325,7 +329,10 @@ export function ConversationDetailPage() {
 
         {/* `read_any` widens reads only, so a member's transcript read by their group owner shows
             no composer rather than one whose every send fails as a lost connection. */}
-        {canWrite && (
+        {canWrite && promptsBlocked && (
+          <p className="text-muted-foreground border-t p-3 text-sm">{promptsBlocked}</p>
+        )}
+        {canWrite && !promptsBlocked && (
           <div className="bg-card/50 border-t p-3">
             {lastAssistant && !stream.streaming && (
               <AssistantActions
@@ -345,8 +352,10 @@ export function ConversationDetailPage() {
               placeholder={
                 warmup.blocked
                   ? 'Waiting for the model to warm up…'
-                  : evaluation.isPending
-                    ? 'Loading…'
+                  : !lifecycleKnown
+                    ? authority.error
+                      ? 'Couldn’t check whether this conversation takes prompts.'
+                      : 'Loading…'
                     : 'Type here to message the model.'
               }
               hint="Press return to send. Use shift + return for line breaks."
@@ -429,14 +438,17 @@ export function ConversationDetailPage() {
                 },
                 {
                   key: 'tags',
-                  label: Object.keys(conv?.tags ?? {}).length > 0 ? 'Edit tags' : 'Add tags',
+                  label:
+                    Object.keys(conv?.tags ?? {}).length > 0
+                      ? 'Edit context tags'
+                      : 'Add context tags',
                   icon: Tag,
                   onSelect: () => setTagsOpen(true),
                   when: allows('conversations:update') && canWrite && tagsEnabled,
                 },
                 {
                   key: 'labels',
-                  label: group.data?.labels?.length ? 'Edit labels' : 'Add labels',
+                  label: group.data?.labels?.length ? 'Edit tags' : 'Add tags',
                   icon: Tags,
                   onSelect: () => setLabelsOpen(true),
                   when:
@@ -467,7 +479,7 @@ export function ConversationDetailPage() {
                   semantics with it. Without the label these chips read as loose text before the transcript. */}
               <ul
                 role="list"
-                aria-label="Tags"
+                aria-label="Context tags"
                 aria-describedby={unsentTags.size > 0 ? unsentHintId : undefined}
                 className="flex flex-wrap gap-1.5"
                 data-testid="conversation-tags"
@@ -497,7 +509,8 @@ export function ConversationDetailPage() {
                 // has not read yet. Carries the id too — with tagging off every key is unsent, so this is
                 // the paragraph the list's `aria-describedby` resolves to.
                 <p id={unsentHintId} className="text-muted-foreground text-xs">
-                  Tagging is off for this evaluation — these are kept but not sent to the model.
+                  Context tags are off for this evaluation — these are kept but not sent to the
+                  model.
                 </p>
               ) : (
                 // Named as well as marked per chip: the list is jumpable (a reader can land on it
@@ -509,8 +522,8 @@ export function ConversationDetailPage() {
                         columns, which render `TagFoldPolicy.unsent`. */}
                     Kept but not sent to the model: {[...unsentTags].sort().join(', ')} —{' '}
                     {allowedTagKeys === null
-                      ? 'a tag with no value.'
-                      : 'a key this evaluation no longer allows, or a tag with no value.'}
+                      ? 'a context tag with no value.'
+                      : 'a key this evaluation no longer allows, or a context tag with no value.'}
                   </p>
                 )
               )}

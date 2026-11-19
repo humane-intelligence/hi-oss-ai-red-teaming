@@ -24,6 +24,7 @@ from app.core.auth.roles import Permission
 from app.core.auth.roles import SystemRole
 from app.core.auth.services.users import create_user as create_user_service
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
+from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import Evaluation
 from app.core.evaluations.models import EvaluationAiModel
 from tests.api.v1.conftest import make_token as _token
@@ -73,8 +74,11 @@ async def _evaluation(
     *,
     access_level: EvaluationGroupAccessLevel = EvaluationGroupAccessLevel.PUBLIC,
     owner_id: UUID | None = None,
+    group_status: PublicationStatus = PublicationStatus.PUBLISHED,
 ) -> Evaluation:
-    group = await persist_evaluation_group(db_session, access_level=access_level, created_by_id=owner_id)
+    group = await persist_evaluation_group(
+        db_session, access_level=access_level, created_by_id=owner_id, status=group_status
+    )
     row = Evaluation(title="Eval", description="d", evaluation_group_id=group.id, created_by_id=group.created_by_id)
     db_session.add(row)
     await db_session.flush()
@@ -254,3 +258,56 @@ async def test_warmup_accepts_in_group_authority_without_the_global_permission(
     )
 
     assert response.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.integration
+async def test_warmup_in_a_finished_group_returns_409_without_probing(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    warmer_role: Role,
+    ai_model: AiModel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The probe is a model call; a finished group takes none, like a prompt.
+    evaluation = await _evaluation(db_session, group_status=PublicationStatus.INACTIVE)
+    assignment = await _assignment(db_session, evaluation, ai_model)
+    caller = await _caller(db_session, warmer_role, email="warm-finished@example.com")
+    calls: list[str] = []
+    monkeypatch.setattr("app.api.v1.model_warmup.dispatch_probe", _probe(WarmupStatus.READY, calls))
+
+    response = await auth_db_client.post(
+        f"/api/v1/evaluations/{evaluation.id}/models/{assignment.id}/warmup",
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert calls == []
+
+
+@pytest.mark.integration
+async def test_warmup_before_publication_is_for_whoever_may_edit_the_evaluation(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    warmer_role: Role,
+    ai_model: AiModel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    editor_role = Role(
+        name="warm-editor",
+        description="Conversations and evaluations update",
+        permissions=[Permission.CONVERSATIONS_UPDATE.value, Permission.EVALUATIONS_UPDATE.value],
+    )
+    db_session.add(editor_role)
+    await db_session.flush()
+    editor = await _caller(db_session, editor_role, email="warm-editor@example.com")
+    participant = await _caller(db_session, warmer_role, email="warm-participant@example.com")
+    evaluation = await _evaluation(db_session, owner_id=editor.id, group_status=PublicationStatus.APPROVED)
+    assignment = await _assignment(db_session, evaluation, ai_model)
+    monkeypatch.setattr("app.api.v1.model_warmup.dispatch_probe", _probe(WarmupStatus.READY))
+    url = f"/api/v1/evaluations/{evaluation.id}/models/{assignment.id}/warmup"
+
+    by_editor = await auth_db_client.post(url, headers={"Authorization": f"Bearer {_token(editor)}"})
+    by_participant = await auth_db_client.post(url, headers={"Authorization": f"Bearer {_token(participant)}"})
+
+    assert by_editor.status_code == status.HTTP_200_OK
+    assert by_participant.status_code == status.HTTP_409_CONFLICT

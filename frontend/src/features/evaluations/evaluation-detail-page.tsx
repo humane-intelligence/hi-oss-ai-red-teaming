@@ -28,7 +28,11 @@ import { ConversationsSection } from '@/features/conversations/conversations-sec
 import { StartConversationDialog } from '@/features/conversations/start-conversation-dialog'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
-import { groupAcceptsEvaluations } from '@/features/evaluation-groups/lifecycle'
+import {
+  groupAcceptsEvaluations,
+  mayEditEvaluation,
+  promptsBlockedReason,
+} from '@/features/evaluation-groups/lifecycle'
 import { LicenseValue } from '@/features/licenses/license-value'
 import { humanizeError } from '@/lib/api/problem'
 import { DetailSkeleton } from '@/components/shared/detail-skeleton'
@@ -98,6 +102,13 @@ export function EvaluationDetailPage() {
       : scenarios.data?.items.length === 0
         ? 'Add a scenario first'
         : undefined
+  const lifecycleBlocked = promptsBlockedReason(
+    group?.status,
+    evaluation?.status,
+    mayEditEvaluation(has, group?.user_permissions),
+  )
+  const startReason =
+    lifecycleBlocked ?? (startBlocked ? `${startBlocked} to start a conversation.` : undefined)
   const approve = useApproveEvaluation(id ?? '')
   const reject = useRejectEvaluation(id ?? '')
   const unassign = useUnassignModel(id ?? '')
@@ -173,7 +184,7 @@ export function EvaluationDetailPage() {
             <Card>
               <CardContent className="pt-6">
                 <dl className="grid gap-4 sm:grid-cols-3">
-                  <Field label="Evaluation group">
+                  <Field inline label="Evaluation group">
                     <Link
                       to={`/evaluation-groups/${evaluation.evaluation_group_id}`}
                       className="underline underline-offset-2"
@@ -181,13 +192,17 @@ export function EvaluationDetailPage() {
                       {group ? (group.title ?? 'Untitled draft') : '…'}
                     </Link>
                   </Field>
-                  <Field label="Date added">{formatDate(evaluation.created_at)}</Field>
+                  <Field inline label="Date added">
+                    {formatDate(evaluation.created_at)}
+                  </Field>
                   {/* Evaluations carry no deadline of their own; the group's end date is it. */}
                   {group?.end_date && (
-                    <Field label="Complete by">{formatDate(`${group.end_date}T00:00:00`)}</Field>
+                    <Field inline label="Complete by">
+                      {formatDate(`${group.end_date}T00:00:00`)}
+                    </Field>
                   )}
                   {evaluation.description && (
-                    <Field label="Evaluation description" className="sm:col-span-3">
+                    <Field inline label="Evaluation description" className="sm:col-span-3">
                       <span className="whitespace-pre-line">{evaluation.description}</span>
                     </Field>
                   )}
@@ -212,14 +227,22 @@ export function EvaluationDetailPage() {
               </div>
             )}
 
+            {/* A disabled button shows no tooltip and takes no focus, so its reason is spelled out. */}
+            {conversationPerms.has('conversations:create') && startReason && (
+              <p className="text-muted-foreground text-sm">{startReason}</p>
+            )}
             <PageActions
               primary={
                 <>
                   {conversationPerms.has('conversations:create') && (
                     <Button
                       size="sm"
-                      disabled={startBlocked !== undefined || !scenarios.data}
-                      title={startBlocked}
+                      disabled={
+                        lifecycleBlocked !== undefined ||
+                        startBlocked !== undefined ||
+                        !scenarios.data
+                      }
+                      title={lifecycleBlocked ?? startBlocked}
                       onClick={() => {
                         // One scenario leaves nothing to choose, so the dialog would be a dead click.
                         const only = scenarioItems.length === 1 ? scenarioItems[0] : undefined
@@ -320,6 +343,13 @@ export function EvaluationDetailPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
+                      {evaluation.mask_models_enabled &&
+                        (evaluation.models ?? []).some((m) => m.provider_model_id) && (
+                          <p className="text-muted-foreground text-xs">
+                            You see the real names because you manage this evaluation. Participants
+                            see these models masked.
+                          </p>
+                        )}
                       {(evaluation.models ?? []).map((model) => (
                         <div
                           key={model.assignment_id}

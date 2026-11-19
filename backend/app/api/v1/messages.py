@@ -49,6 +49,7 @@ from app.core.conversations.services.conversations import get_conversation
 from app.core.conversations.services.conversations import resolve_dispatch_target
 from app.core.conversations.services.generation import MASKED_ERROR_DETAIL
 from app.core.conversations.services.generation import persist_stream
+from app.core.conversations.services.lifecycle import assert_accepts_prompts
 from app.core.conversations.services.messages import conversation_history
 from app.core.conversations.services.messages import finalize_message
 from app.core.conversations.services.messages import live_turn_messages
@@ -110,12 +111,18 @@ _SEND_RESPONSES = _STREAM_RESPONSES | {
         "carry a key that is not allowed (tags turned off on the instance, tagging disabled on the "
         "evaluation, or outside its restricted tag schema)."
     ),
-    status.HTTP_409_CONFLICT: problem_response("client_message_id already used in another conversation."),
+    status.HTTP_409_CONFLICT: problem_response(
+        "client_message_id already used in another conversation; or the evaluation group is not open "
+        "for prompts (not published yet for a caller who may not edit the evaluation, or finished), or "
+        "the evaluation is rejected or completed. A replay of an already-accepted turn is never refused "
+        "for the group's state."
+    ),
 }
 _REPLACE_RESPONSES = _STREAM_RESPONSES | {
     status.HTTP_404_NOT_FOUND: problem_response("Conversation or target message does not exist or is not visible."),
     status.HTTP_409_CONFLICT: problem_response(
-        "Target message is already superseded or not in the conversation's last turn."
+        "Target message is already superseded or not in the conversation's last turn; or the evaluation "
+        "group is not open for prompts, or the evaluation is rejected or completed."
     ),
 }
 
@@ -333,6 +340,8 @@ async def send_message(
     # names it, so the caller can fix the row. Nothing is committed yet, so a rejection persists
     # nothing — the flushed turn rolls back with the session.
     if not opened.replayed:
+        # A replay is an already-accepted turn, so it is served even after the group has finished.
+        await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions)
         await assert_tags_allowed(db, conversation.evaluation_id, body.tags)
     await db.commit()  # Transaction A — durable before the connection is released
 
@@ -372,6 +381,7 @@ async def _superseding_turn(
     conversation = await get_conversation(
         db, evaluation_id, conversation_id, caller_id=caller.id, can_manage=_can_manage(caller), for_update=True
     )
+    await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions)
     superseded, placeholder = await open_replacement(db, conversation, message_id)
     turn_messages = await live_turn_messages(db, superseded.turn_id)
     message_tags = next((dict(m.tags) for m in turn_messages if m.role is MessageRole.USER), {})

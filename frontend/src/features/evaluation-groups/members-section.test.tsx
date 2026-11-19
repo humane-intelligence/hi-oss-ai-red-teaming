@@ -457,6 +457,24 @@ describe('MembersSection — add flow', () => {
     ).toBeNull()
   })
 
+  it('adds only the organization members the search shows', async () => {
+    handlers({ users: [], orgMembers: [user3, user4] })
+    const { user, dialog } = await openDialog(['users:read', 'organizations:read'], true)
+
+    const org = await within(dialog).findByRole('region', { name: 'Andless (organization)' })
+    await within(org).findByLabelText('Add all members')
+    await user.type(within(dialog).getByPlaceholderText('Search by name or email'), 'dave')
+
+    expect(within(org).queryByLabelText('Add all members')).toBeNull()
+    await user.click(within(org).getByLabelText('Add all matching'))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+
+    expect(
+      within(dialog).getByRole('rowheader', { name: 'Dave Bowman · dave@example.com' }),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByRole('rowheader', { name: /carol@example.com/ })).toBeNull()
+  })
+
   it('shows deactivated users but leaves them out of the pick, Add all included', async () => {
     const carol = { ...user3, status: 'inactive' }
     const erin = {
@@ -603,6 +621,65 @@ describe('MembersSection — add flow', () => {
     expect(status).toHaveTextContent('dave@example.com — Already a member')
     await user.click(within(dialog).getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('tells a deactivated row from an existing member, though both are a 409', async () => {
+    handlers({ users: [user3] })
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/bulk`, () =>
+        HttpResponse.json({
+          dry_run: false,
+          total: 1,
+          succeeded: 0,
+          failed: 1,
+          results: [
+            {
+              row_key: USER_ID_3,
+              status: 'failed',
+              error: {
+                type: 'urn:redteam:error:user-deactivated',
+                title: 'Conflict',
+                status: 409,
+                detail: 'Reworded detail the console must not depend on.',
+              },
+            },
+          ],
+        }),
+      ),
+    )
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 1' }))
+
+    expect(await within(dialog).findByRole('status')).toHaveTextContent(
+      'carol@example.com — Deactivated',
+    )
+  })
+
+  it('shows why the whole add was refused instead of failing silently', async () => {
+    handlers({ users: [user3] })
+    server.use(
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/bulk`, () =>
+        HttpResponse.json(
+          {
+            title: 'Unprocessable Entity',
+            status: 422,
+            detail: 'Request body failed validation.',
+            errors: [{ loc: ['body', 'rows'], msg: 'At most 1000 rows.', type: 'too_long' }],
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    const { user, dialog } = await openDialog(['users:read'])
+
+    await user.click(await within(dialog).findByLabelText(/carol@example.com/))
+    await user.click(within(dialog).getByRole('button', { name: 'Next (1 selected)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add 1' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('At most 1000 rows.')
   })
 
   it('loads the next page of users on demand', async () => {
@@ -778,16 +855,54 @@ describe('MembersSection — add flow', () => {
     )
   })
 
-  it('says when the list shows only the first page of a large group', async () => {
+  it('pages through a group larger than one page', async () => {
+    const offsets: (string | null)[] = []
     server.use(
-      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, () =>
-        HttpResponse.json({ items: [member], total: 150, limit: 100, offset: 0 }),
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, ({ request }) => {
+        offsets.push(new URL(request.url).searchParams.get('offset'))
+        return HttpResponse.json({ items: [member], total: 150, limit: 50, offset: 0 })
+      }),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read'])
+
+    expect(await screen.findByText('1–50 of 150')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    await waitFor(() => expect(offsets).toContain('50'))
+  })
+})
+
+describe('MembersSection — removing the last row of a page', () => {
+  it('steps back to the previous page instead of an empty one', async () => {
+    let total = 51
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset')
+        const items = offset === '50' && total === 51 ? [member] : offset === '50' ? [] : [member]
+        return HttpResponse.json({ items, total, limit: 50, offset: Number(offset ?? 0) })
+      }),
+      http.delete(
+        `http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/${USER_ID}`,
+        () => {
+          total = 50
+          return new HttpResponse(null, { status: 204 })
+        },
       ),
       ...baseHandlers(),
     )
-    renderSection(['evaluation_groups:read'])
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage_members'])
 
-    expect(await screen.findByText('Showing the first 1 of 150 members.')).toBeInTheDocument()
+    expect(await screen.findByText('1–50 of 51')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('51–51 of 51')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove member' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove' }))
+
+    expect(await screen.findByText('1–50 of 50')).toBeInTheDocument()
+    expect(screen.queryByText(/No members yet/)).toBeNull()
   })
 })
 

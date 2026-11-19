@@ -64,6 +64,7 @@ from app.core.evaluations.services.evaluations import duplicate_evaluation
 from app.core.evaluations.services.evaluations import get_evaluation
 from app.core.evaluations.services.evaluations import get_restorable_evaluation
 from app.core.evaluations.services.evaluations import list_evaluations
+from app.core.evaluations.services.evaluations import may_edit_evaluation
 from app.core.evaluations.services.evaluations import resolve_effective_license
 from app.core.evaluations.services.evaluations import resolve_effective_licenses
 from app.core.evaluations.services.evaluations import restore_evaluation
@@ -361,7 +362,10 @@ async def duplicate_evaluation_endpoint(
     summary="Get evaluation",
     description=(
         "Fetch one evaluation with its assigned models. When the evaluation masks models, each model's "
-        "identifying fields are withheld and the display mask is surfaced as the name."
+        "identifying fields are withheld and the display mask is surfaced as the name — except for a caller "
+        "holding `evaluations:update` with write access to the parent group (an in-group role granting it, or "
+        "`evaluation_groups:manage`), who sees the real identities. Only this read and the model list do so; "
+        "every other evaluation response stays masked."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
@@ -388,8 +392,11 @@ async def get_evaluation_endpoint(
     """
     can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
     evaluation = await get_evaluation(db, evaluation_id, caller_id=caller.id, can_manage=can_manage)
+    unmask = evaluation.mask_models_enabled and await may_edit_evaluation(
+        db, evaluation_id, caller_id=caller.id, permissions=caller.permissions
+    )
     return EvaluationResponse.from_model(
-        evaluation, effective_license=await resolve_effective_license(db, evaluation.id)
+        evaluation, effective_license=await resolve_effective_license(db, evaluation.id), unmask_models=unmask
     )
 
 
@@ -743,7 +750,7 @@ async def list_label_categories_endpoint(
     status_code=status.HTTP_201_CREATED,
     summary="Define a conversation-label category",
     description=(
-        "Add a label category, optionally with its allowed values (none means free text). Needs an "
+        "Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an "
         "in-group role granting `evaluations:update`, or `evaluation_groups:manage`."
     ),
     responses=COMMON_ERROR_RESPONSES
@@ -882,7 +889,9 @@ async def delete_label_category_endpoint(
     description=(
         "Return a paginated list of the models assigned to an evaluation, with optional name search and "
         "ordering. When the evaluation masks models, each model's identity is withheld and its display mask "
-        "is surfaced as the name; search and name ordering then run against the display mask. "
+        "is surfaced as the name; search and name ordering then run against the display mask. A caller "
+        "holding `evaluations:update` with write access to the parent group sees real identities instead, "
+        "as on the evaluation detail. "
         "`deleted=true` serves the assignments unassigned inside the restore window instead — the set "
         "`POST …/{assignment_id}/restore` can act on, so it requires exactly what the unassign and the "
         "restore do: the `evaluations:update` permission **and** write access to the parent group."
@@ -909,9 +918,10 @@ async def list_evaluation_models_endpoint(
     """List the models assigned to an evaluation visible to the caller.
 
     Visibility matches the evaluation detail read: the parent group must be
-    `public` or one the caller is a member of. When the evaluation masks models, the
-    `search` filter and `name` ordering operate on each assignment's display
-    mask rather than the real model name.
+    `public` or one the caller is a member of. When the evaluation masks models from
+    the caller, the `search` filter and `name` ordering operate on each assignment's
+    display mask rather than the real model name; a caller who may edit the evaluation
+    is not masked from, and searches and sorts by real names.
 
     `deleted=true` is the restore surface, so it is authorized as a write rather than
     a read — **both** halves the unassign and the restore require: the global
@@ -946,6 +956,9 @@ async def list_evaluation_models_endpoint(
         limit=pagination.limit,
         offset=pagination.offset,
         deleted_cutoff=restore_cutoff(settings),
+        # The deleted listing was authorized as a write just above, which is the same rule.
+        unmask=filters.deleted
+        or await may_edit_evaluation(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions),
     )
     return Page[EvaluationAiModelView](
         items=[EvaluationAiModelView.from_assignment(assignment, masked=masked) for assignment in items],

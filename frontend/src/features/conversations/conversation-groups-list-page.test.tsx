@@ -151,6 +151,14 @@ describe('ConversationGroupsListPage', () => {
     expect(within(emptied).getByText('No messages')).toBeInTheDocument()
   })
 
+  it("marks a row that is another member's", async () => {
+    server.use(...handlers([{ ...groupRow, user_id: 'someone-else' }]))
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('GPT-4o vs Claude')).toBeInTheDocument())
+    expect(screen.getByText("Another member's")).toBeInTheDocument()
+  })
+
   it('offers only the data columns in the Columns menu', async () => {
     const user = userEvent.setup()
     server.use(...handlers([ownRow]))
@@ -220,6 +228,48 @@ describe('ConversationGroupsListPage', () => {
 
       await act(async () => undoFromLastToast()())
       await waitFor(() => expect(restored).toEqual([`${EVAL_ID}/c1`, `${EVAL_ID}/c2`]))
+    })
+
+    it('steps back a page when the last row of the last page is deleted', async () => {
+      // 20 rows of another member fill page 1; the caller's own row is alone on page 2.
+      const groups: (typeof groupRow)[] = [
+        ...Array.from({ length: 20 }, (_, i) => ({
+          ...groupRow,
+          id: `g-${i}`,
+          name: `Other ${i}`,
+        })),
+        ownRow,
+      ]
+      server.use(
+        http.get('http://localhost/api/v1/conversation-groups', ({ request }) => {
+          const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0)
+          return HttpResponse.json({
+            items: groups.slice(offset, offset + 20),
+            total: groups.length,
+            limit: 20,
+            offset,
+          })
+        }),
+        ...handlers(),
+        http.delete(
+          'http://localhost/api/v1/evaluations/:evaluationId/conversation-groups/:groupId',
+          () => {
+            groups.pop()
+            return new HttpResponse(null, { status: 204 })
+          },
+        ),
+      )
+      const user = userEvent.setup()
+      renderPage(['conversations:delete'])
+
+      await screen.findByText('1–20 of 21')
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await user.click(await screen.findByRole('button', { name: DELETE_NAME }))
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+      expect(await screen.findByText('1–20 of 20')).toBeInTheDocument()
+      expect(await screen.findByText('Other 0')).toBeInTheDocument()
+      expect(screen.queryByText(/no conversations yet/i)).toBeNull()
     })
 
     it("hides it on another member's group", async () => {

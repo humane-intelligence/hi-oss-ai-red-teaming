@@ -64,7 +64,7 @@ function baseHandlers(
         id: GROUP_ID,
         title: groupTitle,
         description: '',
-        status: 'approved',
+        status: 'published',
         access_level: 'open',
         start_date: '2026-01-01',
         end_date: null,
@@ -120,13 +120,13 @@ describe('EvaluationDetailPage — group link', () => {
 })
 
 describe('EvaluationDetailPage — summary', () => {
-  const summary = () => screen.getByText('Evaluation group').closest('dl') as HTMLElement
+  const summary = () => screen.getByText('Evaluation group:').closest('dl') as HTMLElement
 
   it('labels the group, the dates and the description, and drops the author', async () => {
     server.use(...baseHandlers(baseEvaluation, 'Spring jailbreak', { end_date: '2026-12-02' }))
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    expect(await screen.findByText('Complete by')).toBeInTheDocument()
+    expect(await screen.findByText('Complete by:')).toBeInTheDocument()
     const dl = within(summary())
     expect(dl.getByRole('link', { name: 'Spring jailbreak' })).toHaveAttribute(
       'href',
@@ -135,13 +135,13 @@ describe('EvaluationDetailPage — summary', () => {
     // Built from calendar parts, not by parsing the same strings the page parses: a date-only
     // value read as UTC would land on the previous day west of Greenwich.
     const long = (d: Date) => d.toLocaleDateString(undefined, { dateStyle: 'long' })
-    expect(dl.getByText('Date added').nextElementSibling).toHaveTextContent(
+    expect(dl.getByText('Date added:').nextElementSibling).toHaveTextContent(
       long(new Date(baseEvaluation.created_at)),
     )
-    expect(dl.getByText('Complete by').nextElementSibling).toHaveTextContent(
+    expect(dl.getByText('Complete by:').nextElementSibling).toHaveTextContent(
       long(new Date(2026, 11, 2)),
     )
-    expect(dl.getByText('Evaluation description').nextElementSibling).toHaveTextContent(
+    expect(dl.getByText('Evaluation description:').nextElementSibling).toHaveTextContent(
       'A test evaluation',
     )
     expect(screen.queryByText(/^by /)).toBeNull()
@@ -152,7 +152,7 @@ describe('EvaluationDetailPage — summary', () => {
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
     await screen.findAllByRole('link', { name: 'Spring jailbreak' })
-    expect(within(summary()).queryByText('Complete by')).toBeNull()
+    expect(within(summary()).queryByText('Complete by:')).toBeNull()
   })
 })
 
@@ -164,8 +164,8 @@ describe('EvaluationDetailPage — settings row', () => {
     const settings = within(await screen.findByRole('region', { name: 'Evaluation settings' }))
     expect(settings.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Models (0)',
-      expect.stringMatching(/^Allowed tags/),
-      expect.stringMatching(/^Labels/),
+      expect.stringMatching(/^Allowed context tags/),
+      expect.stringMatching(/^Custom tags/),
       'Other details',
     ])
     // Four cards: two by two from lg, one row from 2xl.
@@ -390,6 +390,42 @@ const evaluationWithModel: EvaluationResponse = {
     },
   ],
 }
+
+describe('EvaluationDetailPage — masked models', () => {
+  const NOTE = /participants see these models masked/i
+
+  it('tells whoever is shown the real names that participants see them masked', async () => {
+    server.use(...baseHandlers({ ...evaluationWithModel, mask_models_enabled: true }))
+    renderPage(['evaluations:read', 'evaluations:update', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+  })
+
+  it('says nothing to a viewer who gets the masked names', async () => {
+    const masked = (evaluationWithModel.models ?? []).map((m) => ({
+      ...m,
+      name: 'Model A',
+      provider: null,
+      provider_model_id: null,
+    }))
+    server.use(
+      ...baseHandlers({ ...evaluationWithModel, mask_models_enabled: true, models: masked }),
+    )
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('Model A')).toBeInTheDocument()
+    expect(screen.queryByText(NOTE)).toBeNull()
+  })
+
+  it('says nothing when the evaluation does not mask its models', async () => {
+    server.use(...baseHandlers(evaluationWithModel))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
+    expect(screen.queryByText(NOTE)).toBeNull()
+  })
+})
 
 describe('EvaluationDetailPage — edit model parameters', () => {
   it('opens the edit dialog prefilled with the assignment mask and params', async () => {
@@ -702,7 +738,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
     )
-    expect(screen.getByText(/allowed tags/i)).toBeInTheDocument()
+    expect(screen.getByText(/allowed context tags/i)).toBeInTheDocument()
   })
 
   it('hides the card (and never fetches the keys) when tagging is disabled', async () => {
@@ -719,7 +755,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Test evaluation' })).toBeInTheDocument(),
     )
-    expect(screen.queryByText(/allowed tags/i)).toBeNull()
+    expect(screen.queryByText(/allowed context tags/i)).toBeNull()
     expect(tagKeyCalls).toBe(0)
     // The three remaining cards take the row between them instead of leaving a gap.
     const settings = screen.getByRole('region', { name: 'Evaluation settings' })
@@ -749,7 +785,7 @@ describe('EvaluationDetailPage — tagging opt-out', () => {
 
     // The switch reads as off until the settings arrive, so wait for them or this passes vacuously.
     await waitFor(() => expect(served && qc.isFetching() === 0).toBe(true))
-    expect(screen.queryByText(/allowed tags/i)).toBeNull()
+    expect(screen.queryByText(/allowed context tags/i)).toBeNull()
     const settings = screen.getByRole('region', { name: 'Evaluation settings' })
     expect(settings.lastElementChild).toHaveClass('lg:grid-cols-3')
   })
@@ -764,7 +800,7 @@ describe('EvaluationDetailPage — in-group authority', () => {
         id: GROUP_ID,
         title: 'Spring jailbreak',
         description: '',
-        status: 'approved',
+        status: 'published',
         access_level: 'invitation_only',
         start_date: '2026-01-01',
         end_date: null,
@@ -914,6 +950,8 @@ describe('EvaluationDetailPage — in-group authority', () => {
     const noModel = await startButton()
     expect(noModel).toBeDisabled()
     expect(noModel).toHaveAttribute('title', 'Assign a model first')
+    // A disabled button shows no tooltip, so the reason is on the page as well.
+    expect(screen.getByText('Assign a model first to start a conversation.')).toBeInTheDocument()
   })
 
   it('says a scenario is missing when the evaluation has models but none', async () => {

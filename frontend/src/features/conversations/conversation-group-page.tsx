@@ -47,6 +47,8 @@ import type {
   EvaluationResponse,
 } from '@/lib/api/types'
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
+import { TagsUnknownNote } from './tags-unknown-note'
+import { MAX_MODELS } from './limits'
 
 const ADD_MODEL_LOCKED =
   'Models can only be added before the first prompt, so a new model never joins mid-conversation.'
@@ -59,7 +61,7 @@ export function ConversationGroupPage() {
   const gid = groupId ?? ''
 
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions } = authority
+  const { allows, canManage, groupPermissions, lifecycleKnown, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
   const groupQuery = useConversationGroup(evalId, gid, { groupPermissions })
@@ -67,7 +69,17 @@ export function ConversationGroupPage() {
 
   const group = groupQuery.data
   const members = group?.conversations ?? []
-  const prompted = members.some((m) => m.turn_count > 0)
+  const [sendingConvs, setSendingConvs] = useState<Set<string>>(new Set())
+  const reportSending = useCallback((conversationId: string, sending: boolean) => {
+    setSendingConvs((prev) => {
+      if (sending === prev.has(conversationId)) return prev
+      const next = new Set(prev)
+      if (sending) next.add(conversationId)
+      else next.delete(conversationId)
+      return next
+    })
+  }, [])
+  const prompted = members.some((m) => m.turn_count > 0) || sendingConvs.size > 0
   // `read_any` surfaces other members' groups read-only, so writing needs the owner check too —
   // except for the `evaluation_groups:manage` break-glass, which the write services honour.
   const canWrite = Boolean(group && user && group.user_id === user.id) || canManage
@@ -230,6 +242,7 @@ export function ConversationGroupPage() {
                 <p className="text-muted-foreground text-xs">{ADD_MODEL_LOCKED}</p>
               )}
               <GroupLabels labels={group.labels} className="pt-1" />
+              <TagsUnknownNote evaluationAllowsTags={evaluation.data?.tags_enabled === true} />
             </div>
             <PageActions
               secondary={[
@@ -241,8 +254,18 @@ export function ConversationGroupPage() {
                   // The create posts to the group's scenario, so a tombstoned one is a
                   // route-level 404: dead-end, don't offer it. After the first prompt the
                   // backend refuses (409): a late model would not have seen the earlier turns.
-                  disabled: scenarioMissing || prompted,
-                  title: prompted ? ADD_MODEL_LOCKED : undefined,
+                  disabled:
+                    scenarioMissing ||
+                    prompted ||
+                    members.length >= MAX_MODELS ||
+                    promptsBlocked !== undefined,
+                  title: promptsBlocked
+                    ? promptsBlocked
+                    : prompted
+                      ? ADD_MODEL_LOCKED
+                      : members.length >= MAX_MODELS
+                        ? `A conversation compares up to ${MAX_MODELS} models.`
+                        : undefined,
                   when: allows('conversations:create') && canWrite,
                 },
                 {
@@ -254,7 +277,7 @@ export function ConversationGroupPage() {
                 },
                 {
                   key: 'labels',
-                  label: group.labels?.length ? 'Edit labels' : 'Add labels',
+                  label: group.labels?.length ? 'Edit tags' : 'Add tags',
                   icon: Tags,
                   onSelect: () => setLabelsOpen(true),
                   when:
@@ -296,11 +319,14 @@ export function ConversationGroupPage() {
                     allowedKeysStatus={allowedKeysStatus}
                     tags={c.tags}
                     onWarmupChange={reportWarmup}
+                    onSendingChange={reportSending}
                     title={c.title}
                     prompt={prompt}
                     promptNonce={promptNonce}
                     groupPermissions={groupPermissions}
-                    canWrite={canWrite}
+                    // Until the group's stage is known a pane would send, or warm a model, where a
+                    // closed group refuses both.
+                    canWrite={canWrite && lifecycleKnown && !promptsBlocked}
                     // Per member, and without the `canManage` arm `canWrite` carries: the flag
                     // services filter on the conversation's own `user_id`, so a break-glass
                     // viewer offered the control would get a 404.
@@ -311,7 +337,10 @@ export function ConversationGroupPage() {
 
               {/* Broadcasting writes to every member conversation, which `read_any` never widens —
                   so a group surfaced to its owner read-only carries no send form. */}
-              {canWrite && (
+              {canWrite && promptsBlocked && (
+                <p className="text-muted-foreground text-sm">{promptsBlocked}</p>
+              )}
+              {canWrite && lifecycleKnown && !promptsBlocked && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault()
@@ -449,6 +478,8 @@ function AddModelDialog({
       // Only field errors (422) are suppressed by the global handler — surface the
       // title reason inline; everything else (403/404/5xx/network) is toasted globally.
       setError(err instanceof ApiError ? (fieldErrorsFromProblem(err.problem).title ?? null) : null)
+      // A 409 is final for this group (prompted or full), so there is nothing left to retry here.
+      if (err instanceof ApiError && err.status === 409) onOpenChange(false)
     }
   }
 
@@ -472,9 +503,9 @@ function AddModelDialog({
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                {models.map((m) => (
+                {models.map((m, i) => (
                   <SelectItem key={m.assignment_id} value={m.assignment_id}>
-                    {m.name ?? '— masked —'}
+                    {m.name ?? `Masked model ${i + 1}`}
                   </SelectItem>
                 ))}
               </SelectGroup>

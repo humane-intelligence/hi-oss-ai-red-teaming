@@ -1,8 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api/client'
 import { unwrap } from '@/lib/api/fetcher'
-import { humanizeError } from '@/lib/api/problem'
+import { ApiError, humanizeError } from '@/lib/api/problem'
 import { restorableFromHint } from '@/lib/restore/restore'
 import type {
   ConversationCreate,
@@ -129,6 +129,14 @@ export function useDeleteConversation(evaluationId: string) {
   })
 }
 
+// A 400 on labels means a category was deleted meanwhile; stale lists would resend it on every retry.
+function refreshLabelsOnBadRequest(qc: QueryClient, error: unknown) {
+  if (error instanceof ApiError && error.status === 400) {
+    void qc.invalidateQueries({ queryKey: ['evaluation-label-categories'] })
+    void qc.invalidateQueries({ queryKey: ['conversation-group'] })
+  }
+}
+
 // The scenario is picked on this form, so it rides the mutate variables; the sibling
 // `useAddConversationToGroup` takes it as a hook arg because the group already fixes it.
 export function useCreateConversationGroup() {
@@ -151,6 +159,7 @@ export function useCreateConversationGroup() {
       qc.invalidateQueries({ queryKey: ['conversation-groups'] })
       toast.success('Conversation started')
     },
+    onError: (error) => refreshLabelsOnBadRequest(qc, error),
   })
 }
 
@@ -208,7 +217,7 @@ export function useUpdateConversationTags(evaluationId: string) {
       qc.invalidateQueries({ queryKey: ['conversation', updated.id] })
       qc.invalidateQueries({ queryKey: ['conversation-group'] })
       qc.invalidateQueries({ queryKey: ['conversation-groups'] })
-      toast.success('Tags updated')
+      toast.success('Context tags updated')
     },
   })
 }
@@ -234,11 +243,17 @@ export function useRenameConversationGroup(evaluationId: string) {
   })
 }
 
-// PATCH `labels` replaces the whole set, so callers send every category, blank to clear one.
+// PATCH `labels` replaces the whole set: a category left out is cleared.
 export function useSetGroupLabels(evaluationId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ groupId, labels }: { groupId: string; labels: Record<string, string> }) =>
+    mutationFn: async ({
+      groupId,
+      labels,
+    }: {
+      groupId: string
+      labels: Record<string, string[]>
+    }) =>
       unwrap(
         await apiClient.PATCH(
           '/api/v1/evaluations/{evaluation_id}/conversation-groups/{conversation_group_id}',
@@ -251,8 +266,9 @@ export function useSetGroupLabels(evaluationId: string) {
     onSuccess: (group) => {
       qc.invalidateQueries({ queryKey: ['conversation-groups'] })
       qc.invalidateQueries({ queryKey: ['conversation-group', group.id] })
-      toast.success('Labels saved')
+      toast.success('Tags saved')
     },
+    onError: (error) => refreshLabelsOnBadRequest(qc, error),
   })
 }
 

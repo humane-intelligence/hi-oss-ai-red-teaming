@@ -18,5 +18,3 @@ export const MAX_LABEL_CATEGORIES = 20
 export const MAX_LABEL_VALUES = 50
 export const MAX_LABEL_CATEGORY_NAME_LEN = 64
 export const MAX_LABEL_VALUE_LEN = 100
-// A free-text label value on a conversation group (`GroupLabelsInput`).
-export const MAX_GROUP_LABEL_VALUE_LEN = 200

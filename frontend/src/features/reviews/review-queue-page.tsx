@@ -35,13 +35,13 @@ export function ReviewQueuePage() {
     Number.MAX_SAFE_INTEGER,
     Math.trunc(Math.max(0, Number(params.get('offset') ?? '0') || 0)),
   )
-  const setOffset = (next: number) =>
+  const setOffset = (next: number, options?: { replace: boolean }) =>
     setParams((prev) => {
       const url = new URLSearchParams(prev)
       if (next > 0) url.set('offset', String(next))
       else url.delete('offset')
       return url
-    })
+    }, options)
   const [verdictReview, setVerdictReview] = useState<ReviewResponse | null>(null)
   const [assignFlags, setAssignFlags] = useState<FlagRef[] | null>(null)
   const query = useReviewQueue({ limit: PAGE_SIZE, offset, unassigned })
@@ -261,6 +261,11 @@ export function ReviewQueuePage() {
           limit={PAGE_SIZE}
           total={page.total}
           onOffsetChange={setOffset}
+          // Replaced, or Back would land on the past-the-end URL and be bounced forward again;
+          // and not on placeholder data, whose total belongs to the previous filter or page.
+          onOffsetCorrect={(next) => {
+            if (!query.isPlaceholderData) setOffset(next, { replace: true })
+          }}
         />
       )}
 

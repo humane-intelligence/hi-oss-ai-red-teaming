@@ -35,7 +35,7 @@ class ConversationRow:
     # Keys of the conversation's stored tag map the evaluation's tagging policy currently keeps out of
     # the prompt (see `TagFoldPolicy`) — a statement about the policy now, not about past turns.
     tags_not_sent: list[str]
-    labels: dict[str, str]
+    labels: dict[str, list[str]]
 
 
 async def _fetch_conversations(session: AsyncSession, scope: ExportScope) -> AsyncIterator[ConversationRow]:
@@ -102,7 +102,7 @@ _COLUMNS: list[Column[ConversationRow]] = [
         value=lambda r: r.tags_not_sent,
         formatter=lambda v: json.dumps(v, ensure_ascii=False),
     ),
-    # The group's labels, `{category: value}` — metadata, never sent to the model.
+    # The group's labels, `{category: [values]}` — metadata, never sent to the model.
     Column("Labels", value=lambda r: r.labels, formatter=lambda v: json.dumps(v, ensure_ascii=False)),
     Column("Created", lambda r: r.conversation.created_at),
 ]

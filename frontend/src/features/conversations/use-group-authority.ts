@@ -1,5 +1,6 @@
 import { useEvaluation } from '@/features/evaluations/queries'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
+import { mayEditEvaluation, promptsBlockedReason } from '@/features/evaluation-groups/lifecycle'
 import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissions'
 
 // Authority for a conversation surface reached by `evaluation_id` alone. The server accepts
@@ -37,5 +38,14 @@ export function useGroupAuthority(
     pending: !granted && !failed && (evaluation.isPending || parentGroup.isPending),
     error: evaluation.error ?? parentGroup.error,
     groupPermissions: parentGroup.data?.user_permissions,
+    // False while the evaluation or its group is loading (or failed); `promptsBlocked` is then
+    // undefined, which is not a yes.
+    lifecycleKnown: Boolean(evaluation.data && parentGroup.data),
+    // Why no prompt may be sent here, when the lifecycle rules it out (see `promptsBlockedReason`).
+    promptsBlocked: promptsBlockedReason(
+      parentGroup.data?.status,
+      evaluation.data?.status,
+      mayEditEvaluation(global.has, parentGroup.data?.user_permissions),
+    ),
   }
 }

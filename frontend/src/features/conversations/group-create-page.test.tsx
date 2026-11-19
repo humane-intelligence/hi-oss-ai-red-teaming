@@ -189,8 +189,96 @@ describe('GroupCreatePage', () => {
 
     await waitFor(() => expect(captured).not.toBeNull())
     expect((captured as { name: string }).name).toMatch(
-      /^Compare: gpt-4o vs claude-3-opus · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+      /^Compare: gpt-4o vs claude-3-opus · \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     )
+  })
+
+  it('keeps model names out of the default name on a masked evaluation, even for who sees them', async () => {
+    let captured: unknown = null
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ ...evaluation, mask_models_enabled: true }),
+      ),
+      ...baseHandlers(),
+      http.post(
+        `http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`,
+        async ({ request }) => {
+          captured = await request.json()
+          return HttpResponse.json(groupResponse(), { status: 201 })
+        },
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    await waitFor(() => expect(captured).not.toBeNull())
+    expect((captured as { name: string }).name).toMatch(
+      /^Compare: 1 model · \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
+    )
+  })
+
+  it('shows a refused field instead of going quiet, whichever field it is', async () => {
+    server.use(
+      ...baseHandlers(),
+      http.post(`http://localhost/api/v1/scenarios/${SCENARIO_ID}/conversation-groups`, () =>
+        HttpResponse.json(
+          {
+            title: 'Unprocessable Entity',
+            status: 422,
+            errors: [{ loc: ['body', 'models'], msg: 'At most 4 models.', type: 'too_long' }],
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    await selectScenario(user)
+    await user.click(screen.getByRole('button', { name: /start conversation/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('At most 4 models.')
+  })
+
+  it('stops at four model rows and caps the name, as the server does', async () => {
+    server.use(...baseHandlers())
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
+    expect(screen.getByLabelText('Name (optional)')).toHaveAttribute('maxlength', '255')
+    const add = screen.getByRole('button', { name: /add model/i })
+    await user.click(add)
+    await user.click(add)
+    await user.click(add)
+
+    expect(screen.getByLabelText('Model 4')).toBeInTheDocument()
+    expect(add).toBeDisabled()
+  })
+
+  it('numbers masked models so two of them can be told apart', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({
+          ...evaluation,
+          mask_models_enabled: true,
+          models: (evaluation.models ?? []).map((m) => ({ ...m, name: null })),
+        }),
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByLabelText('Model 1'))
+
+    expect(await screen.findByRole('option', { name: 'Masked model 1' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Masked model 2' })).toBeInTheDocument()
   })
 
   it('sends a typed name, trimmed', async () => {
@@ -321,7 +409,7 @@ describe('GroupCreatePage', () => {
     expect(Object.prototype.hasOwnProperty.call(body.models[1], 'title')).toBe(false)
   })
 
-  it('sends the labels set, leaving out the blank ones', async () => {
+  it('sends the picked tags, leaving out the categories with none', async () => {
     let captured: unknown = null
     server.use(
       ...baseHandlers(),
@@ -352,18 +440,20 @@ describe('GroupCreatePage', () => {
     await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
     await selectScenario(user)
     expect(await screen.findByText(/never sent to the model/i)).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('language'), 'polish')
-    await user.type(screen.getByLabelText('note'), '  roleplay ')
+    await user.click(screen.getByLabelText('language: polish'))
+    await user.click(screen.getByLabelText('language: english'))
+    await user.click(screen.getByLabelText('note'))
     await user.click(screen.getByRole('button', { name: /start conversation/i }))
 
+    // Two tags in one category, and a category without tags picked on its own; `team` is left out.
     await waitFor(() => expect(captured).not.toBeNull())
     expect((captured as { labels: unknown }).labels).toEqual({
-      'cat-lang': 'polish',
-      'cat-note': 'roleplay',
+      'cat-lang': ['polish', 'english'],
+      'cat-note': [''],
     })
   })
 
-  it('leaves out a label whose category was deleted after it was filled', async () => {
+  it('leaves out a tag whose category was deleted after it was picked', async () => {
     let captured: unknown = null
     let categories = [
       { id: 'cat-lang', evaluation_id: EVAL_ID, name: 'language', values: [], created_at: '' },
@@ -387,15 +477,15 @@ describe('GroupCreatePage', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Model 1')).toBeInTheDocument())
     await selectScenario(user)
-    await user.type(await screen.findByLabelText('language'), 'polish')
-    await user.type(screen.getByLabelText('note'), 'roleplay')
+    await user.click(await screen.findByLabelText('language'))
+    await user.click(screen.getByLabelText('note'))
     categories = categories.filter((c) => c.id !== 'cat-note')
     await qc.invalidateQueries()
     await waitFor(() => expect(screen.queryByLabelText('note')).toBeNull())
     await user.click(screen.getByRole('button', { name: /start conversation/i }))
 
     await waitFor(() => expect(captured).not.toBeNull())
-    expect((captured as { labels: unknown }).labels).toEqual({ 'cat-lang': 'polish' })
+    expect((captured as { labels: unknown }).labels).toEqual({ 'cat-lang': [''] })
   })
 
   it('shows no label fields when the evaluation defines no categories', async () => {
@@ -607,5 +697,62 @@ describe('GroupCreatePage — internet access marker', () => {
 
     expect(await screen.findByRole('option', { name: 'gpt-4o (internet)' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'claude-3-opus' })).toBeInTheDocument()
+  })
+})
+
+describe('GroupCreatePage — a group not open for conversations', () => {
+  function groupIn(status: string, userPermissions: string[] = []) {
+    return http.get(
+      `http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`,
+      () =>
+        HttpResponse.json({
+          id: evaluation.evaluation_group_id,
+          title: 'Engagement',
+          description: '',
+          status,
+          access_level: 'invitation_only',
+          start_date: '2026-01-01',
+          end_date: null,
+          created_by_id: 'user-000-0000-0000-000000000000',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          evaluations: [],
+          user_permissions: userPermissions,
+        }),
+    )
+  }
+
+  it('says why instead of offering a form a finished group would refuse', async () => {
+    server.use(groupIn('inactive'), ...baseHandlers())
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        'This evaluation group is finished, so its conversations no longer take prompts.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Model 1')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Start conversation' })).toBeNull()
+    expect(screen.getByRole('button', { name: /back to evaluation/i })).toBeInTheDocument()
+  })
+
+  it('keeps the form before publication for whoever may edit the evaluation', async () => {
+    server.use(groupIn('approved', ['evaluations:update']), ...baseHandlers())
+    renderPage(undefined, [
+      'conversations:create',
+      'conversations:participate',
+      'evaluations:update',
+    ])
+
+    expect(await screen.findByLabelText('Model 1')).toBeInTheDocument()
+    expect(screen.queryByText(/not published yet/)).toBeNull()
+  })
+
+  it('says the group is not published yet to a participant', async () => {
+    server.use(groupIn('approved'), ...baseHandlers())
+    renderPage()
+
+    expect(await screen.findByText(/not published yet/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Model 1')).toBeNull()
   })
 })

@@ -1,3 +1,4 @@
+import { sentenceCase } from '@/lib/sentence-case'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { formatCalendarDate } from '@/lib/format-date'
 import { Plus } from 'lucide-react'
@@ -75,7 +76,7 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       label: 'Access',
       header: 'Access',
       hideBelow: 'md',
-      cell: (g) => <Badge variant="outline">{g.access_level.replace(/_/g, ' ')}</Badge>,
+      cell: (g) => <Badge variant="outline">{sentenceCase(g.access_level)}</Badge>,
     },
     {
       id: 'organization',
@@ -128,7 +129,7 @@ export function EvaluationGroupsListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Evaluation Groups"
-        description="An evaluation group is one red-teaming engagement: when it runs, who takes part, and the evaluations inside it."
+        description="An evaluation group bundles related evaluations — for example, testing one model across versions."
       />
       <Tabs tabs={TABS} value={tab} onChange={(v) => setParams(v === 'groups' ? {} : { tab: v })} />
       <div {...tabPanelProps(tab)}>
@@ -179,7 +180,7 @@ function GroupsContent() {
           value={view.filters.status}
           onChange={(v) => view.setFilter('status', v as PublicationStatus | '')}
           allLabel="All statuses"
-          options={PUBLICATION_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))}
+          options={PUBLICATION_STATUSES.map((s) => ({ value: s, label: sentenceCase(s) }))}
         />
         <FilterSelect
           label="Access"

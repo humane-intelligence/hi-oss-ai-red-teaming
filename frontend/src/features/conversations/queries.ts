@@ -40,13 +40,12 @@ export function useConversationGroups(evaluationId: string, options: ObjectAutho
 }
 
 // The caller's recently-deleted conversations in one evaluation, newest tombstone first.
-// Gated on conversations:delete: the deleted listing is the restore surface, and only a
-// caller who could delete can restore (the server scopes it to their own deletes anyway).
+// The caller gates on conversations:delete (global or in the group): the deleted listing is the
+// restore surface, and the server scopes it to the caller's own deletes anyway.
 export function useDeletedConversations(evaluationId: string, enabled: boolean) {
-  const { has } = usePermissions()
   return useQuery({
     queryKey: ['conversations', 'deleted', evaluationId],
-    enabled: enabled && evaluationId !== '' && has('conversations:delete'),
+    enabled: enabled && evaluationId !== '',
     queryFn: async () =>
       unwrap(
         await apiClient.GET('/api/v1/evaluations/{evaluation_id}/conversations', {

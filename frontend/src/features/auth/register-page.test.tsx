@@ -18,7 +18,7 @@ function SignupFlagProbe() {
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const fill = async (user: ReturnType<typeof userEvent.setup>, password = 'longenough123') => {
-  await user.type(screen.getByLabelText('Email'), 'test@example.com')
+  await user.type(screen.getByLabelText('Email address'), 'test@example.com')
   await user.type(screen.getByLabelText('Password', { selector: '#password' }), password)
 }
 
@@ -104,7 +104,7 @@ describe('RegisterPage', () => {
   it('blocks submit and shows an error for an empty password', async () => {
     const user = userEvent.setup()
     renderWithProviders(<RegisterPage />)
-    await user.type(screen.getByLabelText('Email'), 'test@example.com')
+    await user.type(screen.getByLabelText('Email address'), 'test@example.com')
     // The 10 is the default handler's published minimum, not the shipped fallback the schema is
     // built from until the read settles — so clicking before that pins nothing.
     const requirements = await screen.findByRole('list', { name: 'Password requirements' })
@@ -327,7 +327,7 @@ describe('RegisterPage — terms consent', () => {
   it('offers no consent checkbox while nothing is published', async () => {
     renderWithProviders(<RegisterPage />)
 
-    expect(await screen.findByLabelText('Email')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Email address')).toBeInTheDocument()
     expect(screen.queryByLabelText(/accept the terms/i)).not.toBeInTheDocument()
     // The optional one is not tied to a published version, so it always shows.
     expect(screen.getByLabelText(/send me product email/i)).toBeInTheDocument()
@@ -345,7 +345,7 @@ describe('RegisterPage — terms consent', () => {
 
     renderWithProviders(<RegisterPage />)
 
-    expect(await screen.findByLabelText('Email')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Email address')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /create account/i })).toBeDisabled()
     expect(screen.getByText('Checking the terms of service…')).toBeInTheDocument()
   })

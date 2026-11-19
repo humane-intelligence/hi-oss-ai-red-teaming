@@ -36,7 +36,7 @@ const schema = z.object({
         message: `"${tooLong.slice(0, 20)}…" is longer than ${MAX_LABEL_VALUE_LEN} characters`,
       })
     } else if (values.length > MAX_LABEL_VALUES) {
-      ctx.addIssue({ code: 'custom', message: `At most ${MAX_LABEL_VALUES} values` })
+      ctx.addIssue({ code: 'custom', message: `At most ${MAX_LABEL_VALUES} tags` })
     } else {
       const seen = new Set<string>()
       const dup = values.find((v) => {
@@ -70,12 +70,20 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
   })
 
   const onSubmit = handleSubmit(async ({ name, values }) => {
-    const body = { name, values: splitValues(values) }
     try {
       if (category) {
-        await update.mutateAsync({ categoryId: category.id, body })
+        // Only what differs from what the dialog opened with: a rename must not write back a stale value list.
+        const opened = formState.defaultValues
+        const list = splitValues(values)
+        const body = {
+          ...(name !== cleanLine(opened?.name ?? '') && { name }),
+          ...(list.join('\n') !== splitValues(opened?.values ?? '').join('\n') && { values: list }),
+        }
+        if (Object.keys(body).length > 0) {
+          await update.mutateAsync({ categoryId: category.id, body })
+        }
       } else {
-        await create.mutateAsync(body)
+        await create.mutateAsync({ name, values: splitValues(values) })
       }
       onOpenChange(false)
     } catch (err) {
@@ -85,9 +93,9 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
       if (err instanceof ApiError && err.status === 422) {
         const reasons = (err.problem.errors ?? []).map((e) => {
           const at = e.loc.at(-1)
-          return typeof at === 'number' ? `Value ${at + 1}: ${e.msg}` : e.msg
+          return typeof at === 'number' ? `Tag ${at + 1}: ${e.msg}` : e.msg
         })
-        setError('root', { message: reasons.join('; ') || 'The server rejected these values.' })
+        setError('root', { message: reasons.join('; ') || 'The server rejected these tags.' })
       }
     }
   })
@@ -97,13 +105,13 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
       open={open}
       onOpenChange={onOpenChange}
       busy={formState.isSubmitting}
-      title={category ? 'Edit label category' : 'Add label category'}
+      title={category ? 'Edit tag category' : 'Add tag category'}
       onOpen={() =>
         reset(category ? { name: category.name, values: category.values.join('\n') } : EMPTY)
       }
     >
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <FormField label="Category" htmlFor="lc-name" error={formState.errors.name?.message}>
+        <FormField label="Tag category" htmlFor="lc-name" error={formState.errors.name?.message}>
           <Input
             id="lc-name"
             placeholder="e.g. language"
@@ -112,12 +120,12 @@ export function LabelCategoryDialog({ evaluationId, open, onOpenChange, category
           />
         </FormField>
         <FormField
-          label="Allowed values"
+          label="Tags"
           htmlFor="lc-values"
           description={
             category
-              ? 'One per line. Leave empty for free text. Conversations keep a value you remove here.'
-              : 'One per line. Leave empty to let each conversation take any text.'
+              ? 'One tag per line. Leave empty for a category that is picked on its own. Conversations keep a tag you remove here.'
+              : 'One tag per line. Leave empty for a category that is picked on its own.'
           }
           error={formState.errors.values?.message}
         >

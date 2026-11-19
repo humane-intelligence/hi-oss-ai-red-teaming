@@ -716,6 +716,32 @@ async def test_list_users_filters_by_name_substring(
 
 
 @pytest.mark.integration
+async def test_list_users_search_matches_a_full_name(
+    auth_db_client: AsyncClient,
+    db_session: AsyncSession,
+    default_role: Role,
+) -> None:
+    caller = await create_user_service(db_session, email="full-name-caller@example.com", roles=[default_role])
+    await create_user_service(
+        db_session, email="ada@example.com", first_name="Ada", last_name="Lovelace", roles=[default_role]
+    )
+    await create_user_service(
+        db_session, email="grace@example.com", first_name="Grace", last_name="Hopper", roles=[default_role]
+    )
+
+    response = await auth_db_client.get(
+        "/api/v1/auth/users",
+        params={"search": "ada love"},
+        headers={"Authorization": f"Bearer {_token(caller)}"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["email"] == "ada@example.com"
+
+
+@pytest.mark.integration
 async def test_list_users_filters_by_role(
     auth_db_client: AsyncClient,
     db_session: AsyncSession,

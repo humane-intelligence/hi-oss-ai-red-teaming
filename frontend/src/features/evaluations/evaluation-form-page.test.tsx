@@ -106,6 +106,23 @@ function renderEdit() {
   )
 }
 
+describe('EvaluationFormPage — edit, record unavailable', () => {
+  it('shows the error instead of a blank form that would save defaults over the record', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluations/${EVAL_ID}`, () =>
+        HttpResponse.json({ title: 'Internal Server Error', status: 500 }, { status: 500 }),
+      ),
+      ...handlers(['evaluations:update']),
+    )
+    renderEdit()
+
+    expect(
+      await screen.findByText('Something went wrong on the server. Try again in a moment.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+})
+
 describe('EvaluationFormPage — the trail on the edit path', () => {
   it('names the group being edited inside, and the evaluation, which the title does not', async () => {
     server.use(
@@ -547,15 +564,15 @@ function captureUpdate(onBody: (body: Record<string, unknown>) => void) {
 
 const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement
 
-describe('EvaluationFormPage — custom tags', () => {
+describe('EvaluationFormPage — context tags', () => {
   it('describes the checkbox, and the hint beside it does not toggle it', async () => {
     server.use(...handlers(['evaluations:create']))
     const user = userEvent.setup()
     renderCreate()
 
-    const box = await screen.findByRole('checkbox', { name: 'Custom tags' })
+    const box = await screen.findByRole('checkbox', { name: 'Context tags' })
     expect(box).toHaveAccessibleDescription(
-      'Checking this box allows custom tags to be added to conversations in this evaluation.',
+      'Checking this box allows context tags to be added to conversations in this evaluation.',
     )
     const before = box.getAttribute('aria-checked')
 
@@ -564,7 +581,7 @@ describe('EvaluationFormPage — custom tags', () => {
     expect(box).toHaveAttribute('aria-checked', before)
   })
 
-  it('offers no Custom tags checkbox when the instance turns tags off', async () => {
+  it('offers no Context tags checkbox when the instance turns tags off', async () => {
     server.use(
       http.get('http://localhost/api/v1/platform-settings/public', () =>
         HttpResponse.json({
@@ -583,7 +600,7 @@ describe('EvaluationFormPage — custom tags', () => {
     renderCreate()
 
     await screen.findByRole('checkbox', { name: /mask assigned model identities/i })
-    expect(screen.queryByRole('checkbox', { name: 'Custom tags' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Context tags' })).toBeNull()
   })
 })
 

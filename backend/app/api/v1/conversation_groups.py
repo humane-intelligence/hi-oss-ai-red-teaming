@@ -54,6 +54,7 @@ from app.core.conversations.services.groups import soft_delete_conversation_grou
 from app.core.conversations.services.groups import touch_conversation_group
 from app.core.conversations.services.labels import labels_by_group
 from app.core.conversations.services.labels import set_group_labels
+from app.core.conversations.services.lifecycle import assert_accepts_prompts
 from app.core.dependencies import DbSession
 from app.core.dependencies import PaginationDep
 from app.core.dependencies import transactional
@@ -114,11 +115,15 @@ _OrderBy = Annotated[
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_400_BAD_REQUEST: problem_response(
-            "A label category is not defined on the evaluation, or a value is outside its list."
+            "A label with a value names a category not defined on the evaluation, or the value is outside its list."
         ),
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _CREATE_NOT_FOUND,
+        status.HTTP_409_CONFLICT: problem_response(
+            "The evaluation group is not open for conversations (not published yet for a caller who "
+            "may not edit the evaluation, or finished), or the evaluation is rejected or completed."
+        ),
     },
 )
 @transactional
@@ -137,10 +142,14 @@ async def create_conversation_group_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — a label category is not the evaluation's, or a value is outside its list.
+    * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
+      is outside its list. A blank entry picks a category without values on its own; for a category with
+      values it is dropped, unless the group already holds that category on its own (then it is kept).
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:create`.
     * **404 Not Found** — the scenario isn't visible, or a model assignment isn't part of its evaluation.
+    * **409 Conflict** — the evaluation group is not open for conversations (not published yet for a caller
+      who may not edit the evaluation, or finished), or the evaluation is rejected or completed.
     """
     models = [
         ConversationSpec(
@@ -152,6 +161,7 @@ async def create_conversation_group_endpoint(
     ]
     can_manage = _can_manage(caller)
     scenario = await get_scenario_by_id(db, scenario_id, caller_id=caller.id, can_manage=can_manage)
+    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, permissions=caller.permissions)
     conversation_group, conversations = await create_conversation_group(
         db,
         user_id=caller.id,
@@ -301,7 +311,7 @@ async def get_conversation_group_endpoint(
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_400_BAD_REQUEST: problem_response(
-            "A label category is not defined on the evaluation, or a value is outside its list."
+            "A label with a value names a category not defined on the evaluation, or the value is outside its list."
         ),
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
@@ -320,7 +330,9 @@ async def update_conversation_group_endpoint(
 
     ### Errors
 
-    * **400 Bad Request** — a label category is not the evaluation's, or a value is outside its list.
+    * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
+      is outside its list. A blank entry picks a category without values on its own; for a category with
+      values it is dropped, unless the group already holds that category on its own (then it is kept).
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:update`.
     * **404 Not Found** — no such group owned by the caller in this evaluation.

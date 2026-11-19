@@ -65,7 +65,9 @@ export function AllowedTagsCard({
         {/* Countless until the query settles: "(0)" beside "Loading allowed keys…" reads as a loaded
             empty set, which is a different state and the one an admin would act on. */}
         <div className="flex items-center gap-1">
-          <CardTitle as="h3">Allowed tags{keys.isSuccess ? ` (${rows.length})` : ''}</CardTitle>
+          <CardTitle as="h3">
+            Allowed context tags{keys.isSuccess ? ` (${rows.length})` : ''}
+          </CardTitle>
           <InfoHint text={TAGS_HINT} />
         </div>
       </CardHeader>
@@ -79,11 +81,11 @@ export function AllowedTagsCard({
               disabled={update.isPending}
               onChange={(e) => update.mutate({ tags_restricted: e.target.checked })}
             />
-            Restrict tags to allowed keys
+            Restrict context tags to allowed keys
           </label>
         ) : (
           <p className="text-sm">
-            {restricted ? 'Tags restricted to allowed keys.' : 'Tags unrestricted.'}
+            {restricted ? 'Context tags restricted to allowed keys.' : 'Context tags unrestricted.'}
           </p>
         )}
         {/* Three states, not two: a failed read rendered as "Loading…" is the one that gets acted on,
@@ -131,12 +133,12 @@ export function AllowedTagsCard({
           ) : (
             <p className="text-muted-foreground text-xs">
               {!restricted
-                ? 'No restriction — any tag key is allowed.'
+                ? 'No restriction — any context tag key is allowed.'
                 : keys.isPending
                   ? 'Loading allowed keys…'
                   : rows.length === 0
-                    ? 'Restricted with no keys — no conversation tags are allowed.'
-                    : 'Conversation tags are restricted to these keys.'}
+                    ? 'Restricted with no keys — no context tags are allowed.'
+                    : 'Context tags are restricted to these keys.'}
             </p>
           )}
         </div>
@@ -164,7 +166,7 @@ export function AllowedTagsCard({
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <Input
-                aria-label="New tag key"
+                aria-label="New context tag key"
                 maxLength={MAX_TAG_KEY_LEN}
                 value={key}
                 onChange={(e) => {
@@ -208,11 +210,11 @@ export function AllowedTagsCard({
         onOpenChange={(open) => {
           if (!open) setRemoving(null)
         }}
-        title="Remove allowed tag key"
+        title="Remove allowed context tag key"
         description={
           restricted
             ? `Remove "${removing}" from the allowed keys? Conversations already tagged with it keep the tag on the record, but it stops being sent to the model and can't be set again until the key is re-added.`
-            : `Remove "${removing}" from the allowed keys? Tags are unrestricted right now, so nothing changes for existing conversations until the restriction is turned on.`
+            : `Remove "${removing}" from the allowed keys? Context tags are unrestricted right now, so nothing changes for existing conversations until the restriction is turned on.`
         }
         confirmLabel="Remove"
         destructive

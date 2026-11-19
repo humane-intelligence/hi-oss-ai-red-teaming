@@ -25,6 +25,7 @@ from app.core.ai_gateway.dispatch import dispatch_probe
 from app.core.auth.roles import Permission
 from app.core.auth.schemas import SessionUser
 from app.core.conversations.dependencies import require_conversation_permission
+from app.core.conversations.services.lifecycle import assert_accepts_prompts
 from app.core.database import standalone_session
 from app.core.dependencies import DbSession
 from app.core.dependencies import SettingsDep
@@ -54,13 +55,18 @@ _Participant = Annotated[SessionUser, Depends(require_conversation_permission(Pe
         "Intended for models backed by scale-to-zero endpoints, which reject the first request while a "
         "replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe "
         "itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or "
-        "`error` (a fault a retry won't fix, e.g. bad credentials)."
+        "`error` (a fault a retry won't fix, e.g. bad credentials). Refused with 409 once the evaluation takes "
+        "no prompts, by the same rule as sending one: the probe is a call to the model."
     ),
     responses=COMMON_ERROR_RESPONSES
     | {
         status.HTTP_401_UNAUTHORIZED: problem_response("Missing or invalid bearer token."),
         status.HTTP_403_FORBIDDEN: problem_response("Caller lacks the conversations:update permission."),
         status.HTTP_404_NOT_FOUND: problem_response("Evaluation or assignment does not exist or is not visible."),
+        status.HTTP_409_CONFLICT: problem_response(
+            "The evaluation's group is not open for prompts (finished, or not published yet for a caller who "
+            "may not edit the evaluation), or the evaluation is closed."
+        ),
     },
 )
 async def warmup_model_endpoint(
@@ -81,9 +87,18 @@ async def warmup_model_endpoint(
     to `starting` and a terminal fault to `error`, never leaking provider detail.
     The `get_model` lookup (assignment → alias) is a second cheap resolve on this
     cold path — acceptable for a non-hot endpoint.
+
+    ### Errors
+
+    * **401 Unauthorized** — bearer token missing/invalid.
+    * **403 Forbidden** — caller lacks `conversations:update`.
+    * **404 Not Found** — the evaluation or the assignment does not exist or is not visible.
+    * **409 Conflict** — the evaluation takes no prompts: its group is finished, or not published yet
+      and the caller may not edit the evaluation, or the evaluation is closed.
     """
     can_manage = Permission.EVALUATION_GROUPS_MANAGE in caller.permissions
     assignment = await get_assignment(db, evaluation_id, assignment_id, caller_id=caller.id, can_manage=can_manage)
+    await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions)
     model = await get_model(db, assignment.model_id)
     result = await dispatch_probe(db, settings, model_alias=model.model_alias, session_provider=standalone_session)
     return WarmupResponse(status=result)
