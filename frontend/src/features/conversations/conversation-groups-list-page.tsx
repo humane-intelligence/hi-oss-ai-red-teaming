@@ -48,6 +48,17 @@ export function ConversationGroupsListPage() {
       ),
     },
     {
+      id: 'id',
+      label: 'ID',
+      header: 'ID',
+      hideBelow: 'lg',
+      cell: (g) => (
+        <code className="text-muted-foreground font-mono" title={g.id}>
+          {g.id.slice(0, 8)}
+        </code>
+      ),
+    },
+    {
       id: 'evaluation',
       label: 'Evaluation',
       header: 'Evaluation',

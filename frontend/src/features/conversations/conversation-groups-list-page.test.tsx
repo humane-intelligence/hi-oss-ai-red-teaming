@@ -118,6 +118,14 @@ describe('ConversationGroupsListPage', () => {
     expect(screen.getByText('2 models')).toBeInTheDocument()
   })
 
+  it('shows the short conversation ID, with the full ID on hover', async () => {
+    server.use(...handlers([groupRow]))
+    renderPage()
+
+    const id = await screen.findByText('grp-0001')
+    expect(id).toHaveAttribute('title', GROUP_ID)
+  })
+
   it('marks a group as empty only when none of its members has a turn', async () => {
     server.use(
       ...handlers([
@@ -168,6 +176,7 @@ describe('ConversationGroupsListPage', () => {
     await user.click(screen.getByRole('button', { name: 'Toggle columns' }))
     expect(screen.getAllByRole('checkbox').map((c) => c.closest('label')?.textContent)).toEqual([
       'Name',
+      'ID',
       'Evaluation',
       'Models',
       'Started',
