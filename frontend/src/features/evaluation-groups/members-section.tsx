@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Mail, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useGroupMembers } from './queries'
+import { useGroupAssignableRoles, useGroupMembers } from './queries'
 import { useRemoveGroupMember, useUpdateGroupMember } from './mutations'
 import { BulkInviteDialog } from './bulk-invite-dialog'
 import { AddMembersDialog } from './add-members-dialog'
@@ -26,6 +26,7 @@ function EditMemberDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const update = useUpdateGroupMember(groupId)
+  const roles = useGroupAssignableRoles(groupId, { enabled: open })
   const [roleIds, setRoleIds] = useState<string[]>([])
 
   const canSubmit = roleIds.length > 0 && !update.isPending
@@ -40,7 +41,13 @@ function EditMemberDialog({
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label>Roles</Label>
-          <RolesPicker selected={roleIds} onChange={setRoleIds} groupId={groupId} />
+          <RolesPicker
+            roles={roles.data?.items ?? []}
+            isPending={roles.isPending}
+            isError={roles.isError}
+            selected={roleIds}
+            onChange={setRoleIds}
+          />
         </div>
       </div>
       <div className="flex justify-end gap-2">

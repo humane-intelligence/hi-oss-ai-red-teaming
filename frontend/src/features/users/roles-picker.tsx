@@ -1,13 +1,17 @@
-import { useGroupAssignableRoles } from '@/features/evaluation-groups/queries'
-import { useRoles } from './queries'
-
+// The caller loads the roles: the whole catalog for a global assignment, or what the group
+// accepts (`useGroupAssignableRoles`) for an in-group one.
 export function RolesPicker({
+  roles,
+  isPending,
+  isError = false,
   selected,
   onChange,
-  groupId,
   describedBy,
   invalid,
 }: {
+  roles: { id: string; display_name: string }[]
+  isPending: boolean
+  isError?: boolean
   selected: string[]
   onChange: (ids: string[]) => void
   // A checkbox group carries its description and validity on the group, not on each box, so these
@@ -15,19 +19,13 @@ export function RolesPicker({
   // prop list and would swallow them.
   describedBy?: string
   invalid?: boolean
-  // Set for an in-group picker: it then offers the roles assignable in that group, which the
-  // backend lists to whoever manages its members. Omitted, it offers the whole catalog.
-  groupId?: string
 }) {
-  const catalog = useRoles({ enabled: groupId === undefined })
-  const inGroup = useGroupAssignableRoles(groupId ?? '')
-  const { data, isPending } = groupId === undefined ? catalog : inGroup
-  const roles = data?.items ?? []
-
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
 
   if (isPending) return <p className="text-muted-foreground text-xs">Loading roles…</p>
+  // Not the empty state: an unreadable list says nothing about which roles exist.
+  if (isError) return <p className="text-destructive text-xs">Couldn’t load the roles to assign.</p>
 
   return (
     <div

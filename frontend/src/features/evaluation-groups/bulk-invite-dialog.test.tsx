@@ -164,14 +164,23 @@ describe('evaluation-groups BulkInviteDialog — submit', () => {
 })
 
 describe('evaluation-groups BulkInviteDialog — role picker', () => {
-  it('offers the roles the group lists as assignable', async () => {
-    server.use(rolesHandler())
+  it('offers the roles the group lists as assignable, never reading the catalog', async () => {
+    // The default handler serves Red Teamer from `/roles` too, so the absence of a role cannot
+    // show which list the picker read; the flag does.
+    let catalogRead = false
+    server.use(
+      http.get('http://localhost/api/v1/roles', () => {
+        catalogRead = true
+        return HttpResponse.json({ title: 'Forbidden', status: 403 }, { status: 403 })
+      }),
+      rolesHandler(),
+    )
     renderDialog()
 
     await waitFor(() =>
       expect(screen.getByRole('checkbox', { name: /red teamer/i })).toBeInTheDocument(),
     )
-    expect(screen.queryByRole('checkbox', { name: /admin/i })).toBeNull()
+    expect(catalogRead).toBe(false)
   })
 })
 

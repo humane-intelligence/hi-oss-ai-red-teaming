@@ -234,6 +234,7 @@ export function useGroupAssignableRoles(groupId: string, options?: { enabled?: b
     queryFn: async () =>
       unwrap(
         await apiClient.GET('/api/v1/evaluation-groups/{group_id}/assignable-roles', {
+          // One page: a group offers a handful of roles, far below the 100 cap; more would drop silently.
           params: { path: { group_id: groupId }, query: { limit: 100 } },
         }),
       ),

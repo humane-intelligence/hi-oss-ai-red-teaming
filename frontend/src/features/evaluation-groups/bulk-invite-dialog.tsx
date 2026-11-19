@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ApiError } from '@/lib/api/problem'
 import { useBulkInviteToGroup } from './mutations'
+import { useGroupAssignableRoles } from './queries'
 import { MAX_INVITE_ROWS } from '@/lib/api/limits'
 import { RolesPicker } from '@/features/users/roles-picker'
 import { FormField } from '@/components/shared/form-field'
@@ -100,6 +101,7 @@ export function BulkInviteDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const bulk = useBulkInviteToGroup(groupId)
+  const roles = useGroupAssignableRoles(groupId, { enabled: open })
   const { register, control, handleSubmit, reset, setError, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: EMPTY,
@@ -182,9 +184,11 @@ export function BulkInviteDialog({
               name="role_ids"
               render={({ field }) => (
                 <RolesPicker
+                  roles={roles.data?.items ?? []}
+                  isPending={roles.isPending}
+                  isError={roles.isError}
                   selected={field.value}
                   onChange={field.onChange}
-                  groupId={groupId}
                   // Wired by hand: `Controller` renders through a prop, so cloned aria props from
                   // `FormField` would land on it and go nowhere.
                   describedBy={formState.errors.role_ids ? ROLES_ERROR_ID : undefined}
