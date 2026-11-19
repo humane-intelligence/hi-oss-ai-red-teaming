@@ -635,7 +635,29 @@ async def test_bulk_add_rejects_a_user_repeated_across_rows(
 async def test_single_add_puts_a_removed_deactivated_member_back(
     async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
 ) -> None:
-    # The console's Undo after a removal is this call; only the bulk add refuses the account.
+    # The console's Undo after a removal is this call; the account may have been deactivated meanwhile.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    member = await _user(db_session)
+    body = {"user_id": str(member.id), "role_ids": [str(system_roles["viewer"].id)]}
+
+    with as_user(owner):
+        added = await async_client_with_db.post(_members_url(group), json=body)
+        member.status = UserStatus.INACTIVE
+        await db_session.flush()
+        removed = await async_client_with_db.delete(f"{_members_url(group)}/{member.id}")
+        restored = await async_client_with_db.post(_members_url(group), json=body)
+
+    assert added.status_code == status.HTTP_201_CREATED
+    assert removed.status_code == status.HTTP_204_NO_CONTENT
+    assert restored.status_code == status.HTTP_201_CREATED
+    assert [role["name"] for role in restored.json()["roles"]] == ["viewer"]
+
+
+async def test_single_add_refuses_a_deactivated_user_who_was_never_a_member(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # Otherwise roles would pile up on an inactive account and take effect on its reactivation.
     owner = await _user(db_session)
     group = await _owned_group(db_session, system_roles, owner)
     deactivated = await create_user(
@@ -645,17 +667,14 @@ async def test_single_add_puts_a_removed_deactivated_member_back(
         status=UserStatus.INACTIVE,
     )
 
-    body = {"user_id": str(deactivated.id), "role_ids": [str(system_roles["viewer"].id)]}
-
     with as_user(owner):
-        added = await async_client_with_db.post(_members_url(group), json=body)
-        removed = await async_client_with_db.delete(f"{_members_url(group)}/{deactivated.id}")
-        restored = await async_client_with_db.post(_members_url(group), json=body)
+        response = await async_client_with_db.post(
+            _members_url(group),
+            json={"user_id": str(deactivated.id), "role_ids": [str(system_roles["viewer"].id)]},
+        )
 
-    assert added.status_code == status.HTTP_201_CREATED
-    assert removed.status_code == status.HTTP_204_NO_CONTENT
-    assert restored.status_code == status.HTTP_201_CREATED
-    assert [role["name"] for role in restored.json()["roles"]] == ["viewer"]
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["type"] == "urn:redteam:error:user-deactivated"
 
 
 async def test_bulk_add_fails_a_deactivated_row_and_adds_an_invited_one(
@@ -686,6 +705,9 @@ async def test_bulk_add_fails_a_deactivated_row_and_adds_an_invited_one(
     assert response.status_code == status.HTTP_200_OK
     statuses = {r["row_key"]: (r["status"], r["error"] and r["error"]["status"]) for r in response.json()["results"]}
     assert statuses == {"deactivated": ("failed", status.HTTP_409_CONFLICT), "invited": ("ok", None)}
+    failed = next(r for r in response.json()["results"] if r["row_key"] == "deactivated")
+    # The console tells this refusal from "already a member" by its type, never by the English detail.
+    assert failed["error"]["type"] == "urn:redteam:error:user-deactivated"
 
 
 async def test_bulk_add_takes_more_rows_than_an_invitation_bulk(

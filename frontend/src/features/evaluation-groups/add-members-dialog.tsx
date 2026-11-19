@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ApiError, fieldErrorsFromProblem } from '@/lib/api/problem'
+import { ApiError, fieldErrorsFromProblem, USER_DEACTIVATED_TYPE } from '@/lib/api/problem'
 import type { BulkGroupMemberResponse, UserResponse } from '@/lib/api/types'
 
 type Picked = Pick<UserResponse, 'id' | 'email' | 'first_name' | 'last_name' | 'status'>
@@ -491,9 +491,9 @@ export function AddMembersDialog({
                     <span className="font-medium">{picked.get(r.row_key)?.email ?? r.row_key}</span>
                     {' — '}
                     <span className="text-muted-foreground">
-                      {/* Both refusals are a 409 and only the detail tells them apart; say each as step 1 does. */}
+                      {/* Both refusals are a 409, told apart by type; say each as step 1 does. */}
                       {r.error?.status === 409
-                        ? /deactivated/i.test(r.error.detail ?? '')
+                        ? r.error.type === USER_DEACTIVATED_TYPE
                           ? 'Deactivated'
                           : 'Already a member'
                         : (r.error?.detail ?? r.error?.title ?? 'Unknown error')}

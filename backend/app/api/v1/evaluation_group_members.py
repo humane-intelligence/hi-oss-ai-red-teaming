@@ -31,7 +31,9 @@ from app.core.auth.object_roles.service import list_members
 from app.core.auth.object_roles.service import remove_member
 from app.core.auth.object_roles.service import resolve_assignable_roles
 from app.core.auth.object_roles.service import set_member_roles
+from app.core.auth.object_roles.service import was_member
 from app.core.auth.schemas import SessionUser
+from app.core.auth.services.users import UserDeactivatedError
 from app.core.auth.services.users import get_user
 from app.core.bulk import BulkResponse
 from app.core.bulk import apply_bulk
@@ -42,7 +44,6 @@ from app.core.dependencies import transactional
 from app.core.evaluations.dependencies import GroupReadDep
 from app.core.evaluations.dependencies import ManageMembersDep
 from app.core.evaluations.schemas import GroupMemberBulkRequest
-from app.core.exceptions import ConflictError
 from app.core.openapi import COMMON_ERROR_RESPONSES
 from app.core.openapi import problem_response
 from app.core.schemas import Page
@@ -64,20 +65,23 @@ async def _add_member(
     caller: SessionUser,
     *,
     audit: bool = True,
-    refuse_deactivated: bool = False,
+    allow_removed_member: bool = False,
 ) -> ObjectMember:
     """Add one member and audit it — shared by the single and the bulk route.
 
     The bulk route passes `audit=False` on a dry run: the bulk contract gates every
-    side effect on `dry_run`, not only on the rollback that happens to undo it. It also
-    passes `refuse_deactivated`: picking new members leaves deactivated accounts out, while
-    the single add is what puts a removed member back, whatever their account status.
+    side effect on `dry_run`, not only on the rollback that happens to undo it. A
+    deactivated account is refused, as by the group invitation, except that the single
+    route passes `allow_removed_member` so Undo can put back a member removed from this
+    group, whatever their account status.
     """
     user = await get_user(session, payload.user_id)
     roles = await resolve_assignable_roles(session, _SCOPE_SPEC, payload.role_ids)
-    # Same rule and order as the group invitation; a pending account is fine, its roles wait for activation.
-    if refuse_deactivated and user.status is UserStatus.INACTIVE:
-        raise ConflictError("User is deactivated. Reactivate the account first.")
+    # A pending account is fine, its roles wait for activation.
+    if user.status is UserStatus.INACTIVE and not (
+        allow_removed_member and await was_member(session, _OBJECT_TYPE, group_id, user.id)
+    ):
+        raise UserDeactivatedError
     member = await add_member(session, _OBJECT_TYPE, group_id, user, roles)
     if audit:
         await record_audit(
@@ -159,7 +163,9 @@ async def list_group_members_endpoint(
         status.HTTP_401_UNAUTHORIZED: _UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _NOT_FOUND,
-        status.HTTP_409_CONFLICT: problem_response("The user is already a member of this group."),
+        status.HTTP_409_CONFLICT: problem_response(
+            "The user is already a member of this group, or is deactivated and was never a member of it."
+        ),
     },
 )
 @transactional
@@ -173,8 +179,8 @@ async def add_group_member_endpoint(
     """Add a member to an evaluation group with one or more roles.
 
     Held roles become the member's *entire* effective permission set on the group
-    — never combined with their global permissions. A deactivated user can be added
-    here, so that a removed member can be put back; the bulk add refuses them.
+    — never combined with their global permissions. A deactivated user is refused,
+    unless they were removed from this group before, so that Undo can put them back.
 
     ### Errors
 
@@ -182,9 +188,10 @@ async def add_group_member_endpoint(
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `evaluation_groups:manage_members` permission for this group.
     * **404 Not Found** — the group or the target user does not exist.
-    * **409 Conflict** — the user is already a member of this group.
+    * **409 Conflict** — the user is already a member of this group, or is deactivated and was never
+      a member of it (`type: urn:redteam:error:user-deactivated`).
     """
-    member = await _add_member(db, context.group.id, payload, caller)
+    member = await _add_member(db, context.group.id, payload, caller, allow_removed_member=True)
     response.headers["Location"] = f"/api/v1/evaluation-groups/{context.group.id}/members/{payload.user_id}"
     return ObjectMemberResponse.from_member(member)
 
@@ -232,9 +239,7 @@ async def bulk_add_group_members_endpoint(
     """
 
     async def processor(session: AsyncSession, data: ObjectMemberCreate) -> ObjectMemberResponse:
-        member = await _add_member(
-            session, context.group.id, data, caller, audit=not payload.dry_run, refuse_deactivated=True
-        )
+        member = await _add_member(session, context.group.id, data, caller, audit=not payload.dry_run)
         return ObjectMemberResponse.from_member(member)
 
     return await apply_bulk(db, payload, processor)

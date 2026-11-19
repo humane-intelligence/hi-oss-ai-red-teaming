@@ -623,9 +623,10 @@ describe('MembersSection — add flow', () => {
               row_key: USER_ID_3,
               status: 'failed',
               error: {
+                type: 'urn:redteam:error:user-deactivated',
                 title: 'Conflict',
                 status: 409,
-                detail: 'User is deactivated. Reactivate the account first.',
+                detail: 'Reworded detail the console must not depend on.',
               },
             },
           ],
