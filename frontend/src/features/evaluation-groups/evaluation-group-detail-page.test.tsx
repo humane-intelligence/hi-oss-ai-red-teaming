@@ -185,6 +185,31 @@ describe('EvaluationGroupDetailPage — RBAC gates', () => {
     expect(screen.queryByRole('button', { name: /publish/i })).toBeNull()
   })
 
+  it('finishes the group only after the confirmation', async () => {
+    let finishCalls = 0
+    server.use(
+      ...makeHandlers(withPerms(publishedGroup, ['evaluation_groups:update'])),
+      http.post(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/finish`, () => {
+        finishCalls += 1
+        return HttpResponse.json({ ...publishedGroup, status: 'inactive' })
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /finish/i }))
+    let dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/can't be undone/i)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(finishCalls).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: /finish/i }))
+    dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }))
+    await waitFor(() => expect(finishCalls).toBe(1))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('with update + manage + status=pending_approval — Approve, Request changes, Reject visible', async () => {
     server.use(
       ...makeHandlers(
