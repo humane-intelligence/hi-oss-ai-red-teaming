@@ -174,7 +174,7 @@ async def list_group_members_endpoint(
         status.HTTP_404_NOT_FOUND: _NOT_FOUND,
         status.HTTP_409_CONFLICT: problem_response(
             "The user is already a member of this group, or is deactivated and was not removed from it "
-            "within the restore window."
+            "within the restore window (`type: urn:redteam:error:user-deactivated`)."
         ),
     },
 )
@@ -216,7 +216,8 @@ async def add_group_member_endpoint(
     description=(
         "Add several users to the group, each with their own roles, with per-row outcomes. Always returns "
         "200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable "
-        "role, `404` for an unknown user, `409` for a user who is already a member or is deactivated) land "
+        "role, `404` for an unknown user, `409` for a user who is already a member or is deactivated, the latter with "
+        "`type: urn:redteam:error:user-deactivated`) land "
         "inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row "
         "only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls "
         "back instead of committing."
@@ -237,9 +238,9 @@ async def bulk_add_group_members_endpoint(
     """Add members to an evaluation group in bulk, one row per user.
 
     Each row is the single-add body and goes through the same path, audit
-    included except on a dry run, plus one rule of its own: a deactivated user
-    is refused. Group visibility and `manage_members` are
-    checked once for the envelope. No `@transactional` — `apply_bulk` owns the
+    included except on a dry run, without the single add's Undo exception: a
+    deactivated user is refused even right after a removal. Group visibility and
+    `manage_members` are checked once for the envelope. No `@transactional` — `apply_bulk` owns the
     transaction (commit, or rollback on dry-run).
 
     ### Errors
