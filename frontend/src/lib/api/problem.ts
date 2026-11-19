@@ -32,6 +32,9 @@ export function isForbidden(error: unknown): boolean {
 // that one is a dead end, this one is cleared by accepting — so nothing may treat them alike.
 export const CONSENT_REQUIRED_TYPE = 'urn:redteam:error:terms-acceptance-required'
 
+// A deactivated account offered a group role. A 409 like "already a member", told apart by type.
+export const USER_DEACTIVATED_TYPE = 'urn:redteam:error:user-deactivated'
+
 // Two predicates answer "is this the consent refusal", over different inputs: this one over a
 // thrown `ApiError`, and `signalConsentRefusal` over a status plus a parsed `Problem`. The URN is
 // shared, so it moves in one place — but a change to what *counts* as the refusal has to move both.

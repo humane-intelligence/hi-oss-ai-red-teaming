@@ -143,10 +143,12 @@ async def create_conversation_group_endpoint(
     ### Errors
 
     * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
-      is outside its list. A blank value is ignored whatever its category.
+      is outside its list. A blank entry stands for the category on its own.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:create`.
     * **404 Not Found** — the scenario isn't visible, or a model assignment isn't part of its evaluation.
+    * **409 Conflict** — the evaluation group is not open for conversations (not published yet for a caller
+      who may not edit the evaluation, or finished), or the evaluation is rejected or completed.
     """
     models = [
         ConversationSpec(
@@ -158,7 +160,7 @@ async def create_conversation_group_endpoint(
     ]
     can_manage = _can_manage(caller)
     scenario = await get_scenario_by_id(db, scenario_id, caller_id=caller.id, can_manage=can_manage)
-    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, can_manage=can_manage)
+    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, permissions=caller.permissions)
     conversation_group, conversations = await create_conversation_group(
         db,
         user_id=caller.id,
@@ -328,7 +330,7 @@ async def update_conversation_group_endpoint(
     ### Errors
 
     * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
-      is outside its list. A blank value is ignored whatever its category.
+      is outside its list. A blank entry stands for the category on its own.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:update`.
     * **404 Not Found** — no such group owned by the caller in this evaluation.

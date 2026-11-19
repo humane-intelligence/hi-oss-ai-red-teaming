@@ -171,11 +171,11 @@ async def create_conversation_endpoint(
       of its evaluation.
     * **409 Conflict** — the target group already holds the maximum number of conversations,
       already has prompts (models join a group only before its first prompt), or the scenario
-      is not the group's scenario.
+      is not the group's scenario; or the evaluation group is not open for conversations.
     """
     can_manage = _can_manage(caller)
     scenario = await get_scenario_by_id(db, scenario_id, caller_id=caller.id, can_manage=can_manage)
-    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, can_manage=can_manage)
+    await assert_accepts_prompts(db, scenario.evaluation_id, caller_id=caller.id, permissions=caller.permissions)
     conversation = await create_conversation(
         db,
         user_id=caller.id,

@@ -114,7 +114,8 @@ _SEND_RESPONSES = _STREAM_RESPONSES | {
     status.HTTP_409_CONFLICT: problem_response(
         "client_message_id already used in another conversation; or the evaluation group is not open "
         "for prompts (not published yet for a caller who may not edit the evaluation, or finished), or "
-        "the evaluation is rejected or completed."
+        "the evaluation is rejected or completed. A replay of an already-accepted turn is never refused "
+        "for the group's state."
     ),
 }
 _REPLACE_RESPONSES = _STREAM_RESPONSES | {
@@ -320,7 +321,6 @@ async def send_message(
     conversation = await get_conversation(
         db, evaluation_id, conversation_id, caller_id=caller.id, can_manage=_can_manage(caller), for_update=True
     )
-    await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, can_manage=_can_manage(caller))
     await _validate_attachments(db, body.image_keys, caller_id=caller.id)
     opened = await open_turn(
         db,
@@ -340,6 +340,8 @@ async def send_message(
     # names it, so the caller can fix the row. Nothing is committed yet, so a rejection persists
     # nothing — the flushed turn rolls back with the session.
     if not opened.replayed:
+        # A replay is an already-accepted turn, so it is served even after the group has finished.
+        await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions)
         await assert_tags_allowed(db, conversation.evaluation_id, body.tags)
     await db.commit()  # Transaction A — durable before the connection is released
 
@@ -379,7 +381,7 @@ async def _superseding_turn(
     conversation = await get_conversation(
         db, evaluation_id, conversation_id, caller_id=caller.id, can_manage=_can_manage(caller), for_update=True
     )
-    await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, can_manage=_can_manage(caller))
+    await assert_accepts_prompts(db, evaluation_id, caller_id=caller.id, permissions=caller.permissions)
     superseded, placeholder = await open_replacement(db, conversation, message_id)
     turn_messages = await live_turn_messages(db, superseded.turn_id)
     message_tags = next((dict(m.tags) for m in turn_messages if m.role is MessageRole.USER), {})

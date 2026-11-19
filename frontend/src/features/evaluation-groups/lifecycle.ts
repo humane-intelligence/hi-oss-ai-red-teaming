@@ -21,6 +21,18 @@ export function evaluationsBlockedHint(status: PublicationStatus | undefined): s
   return 'Evaluations can be added once the group is approved.'
 }
 
+// The backend's one "may edit the evaluation" rule: the global permission plus write access to the
+// group (an in-group role granting it, or the break-glass). `has` is the caller's global set.
+export function mayEditEvaluation(
+  has: (permission: string) => boolean,
+  groupPermissions: readonly string[] | undefined,
+): boolean {
+  return (
+    has('evaluations:update') &&
+    (has('evaluation_groups:manage') || (groupPermissions ?? []).includes('evaluations:update'))
+  )
+}
+
 // Mirrors the backend gate on starting and continuing conversations: a published group takes
 // prompts, an unpublished one only from whoever may edit the evaluation (to try a scenario out),
 // a finished group and a rejected or completed evaluation from nobody. `undefined` while either
@@ -32,9 +44,9 @@ export function promptsBlockedReason(
 ): string | undefined {
   if (groupStatus === undefined || evaluationStatus === undefined) return undefined
   if (groupStatus === 'inactive')
-    return 'This evaluation group is finished, so its conversations are read-only.'
+    return 'This evaluation group is finished, so its conversations no longer take prompts.'
   if (evaluationStatus === 'rejected' || evaluationStatus === 'completed')
-    return 'This evaluation is closed, so its conversations are read-only.'
+    return 'This evaluation is closed, so its conversations no longer take prompts.'
   if (groupStatus === 'published' || mayEditEvaluation) return undefined
   return 'This evaluation group is not published yet; conversations can start once it is.'
 }

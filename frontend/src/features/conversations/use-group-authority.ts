@@ -1,6 +1,6 @@
 import { useEvaluation } from '@/features/evaluations/queries'
 import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
-import { promptsBlockedReason } from '@/features/evaluation-groups/lifecycle'
+import { mayEditEvaluation, promptsBlockedReason } from '@/features/evaluation-groups/lifecycle'
 import { useEffectivePermissions, usePermissions } from '@/lib/auth/use-permissions'
 
 // Authority for a conversation surface reached by `evaluation_id` alone. The server accepts
@@ -42,9 +42,7 @@ export function useGroupAuthority(
     promptsBlocked: promptsBlockedReason(
       parentGroup.data?.status,
       evaluation.data?.status,
-      global.has('evaluations:update') &&
-        (global.has('evaluation_groups:manage') ||
-          (parentGroup.data?.user_permissions ?? []).includes('evaluations:update')),
+      mayEditEvaluation(global.has, parentGroup.data?.user_permissions),
     ),
   }
 }

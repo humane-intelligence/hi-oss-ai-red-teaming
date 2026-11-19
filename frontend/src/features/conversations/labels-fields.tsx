@@ -7,8 +7,9 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
 // One checkbox per tag, grouped by category and read as "category: tag"; a category without tags is
 // a single checkbox for the category itself. `held` is what the group stores now: a tag since
-// dropped from its category's list, or text from before categories without tags became markers,
-// stays on offer so editing another tag doesn't silently clear it.
+// dropped from its category's list, text from before categories without tags became markers, or
+// the category picked on its own before it gained tags, stays on offer so editing another tag
+// doesn't silently clear it.
 export function LabelsFields({
   categories,
   value,
@@ -31,14 +32,18 @@ export function LabelsFields({
     <div className="space-y-3">
       {categories.map((category) => {
         const picked = value[category.id] ?? []
-        const unlisted = (held[category.id] ?? []).filter(
-          (v) => v !== BARE && !category.values.some((listed) => same(listed, v)),
+        const hasTags = category.values.length > 0
+        const unlisted = (held[category.id] ?? []).filter((v) =>
+          v === BARE ? hasTags : !category.values.some((listed) => same(listed, v)),
         )
         const options = [
-          ...(category.values.length > 0
+          ...(hasTags
             ? category.values.map((tag) => ({ tag, text: `${category.name}: ${tag}` }))
             : [{ tag: BARE, text: category.name }]),
-          ...unlisted.map((tag) => ({ tag, text: `${category.name}: ${tag} (not in the list)` })),
+          ...unlisted.map((tag) => ({
+            tag,
+            text: `${tag === BARE ? category.name : `${category.name}: ${tag}`} (not in the list)`,
+          })),
         ]
         return (
           <fieldset key={category.id} className="space-y-1.5">

@@ -13,11 +13,8 @@ export function heldLabels(labels: ConversationGroupResponse['labels']): LabelVa
 }
 
 // The map a create or a PATCH sends. The set is replaced, so an unset category is simply left out;
-// a category picked on its own goes as an empty list.
+// a category picked on its own goes as a blank entry, which also keeps one the category has since
+// outgrown by gaining tags.
 export function labelPayload(value: LabelValues): Record<string, string[]> {
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, picked]) => picked.length > 0)
-      .map(([id, picked]) => [id, picked.filter((v) => v !== BARE)]),
-  )
+  return Object.fromEntries(Object.entries(value).filter(([, picked]) => picked.length > 0))
 }

@@ -139,7 +139,7 @@ async def list_evaluation_models(  # noqa: PLR0913 — keyword-only args mirror 
     """List one page of an evaluation's model assignments, masking-aware.
 
     ``unmask`` lifts the evaluation's masking for a caller the route cleared
-    (`may_see_model_identities`), so search, sort and the projection all use real names.
+    (`may_edit_evaluation`), so search, sort and the projection all use real names.
 
     Resolves the evaluation under the same visibility rule as the detail read
     (parent group public or caller-owned) — a non-visible evaluation surfaces as

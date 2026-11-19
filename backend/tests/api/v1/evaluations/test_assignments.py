@@ -642,35 +642,37 @@ async def test_masked_evaluation_shows_real_identities_to_a_manager_and_the_mask
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    ("can_update", "owns_group", "expected"),
+    [
+        pytest.param(True, True, _UNMASKED, id="owner"),
+        pytest.param(True, False, _MASKED, id="update holder outside the group"),
+        pytest.param(False, True, _MASKED, id="owner without evaluations:update"),
+    ],
+)
 async def test_masked_evaluation_unmasks_for_the_group_owner_only_with_the_update_permission(
     auth_db_client: AsyncClient,
     db_session: AsyncSession,
     owner_updater_role: Role,
     reader_role: Role,
     ai_model: AiModel,
+    can_update: bool,
+    owns_group: bool,
+    expected: object,
 ) -> None:
     # Both halves of the by-id read's rule: write access to the group and the global permission.
-    owner = await _caller(db_session, owner_updater_role, email="unmask-owner@example.com")
-    outsider = await _caller(db_session, owner_updater_role, email="unmask-outsider@example.com")
-    read_only_owner = await _caller(db_session, reader_role, email="unmask-readonly-owner@example.com")
-    seen = {}
-    for who, group_owner, caller in (
-        ("owner", owner, owner),
-        ("update holder outside the group", owner, outsider),
-        ("owner without evaluations:update", read_only_owner, read_only_owner),
-    ):
-        evaluation = await _evaluation_in_group(
-            db_session, owner_id=group_owner.id, access_level=EvaluationGroupAccessLevel.PUBLIC
-        )
-        db_session.add(EvaluationAiModel(evaluation_id=evaluation.id, model_id=ai_model.id, model_display_mask="Alpha"))
-        await db_session.flush()
-        seen[who] = await _model_as_seen(auth_db_client, evaluation.id, caller)
+    role = owner_updater_role if can_update else reader_role
+    caller = await _caller(db_session, role, email="unmask-caller@example.com")
+    group_owner = (
+        caller if owns_group else await _caller(db_session, owner_updater_role, email="unmask-owner@example.com")
+    )
+    evaluation = await _evaluation_in_group(
+        db_session, owner_id=group_owner.id, access_level=EvaluationGroupAccessLevel.PUBLIC
+    )
+    db_session.add(EvaluationAiModel(evaluation_id=evaluation.id, model_id=ai_model.id, model_display_mask="Alpha"))
+    await db_session.flush()
 
-    assert seen == {
-        "owner": _UNMASKED,
-        "update holder outside the group": _MASKED,
-        "owner without evaluations:update": _MASKED,
-    }
+    assert await _model_as_seen(auth_db_client, evaluation.id, caller) == expected
 
 
 @pytest.mark.integration

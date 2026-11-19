@@ -357,7 +357,9 @@ export function EvaluationGroupDetailPage() {
                   />
                 </div>
 
+                {/* Keyed so a group switch starts on page one with no previous group's page kept. */}
                 <MembersSection
+                  key={group.id}
                   groupId={group.id}
                   accessLevel={group.access_level}
                   organizationId={group.organization_id}

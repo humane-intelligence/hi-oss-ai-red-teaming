@@ -348,6 +348,13 @@ describe('SearchSelect (typeahead combobox)', () => {
     await u.keyboard('al')
 
     expect(input).toHaveValue('al')
+
+    // A replacement that is a prefix of the label is still typing, not a Backspace.
+    await u.click(screen.getByRole('option', { name: 'bob@ex.com' }))
+    input.setSelectionRange(0, input.value.length)
+    await u.keyboard('b')
+
+    expect(input).toHaveValue('b')
   })
 
   it('shows loading / error / empty states while open', () => {

@@ -4742,7 +4742,7 @@ export interface components {
             models: components["schemas"]["ConversationGroupModelEntry"][];
             /**
              * Labels
-             * @description Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category with values takes any number of them; one without is selected by listing it with an empty list. Labels are never sent to the model.
+             * @description Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category with values takes any number of them; one without is selected by listing it with an empty list or a blank entry. Labels are never sent to the model.
              */
             labels?: {
                 [key: string]: string[];
@@ -4920,7 +4920,7 @@ export interface components {
             name?: string | null;
             /**
              * Labels
-             * @description Replacement label set, keyed by label category, each with the list of values picked there; a category left out is cleared, and so is one with values listed with none. A category without values is selected by listing it with an empty list. A value the group already holds is accepted even after it was dropped from its category's list.
+             * @description Replacement label set, keyed by label category, each with the list of values picked there; a category left out is cleared, and so is one with values listed with none. A category without values is selected by listing it with an empty list or a blank entry. A value the group already holds is accepted even after it was dropped from its category's list, and a blank entry keeps a category the group holds on its own after the category gained values.
              */
             labels?: {
                 [key: string]: string[];
@@ -5491,8 +5491,9 @@ export interface components {
          *     When the parent evaluation masks models, `name` carries the assignment's
          *     `model_display_mask` (possibly `null` when none is set) and the identifying
          *     fields (`provider`, `provider_model_id`) are withheld as `null` — except on the
-         *     evaluation detail and model list reads for a caller who may edit the evaluation,
-         *     which surface the real identity (`may_see_model_identities`). The
+         *     evaluation detail and model list reads for a caller who may edit the evaluation
+         *     (the global `evaluations:update` plus write access to its group), which surface
+         *     the real identity. The
          *     `assignment_id` is always present — it addresses the assignment without
          *     correlating the underlying model across evaluations. `warmup_enabled` is
          *     surfaced even under masking: it's an operational flag (does this endpoint
@@ -20039,7 +20040,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The user is already a member of this group. */
+            /** @description The user is already a member of this group, or is deactivated and was never a member of it. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -21716,7 +21717,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description client_message_id already used in another conversation; or the evaluation group is not open for prompts (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. */
+            /** @description client_message_id already used in another conversation; or the evaluation group is not open for prompts (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or completed. A replay of an already-accepted turn is never refused for the group's state. */
             409: {
                 headers: {
                     [name: string]: unknown;

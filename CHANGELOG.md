@@ -48,12 +48,20 @@ change between minor versions.
   evaluation's group to be open for them, and answer 409 otherwise: a published group takes them
   from anyone who can reach it; before publication only from a caller who may edit the evaluation
   (to try a scenario out); a finished group and a rejected or completed evaluation from nobody.
-  Conversations already recorded stay readable.
+  Conversations already recorded stay readable, and a retried send of an already-accepted turn is
+  still answered with the stored reply. "May edit the evaluation" is one rule everywhere: the
+  global `evaluations:update` plus write access to its group.
+- On a masked evaluation, `GET /evaluations/{id}` and `GET /evaluations/{id}/models` show the real
+  model names to a caller who may edit the evaluation. Lists, group embeds and write responses stay
+  masked.
+- The single `POST /evaluation-groups/{group_id}/members` takes a deactivated user only when they
+  were removed from that group before, so Undo after a removal works; a deactivated user never in
+  the group is still refused. That 409, on the bulk add and the group invitation as well, now
+  carries `type: urn:redteam:error:user-deactivated` and no longer names an API route.
 - `GET /auth/users?search=` also matches a first and last name typed together (`ada love`), not
   only one column at a time.
 - The 409 that refuses a model added to a prompted or full conversation group no longer carries
-  the group's id in `detail`, and the 409 for a deactivated user no longer names an API route.
-
+  the group's id in `detail`.
 - The health check that followed a save ran only for models declaring image input; it now follows
   every create, every patch that moves the call, and setting the API key. Bulk create still starts
   none.

@@ -579,7 +579,7 @@ class ConversationGroupCreate(BaseModel):
         description=(
             "Labels, keyed by a label category of the evaluation, each with the list of values picked "
             "there. A category with values takes any number of them; one without is selected by "
-            "listing it with an empty list. Labels are never sent to the model."
+            "listing it with an empty list or a blank entry. Labels are never sent to the model."
         ),
     )
 
@@ -620,8 +620,9 @@ class ConversationGroupUpdate(BaseModel):
         description=(
             "Replacement label set, keyed by label category, each with the list of values picked there; "
             "a category left out is cleared, and so is one with values listed with none. A category "
-            "without values is selected by listing it with an empty list. A value the group already "
-            "holds is accepted even after it was dropped from its category's list."
+            "without values is selected by listing it with an empty list or a blank entry. A value the "
+            "group already holds is accepted even after it was dropped from its category's list, and a "
+            "blank entry keeps a category the group holds on its own after the category gained values."
         ),
     )
 

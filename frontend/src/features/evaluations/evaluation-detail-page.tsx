@@ -30,6 +30,7 @@ import { useEvaluationGroup } from '@/features/evaluation-groups/queries'
 import { GroupIdentity } from '@/features/evaluation-groups/group-trail'
 import {
   groupAcceptsEvaluations,
+  mayEditEvaluation,
   promptsBlockedReason,
 } from '@/features/evaluation-groups/lifecycle'
 import { LicenseValue } from '@/features/licenses/license-value'
@@ -104,9 +105,7 @@ export function EvaluationDetailPage() {
   const lifecycleBlocked = promptsBlockedReason(
     group?.status,
     evaluation?.status,
-    has('evaluations:update') &&
-      (has('evaluation_groups:manage') ||
-        (group?.user_permissions ?? []).includes('evaluations:update')),
+    mayEditEvaluation(has, group?.user_permissions),
   )
   const startReason =
     lifecycleBlocked ?? (startBlocked ? `${startBlocked} to start a conversation.` : undefined)

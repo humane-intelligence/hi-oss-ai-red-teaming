@@ -623,9 +623,10 @@ describe('MembersSection — add flow', () => {
               row_key: USER_ID_3,
               status: 'failed',
               error: {
+                type: 'urn:redteam:error:user-deactivated',
                 title: 'Conflict',
                 status: 409,
-                detail: 'User is deactivated. Reactivate the account first.',
+                detail: 'Reworded detail the console must not depend on.',
               },
             },
           ],
@@ -856,6 +857,38 @@ describe('MembersSection — add flow', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     await waitFor(() => expect(offsets).toContain('50'))
+  })
+})
+
+describe('MembersSection — removing the last row of a page', () => {
+  it('steps back to the previous page instead of an empty one', async () => {
+    let total = 51
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members`, ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset')
+        const items = offset === '50' && total === 51 ? [member] : offset === '50' ? [] : [member]
+        return HttpResponse.json({ items, total, limit: 50, offset: Number(offset ?? 0) })
+      }),
+      http.delete(
+        `http://localhost/api/v1/evaluation-groups/${GROUP_ID}/members/${USER_ID}`,
+        () => {
+          total = 50
+          return new HttpResponse(null, { status: 204 })
+        },
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'])
+
+    expect(await screen.findByText('1–50 of 51')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('51–51 of 51')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove member' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove' }))
+
+    expect(await screen.findByText('1–50 of 50')).toBeInTheDocument()
+    expect(screen.queryByText(/No members yet/)).toBeNull()
   })
 })
 
