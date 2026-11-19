@@ -628,7 +628,7 @@ export interface paths {
         };
         /**
          * List roles
-         * @description Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles assignable as in-group (object) roles — what an in-group role picker should offer, since assignment rejects anything else. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore` accepts.
+         * @description Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles flagged assignable as in-group (object) roles; an in-group picker reads `GET /evaluation-groups/{group_id}/assignable-roles` instead, which applies the full assignment policy and needs no `roles:read`. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore` accepts.
          */
         get: operations["list_roles_endpoint_api_v1_roles_get"];
         put?: never;

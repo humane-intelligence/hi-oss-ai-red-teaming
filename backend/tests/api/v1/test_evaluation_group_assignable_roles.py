@@ -140,6 +140,7 @@ async def test_lists_a_role_exactly_when_assigning_it_is_accepted(
     with as_user(owner):
         response = await async_client_with_db.get(_url(group))
 
+    assert response.status_code == status.HTTP_200_OK
     assert {role["name"] for role in response.json()["items"]} == accepted
     assert "custom_offered" in accepted
 
@@ -209,3 +210,15 @@ async def test_requires_a_bearer_token(
     response = await async_client_with_db.get(_url(group))
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_rejects_a_page_over_the_cap(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    owner = await _user(db_session, system_roles["red_teamer"])
+    group = await _owned_group(db_session, system_roles, owner)
+
+    with as_user(owner):
+        response = await async_client_with_db.get(_url(group), params={"limit": 101})
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

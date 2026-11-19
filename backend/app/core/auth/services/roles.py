@@ -64,9 +64,9 @@ async def list_roles(
 
     Active-only by default (the assignment picker can't assign inactive roles); the
     management view passes `include_inactive=True` to see deactivated roles too.
-    `is_object_assignable` narrows to (or excludes) the roles assignable as in-group
-    object roles, so an in-group picker can offer exactly what assignment accepts
-    instead of re-deriving that policy client-side; `None` leaves the catalog whole.
+    `is_object_assignable` narrows to (or excludes) the roles flagged assignable as
+    in-group object roles; `None` leaves the catalog whole. It is the flag alone, not the
+    assignment policy: an in-group picker uses the group's assignable-roles list instead.
 
     ``deleted`` swaps in the tombstones still inside the restore window, most-recently
     deleted first (this list takes no client ordering). No deleter predicate: the route
