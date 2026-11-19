@@ -35,7 +35,7 @@ change between minor versions.
 ### Changed
 
 - `POST /evaluation-groups/{group_id}/members/bulk` loads the envelope's users once and resolves
-  each distinct set of `role_ids` once, instead of both per row: about half the statements of an
+  each accepted set of `role_ids` once, instead of both per row: about half the statements of an
   "add all members" (10 per row down to 5, savepoints included). Per-row outcomes are unchanged.
 - **Breaking:** conversation-group labels take several values per category. `labels` on
   `POST /scenarios/{scenario_id}/conversation-groups` and on the group PATCH is now
