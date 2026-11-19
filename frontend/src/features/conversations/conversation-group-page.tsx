@@ -61,7 +61,7 @@ export function ConversationGroupPage() {
   const gid = groupId ?? ''
 
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions, promptsBlocked } = authority
+  const { allows, canManage, groupPermissions, lifecycleKnown, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
   const groupQuery = useConversationGroup(evalId, gid, { groupPermissions })
@@ -324,7 +324,9 @@ export function ConversationGroupPage() {
                     prompt={prompt}
                     promptNonce={promptNonce}
                     groupPermissions={groupPermissions}
-                    canWrite={canWrite && !promptsBlocked}
+                    // Until the group's stage is known a pane would send, or warm a model, where a
+                    // closed group refuses both.
+                    canWrite={canWrite && lifecycleKnown && !promptsBlocked}
                     // Per member, and without the `canManage` arm `canWrite` carries: the flag
                     // services filter on the conversation's own `user_id`, so a break-glass
                     // viewer offered the control would get a 404.
@@ -338,7 +340,7 @@ export function ConversationGroupPage() {
               {canWrite && promptsBlocked && (
                 <p className="text-muted-foreground text-sm">{promptsBlocked}</p>
               )}
-              {canWrite && !promptsBlocked && (
+              {canWrite && lifecycleKnown && !promptsBlocked && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault()

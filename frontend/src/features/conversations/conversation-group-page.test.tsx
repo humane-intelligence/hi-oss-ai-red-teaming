@@ -239,7 +239,7 @@ describe('ConversationGroupPage', () => {
 
     await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
     // Type so the send button's only remaining gate is warmup readiness.
-    await user.type(screen.getByLabelText(/message all models/i), 'hello')
+    await user.type(await screen.findByLabelText(/message all models/i), 'hello')
 
     await waitFor(() => expect(screen.getByRole('button', { name: /send to all/i })).toBeDisabled())
   })
@@ -644,12 +644,29 @@ describe('ConversationGroupPage', () => {
 
     const add = await screen.findByRole('button', { name: /add model/i })
     expect(add).toBeEnabled()
-    await user.type(screen.getByLabelText(/message all models/i), 'hello')
+    await user.type(await screen.findByLabelText(/message all models/i), 'hello')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Send to all' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'Send to all' }))
 
     await waitFor(() => expect(add).toBeDisabled())
     expect(add).toHaveAttribute('title', expect.stringMatching(/before the first prompt/))
+  })
+
+  it('offers no composer and wakes no model until the group stage is known', async () => {
+    server.use(
+      http.get(
+        `http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`,
+        () => new Promise(() => {}),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
+    // A finished group would refuse both, and the stage is what decides it.
+    expect(screen.queryByLabelText(/message all models/i)).toBeNull()
+    expect(screen.queryByLabelText('Message gpt-4o')).toBeNull()
+    expect(warmupCalls).toBe(0)
   })
 
   it('replaces every composer with the reason once the group is finished', async () => {
@@ -850,7 +867,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Direct ask')).toBeInTheDocument())
-    expect(screen.getByLabelText('Message Direct ask (gpt-4o)')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Message Direct ask (gpt-4o)')).toBeInTheDocument()
     // The model name still shows as a subtitle so the pane's identity isn't lost.
     expect(screen.getByText('gpt-4o')).toBeInTheDocument()
     // Untitled pane still falls back to the plain model name.
@@ -1195,7 +1212,7 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('gpt-4o')).toBeInTheDocument())
-    const toggles = screen.getAllByRole('button', { name: /^context tags/i })
+    const toggles = await screen.findAllByRole('button', { name: /^context tags/i })
     expect(toggles).toHaveLength(2)
     await user.click(toggles[0]!)
 
@@ -1355,7 +1372,7 @@ describe('ConversationGroupPage — a member group surfaced by read_any', () => 
 
     expect(await screen.findByText('gpt-4o')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^rename$/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/message all models/i)).toBeInTheDocument()
+    expect(await screen.findByLabelText(/message all models/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Message gpt-4o')).toBeInTheDocument()
   })
 })

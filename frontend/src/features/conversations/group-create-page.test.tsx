@@ -699,3 +699,60 @@ describe('GroupCreatePage — internet access marker', () => {
     expect(screen.getByRole('option', { name: 'claude-3-opus' })).toBeInTheDocument()
   })
 })
+
+describe('GroupCreatePage — a group not open for conversations', () => {
+  function groupIn(status: string, userPermissions: string[] = []) {
+    return http.get(
+      `http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`,
+      () =>
+        HttpResponse.json({
+          id: evaluation.evaluation_group_id,
+          title: 'Engagement',
+          description: '',
+          status,
+          access_level: 'invitation_only',
+          start_date: '2026-01-01',
+          end_date: null,
+          created_by_id: 'user-000-0000-0000-000000000000',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          evaluations: [],
+          user_permissions: userPermissions,
+        }),
+    )
+  }
+
+  it('says why instead of offering a form a finished group would refuse', async () => {
+    server.use(groupIn('inactive'), ...baseHandlers())
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        'This evaluation group is finished, so its conversations no longer take prompts.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Model 1')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Start conversation' })).toBeNull()
+    expect(screen.getByRole('button', { name: /back to evaluation/i })).toBeInTheDocument()
+  })
+
+  it('keeps the form before publication for whoever may edit the evaluation', async () => {
+    server.use(groupIn('approved', ['evaluations:update']), ...baseHandlers())
+    renderPage(undefined, [
+      'conversations:create',
+      'conversations:participate',
+      'evaluations:update',
+    ])
+
+    expect(await screen.findByLabelText('Model 1')).toBeInTheDocument()
+    expect(screen.queryByText(/not published yet/)).toBeNull()
+  })
+
+  it('says the group is not published yet to a participant', async () => {
+    server.use(groupIn('approved'), ...baseHandlers())
+    renderPage()
+
+    expect(await screen.findByText(/not published yet/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Model 1')).toBeNull()
+  })
+})

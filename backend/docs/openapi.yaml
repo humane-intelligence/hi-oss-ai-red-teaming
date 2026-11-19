@@ -2078,10 +2078,11 @@ paths:
       summary: List roles
       description: Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only
         by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles
-        assignable as in-group (object) roles — what an in-group role picker should offer, since assignment rejects anything
-        else. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default`
-        / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside
-        the restore window — the set `POST /{role_id}/restore` accepts.
+        flagged assignable as in-group (object) roles; an in-group picker reads `GET /evaluation-groups/{group_id}/assignable-roles`
+        instead, which applies the full assignment policy and needs no `roles:read`. Each entry carries the role's permissions
+        and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true`
+        (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore`
+        accepts.
       operationId: list_roles_endpoint_api_v1_roles_get
       parameters:
       - name: include_inactive
@@ -5265,8 +5266,8 @@ paths:
       tags:
       - evaluations
       summary: Define a conversation-label category
-      description: Add a label category, optionally with its allowed values (none means free text). Needs an in-group role
-        granting `evaluations:update`, or `evaluation_groups:manage`.
+      description: Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an
+        in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
       operationId: create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post
       parameters:
       - name: evaluation_id
@@ -7886,7 +7887,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: The user is already a member of this group, or is deactivated and was never a member of it.
+          description: 'The user is already a member of this group, or is deactivated and was not removed from it within the
+            restore window (`type: urn:redteam:error:user-deactivated`).'
           content:
             application/problem+json:
               schema:
@@ -7899,11 +7901,11 @@ paths:
       tags:
       - evaluation-groups
       summary: Add group members in bulk
-      description: Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK
+      description: 'Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK
         when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown
-        user, `409` for a user who is already a member or is deactivated) land inside `results[].error`, and the other rows
-        are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true`
-        previews the outcomes and rolls back instead of committing.
+        user, `409` for a user who is already a member or is deactivated, the latter with `type: urn:redteam:error:user-deactivated`)
+        land inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row only; a repeat
+        rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls back instead of committing.'
       operationId: bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post
       parameters:
       - name: group_id
@@ -8152,15 +8154,16 @@ paths:
       tags:
       - evaluation-groups
       summary: Invite users to a group
-      description: Invite up to 100 users to the group in one request — the only group-invite path, a single invitee is a
+      description: 'Invite up to 100 users to the group in one request — the only group-invite path, a single invitee is a
         one-row request. Each row is an email with one or more in-group roles pre-assigned; the roles are assigned on the
         group immediately, and a row targeting an active account reports `outcome=assigned` while a new or onboarding one
         reports `outcome=invited`. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for unknown
-        / non-assignable roles, `409` for deactivated users, a concurrent signup race, or a re-invite that would drop the
-        group's last `owner`) land inside `results[].error`. Re-inviting an existing member reconciles their role set; the
-        same email in more than one row is rejected (`422`), like a duplicate `row_key`. Notification emails are dispatched
-        best-effort after the request has committed — a row can report `ok` even if its email could not be queued. `dry_run=true`
-        previews the full processing path and rolls back instead of committing — no emails are sent.
+        / non-assignable roles, `409` for deactivated users (`type: urn:redteam:error:user-deactivated`), a concurrent signup
+        race, or a re-invite that would drop the group''s last `owner`) land inside `results[].error`. Re-inviting an existing
+        member reconciles their role set; the same email in more than one row is rejected (`422`), like a duplicate `row_key`.
+        Notification emails are dispatched best-effort after the request has committed — a row can report `ok` even if its
+        email could not be queued. `dry_run=true` previews the full processing path and rolls back instead of committing —
+        no emails are sent.'
       operationId: bulk_create_group_invitations_endpoint_api_v1_evaluation_groups__group_id__invitations_bulk_post
       parameters:
       - name: group_id
@@ -8278,6 +8281,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Page_AnnotatorResponse_'
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks permission to manage this group's members.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation group not found, or not visible to the caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/evaluation-groups/{group_id}/assignable-roles:
+    get:
+      tags:
+      - evaluation-groups
+      summary: List roles assignable in the group
+      description: Return a paginated list of the roles a member of this group can be given — the source for `role_ids` on
+        the group's member and invitation routes, which refuse any other role.
+      operationId: list_group_assignable_roles_endpoint_api_v1_evaluation_groups__group_id__assignable_roles_get
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_AssignableRoleResponse_'
         '422':
           description: Request failed validation.
           content:
@@ -10891,7 +10979,8 @@ paths:
       description: 'Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended
         for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until
         `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send
-        now), `starting` (still waking — retry), or `error` (a fault a retry won''t fix, e.g. bad credentials).'
+        now), `starting` (still waking — retry), or `error` (a fault a retry won''t fix, e.g. bad credentials). Refused with
+        409 once the evaluation takes no prompts, by the same rule as sending one: the probe is a call to the model.'
       operationId: warmup_model_endpoint_api_v1_evaluations__evaluation_id__models__assignment_id__warmup_post
       parameters:
       - name: evaluation_id
@@ -10953,6 +11042,16 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '404':
           description: Evaluation or assignment does not exist or is not visible.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The evaluation's group is not open for prompts (finished, or not published yet for a caller who may
+            not edit the evaluation), or the evaluation is closed.
           content:
             application/problem+json:
               schema:
@@ -17281,6 +17380,41 @@ components:
         id: a1b2c3d4-1111-2222-3333-444455556666
         last_name: Lovelace
         status: active
+    AssignableRoleResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+          description: Server-assigned role identifier.
+          examples:
+          - a1b2c3d4-1111-2222-3333-444455556666
+        name:
+          type: string
+          title: Name
+          description: Stable role slug — used as the machine identifier.
+          examples:
+          - red_teamer
+        display_name:
+          type: string
+          title: Display Name
+          description: Human-readable role label for display.
+          examples:
+          - Red Teamer
+        is_participant_default:
+          type: boolean
+          title: Is Participant Default
+          description: Whether this is the role a user gets on joining a group themselves — a picker's starting choice.
+          examples:
+          - true
+      type: object
+      required:
+      - id
+      - name
+      - display_name
+      - is_participant_default
+      title: AssignableRoleResponse
+      description: 'A role offered by an in-group role picker: the slim projection plus the self-join default flag.'
     AuditLogResponse:
       properties:
         id:
@@ -20407,8 +20541,8 @@ components:
           type: array
           maxItems: 50
           title: Values
-          description: Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free
-            text.
+          description: Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the category is picked
+            on its own, with no value.
       type: object
       required:
       - name
@@ -20440,7 +20574,7 @@ components:
             type: string
           type: array
           title: Values
-          description: Allowed values, in the order defined; empty means free text.
+          description: Allowed values, in the order defined; empty means the category is picked on its own.
         created_at:
           type: string
           format: date-time
@@ -23532,6 +23666,39 @@ components:
       - limit
       - offset
       title: Page[AssignableReviewerResponse]
+    Page_AssignableRoleResponse_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AssignableRoleResponse'
+          type: array
+          title: Items
+          description: Items on this page.
+        total:
+          type: integer
+          title: Total
+          description: Total number of items across all pages.
+          examples:
+          - 42
+        limit:
+          type: integer
+          title: Limit
+          description: Max items per page (echo of the request).
+          examples:
+          - 20
+        offset:
+          type: integer
+          title: Offset
+          description: Zero-based offset of the first item on this page.
+          examples:
+          - 0
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: Page[AssignableRoleResponse]
     Page_AuditLogResponse_:
       properties:
         items:

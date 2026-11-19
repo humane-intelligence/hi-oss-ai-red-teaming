@@ -8,6 +8,7 @@ itself are the owning domain's concern; this layer never loads the object.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_
@@ -34,6 +35,7 @@ from app.core.exceptions import ConflictError
 from app.core.exceptions import ForbiddenError
 from app.core.exceptions import NotFoundError
 from app.core.helpers import escape_like
+from app.core.pagination import paginate
 from app.core.soft_delete import with_live
 
 
@@ -221,6 +223,24 @@ async def resolve_assignable_roles(
     return roles
 
 
+async def list_assignable_roles(
+    session: AsyncSession,
+    spec: ObjectScopeSpec,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[Role], int]:
+    """One page of the roles `resolve_assignable_roles` accepts for this object type, ordered by slug.
+
+    The same rules as the write side, in SQL, so a role picker fed from this never
+    offers a role the assignment would then refuse.
+    """
+    statement = Role.live_select().where(col(Role.is_active).is_(True), col(Role.is_object_assignable).is_(True))
+    if spec.required_permission is not None:
+        statement = statement.where(col(Role.permissions).contains([spec.required_permission.value]))
+    return await paginate(session, statement.order_by(col(Role.name)), limit=limit, offset=offset)
+
+
 async def _live_assignments(
     session: AsyncSession,
     object_type: ObjectType,
@@ -236,13 +256,20 @@ async def _live_assignments(
     return list((await session.execute(statement)).scalars().all())
 
 
-async def was_member(session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID) -> bool:
-    """Whether the user once held a role on the object that has since been removed."""
+async def is_member(session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID) -> bool:
+    """Whether the user holds a live assignment on the object — the test `add_member` refuses on."""
+    return bool(await _live_assignments(session, object_type, object_id, user_id))
+
+
+async def was_member(
+    session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID, *, removed_since: datetime
+) -> bool:
+    """Whether the user held a role on the object that was removed at or after `removed_since`."""
     statement = select(col(ObjectRoleAssignment.id)).where(
         col(ObjectRoleAssignment.object_type) == object_type,
         col(ObjectRoleAssignment.object_id) == object_id,
         col(ObjectRoleAssignment.user_id) == user_id,
-        col(ObjectRoleAssignment.deleted_at).is_not(None),
+        col(ObjectRoleAssignment.deleted_at) >= removed_since,
     )
     return (await session.execute(statement.limit(1))).first() is not None
 

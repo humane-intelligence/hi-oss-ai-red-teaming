@@ -750,7 +750,7 @@ async def list_label_categories_endpoint(
     status_code=status.HTTP_201_CREATED,
     summary="Define a conversation-label category",
     description=(
-        "Add a label category, optionally with its allowed values (none means free text). Needs an "
+        "Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an "
         "in-group role granting `evaluations:update`, or `evaluation_groups:manage`."
     ),
     responses=COMMON_ERROR_RESPONSES

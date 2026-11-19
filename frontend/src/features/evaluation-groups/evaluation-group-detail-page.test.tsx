@@ -524,6 +524,26 @@ describe('EvaluationGroupDetailPage — Annotators tile', () => {
     expect(await screen.findByText('Annotators')).toBeInTheDocument()
   })
 
+  it('is not fetched for an in-group manage without manage_members, which the route refuses', async () => {
+    let fetched = false
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/annotators`, () => {
+        fetched = true
+        return HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 })
+      }),
+      ...makeHandlers(
+        withPerms(publishedOrgGroup, ['evaluation_groups:read', 'evaluation_groups:manage']),
+      ),
+    )
+    renderPage()
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Test group' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Annotators')).toBeNull()
+    expect(fetched).toBe(false)
+  })
+
   it('is hidden on a public group, whose pool is every annotator on the platform', async () => {
     let fetched = false
     server.use(

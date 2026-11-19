@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useBulkAddGroupMembers } from './mutations'
-import { useAllGroupMemberIds } from './queries'
+import { useAllGroupMemberIds, useGroupAssignableRoles } from './queries'
 import {
   ALL_MEMBERS_CAP,
   useAllOrganizationMembers,
   useOrganization,
 } from '@/features/organizations/queries'
-import { useInfiniteUsers, useRoles } from '@/features/users/queries'
+import { useInfiniteUsers } from '@/features/users/queries'
 import { fullName } from '@/features/users/names'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
@@ -105,7 +105,7 @@ export function AddMembersDialog({
     { enabled: open && canPickUsers, suppressErrorToast: true },
   )
   const memberIds = useAllGroupMemberIds(groupId, { enabled: open, suppressErrorToast: true })
-  const roles = useRoles({ objectAssignable: true, enabled: open })
+  const roles = useGroupAssignableRoles(groupId, { enabled: open })
   const add = useBulkAddGroupMembers(groupId)
   const queryClient = useQueryClient()
 

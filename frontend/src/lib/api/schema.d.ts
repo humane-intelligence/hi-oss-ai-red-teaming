@@ -628,7 +628,7 @@ export interface paths {
         };
         /**
          * List roles
-         * @description Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles assignable as in-group (object) roles — what an in-group role picker should offer, since assignment rejects anything else. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore` accepts.
+         * @description Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles flagged assignable as in-group (object) roles; an in-group picker reads `GET /evaluation-groups/{group_id}/assignable-roles` instead, which applies the full assignment policy and needs no `roles:read`. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore` accepts.
          */
         get: operations["list_roles_endpoint_api_v1_roles_get"];
         put?: never;
@@ -1158,7 +1158,7 @@ export interface paths {
         put?: never;
         /**
          * Define a conversation-label category
-         * @description Add a label category, optionally with its allowed values (none means free text). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
+         * @description Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
          */
         post: operations["create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post"];
         delete?: never;
@@ -1670,7 +1670,7 @@ export interface paths {
         put?: never;
         /**
          * Add group members in bulk
-         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member or is deactivated) land inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls back instead of committing.
+         * @description Add several users to the group, each with their own roles, with per-row outcomes. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for an unknown or non-assignable role, `404` for an unknown user, `409` for a user who is already a member or is deactivated, the latter with `type: urn:redteam:error:user-deactivated`) land inside `results[].error`, and the other rows are still added. A `user_id` may appear in one row only; a repeat rejects the whole request with 422. `dry_run=true` previews the outcomes and rolls back instead of committing.
          */
         post: operations["bulk_add_group_members_endpoint_api_v1_evaluation_groups__group_id__members_bulk_post"];
         delete?: never;
@@ -1714,7 +1714,7 @@ export interface paths {
         put?: never;
         /**
          * Invite users to a group
-         * @description Invite up to 100 users to the group in one request — the only group-invite path, a single invitee is a one-row request. Each row is an email with one or more in-group roles pre-assigned; the roles are assigned on the group immediately, and a row targeting an active account reports `outcome=assigned` while a new or onboarding one reports `outcome=invited`. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for unknown / non-assignable roles, `409` for deactivated users, a concurrent signup race, or a re-invite that would drop the group's last `owner`) land inside `results[].error`. Re-inviting an existing member reconciles their role set; the same email in more than one row is rejected (`422`), like a duplicate `row_key`. Notification emails are dispatched best-effort after the request has committed — a row can report `ok` even if its email could not be queued. `dry_run=true` previews the full processing path and rolls back instead of committing — no emails are sent.
+         * @description Invite up to 100 users to the group in one request — the only group-invite path, a single invitee is a one-row request. Each row is an email with one or more in-group roles pre-assigned; the roles are assigned on the group immediately, and a row targeting an active account reports `outcome=assigned` while a new or onboarding one reports `outcome=invited`. Always returns 200 OK when the envelope is well-formed — per-row failures (`400` for unknown / non-assignable roles, `409` for deactivated users (`type: urn:redteam:error:user-deactivated`), a concurrent signup race, or a re-invite that would drop the group's last `owner`) land inside `results[].error`. Re-inviting an existing member reconciles their role set; the same email in more than one row is rejected (`422`), like a duplicate `row_key`. Notification emails are dispatched best-effort after the request has committed — a row can report `ok` even if its email could not be queued. `dry_run=true` previews the full processing path and rolls back instead of committing — no emails are sent.
          */
         post: operations["bulk_create_group_invitations_endpoint_api_v1_evaluation_groups__group_id__invitations_bulk_post"];
         delete?: never;
@@ -1735,6 +1735,26 @@ export interface paths {
          * @description Return a paginated list of annotators that can be assigned to a flag or review in this group.
          */
         get: operations["list_group_annotators_endpoint_api_v1_evaluation_groups__group_id__annotators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluation-groups/{group_id}/assignable-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List roles assignable in the group
+         * @description Return a paginated list of the roles a member of this group can be given — the source for `role_ids` on the group's member and invitation routes, which refuse any other role.
+         */
+        get: operations["list_group_assignable_roles_endpoint_api_v1_evaluation_groups__group_id__assignable_roles_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2171,7 +2191,7 @@ export interface paths {
         put?: never;
         /**
          * Warm up a model endpoint
-         * @description Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or `error` (a fault a retry won't fix, e.g. bad credentials).
+         * @description Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or `error` (a fault a retry won't fix, e.g. bad credentials). Refused with 409 once the evaluation takes no prompts, by the same rule as sending one: the probe is a call to the model.
          */
         post: operations["warmup_model_endpoint_api_v1_evaluations__evaluation_id__models__assignment_id__warmup_post"];
         delete?: never;
@@ -3939,6 +3959,37 @@ export interface components {
              * @description Pending reviews this user holds whose whole parent chain is live and whose evaluation is neither `completed` nor `rejected` and whose group is neither `inactive` nor `not_approved` — not their lifetime review total, and narrower than the review queue, which also lists work inside finished evaluations. Counted platform-wide, including groups the caller cannot see: it answers how loaded the person is, not how loaded they are on work you can account for.
              */
             active_review_count: number;
+        };
+        /**
+         * AssignableRoleResponse
+         * @description A role offered by an in-group role picker: the slim projection plus the self-join default flag.
+         */
+        AssignableRoleResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Server-assigned role identifier.
+             * @example a1b2c3d4-1111-2222-3333-444455556666
+             */
+            id: string;
+            /**
+             * Name
+             * @description Stable role slug — used as the machine identifier.
+             * @example red_teamer
+             */
+            name: string;
+            /**
+             * Display Name
+             * @description Human-readable role label for display.
+             * @example Red Teamer
+             */
+            display_name: string;
+            /**
+             * Is Participant Default
+             * @description Whether this is the role a user gets on joining a group themselves — a picker's starting choice.
+             * @example true
+             */
+            is_participant_default: boolean;
         };
         /**
          * AuditLogResponse
@@ -6495,7 +6546,7 @@ export interface components {
             name: string;
             /**
              * Values
-             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free text.
+             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the category is picked on its own, with no value.
              */
             values?: string[];
         };
@@ -6533,7 +6584,7 @@ export interface components {
             name: string;
             /**
              * Values
-             * @description Allowed values, in the order defined; empty means free text.
+             * @description Allowed values, in the order defined; empty means the category is picked on its own.
              */
             values: string[];
             /**
@@ -9107,6 +9158,32 @@ export interface components {
              * @description Items on this page.
              */
             items: components["schemas"]["AssignableReviewerResponse"][];
+            /**
+             * Total
+             * @description Total number of items across all pages.
+             * @example 42
+             */
+            total: number;
+            /**
+             * Limit
+             * @description Max items per page (echo of the request).
+             * @example 20
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Zero-based offset of the first item on this page.
+             * @example 0
+             */
+            offset: number;
+        };
+        /** Page[AssignableRoleResponse] */
+        Page_AssignableRoleResponse_: {
+            /**
+             * Items
+             * @description Items on this page.
+             */
+            items: components["schemas"]["AssignableRoleResponse"][];
             /**
              * Total
              * @description Total number of items across all pages.
@@ -20040,7 +20117,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The user is already a member of this group, or is deactivated and was never a member of it. */
+            /** @description The user is already a member of this group, or is deactivated and was not removed from it within the restore window (`type: urn:redteam:error:user-deactivated`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -20425,6 +20502,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_AnnotatorResponse_"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Caller lacks permission to manage this group's members. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Evaluation group not found, or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request failed validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_group_assignable_roles_endpoint_api_v1_evaluation_groups__group_id__assignable_roles_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AssignableRoleResponse_"];
                 };
             };
             /** @description Missing or invalid bearer token. */
@@ -22642,6 +22794,16 @@ export interface operations {
             };
             /** @description Evaluation or assignment does not exist or is not visible. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The evaluation's group is not open for prompts (finished, or not published yet for a caller who may not edit the evaluation), or the evaluation is closed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

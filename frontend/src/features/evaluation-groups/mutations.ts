@@ -147,6 +147,7 @@ export function useFinishGroup(id: string) {
 }
 
 export function useJoinGroup(id: string) {
+  const qc = useQueryClient()
   const invalidate = useInvalidateGroup(id)
   return useMutation({
     mutationFn: async () =>
@@ -157,6 +158,8 @@ export function useJoinGroup(id: string) {
       ),
     onSuccess: () => {
       invalidate()
+      // The Join button and the member count read the member list, not the group detail.
+      qc.invalidateQueries({ queryKey: ['evaluation-group-members', id] })
       toast.success('Joined group')
     },
   })

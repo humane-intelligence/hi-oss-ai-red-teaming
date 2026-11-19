@@ -65,7 +65,7 @@ export function ConversationDetailPage() {
   const [tagsOpen, setTagsOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions, promptsBlocked } = authority
+  const { allows, canManage, groupPermissions, lifecycleKnown, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const labelCategories = useEvaluationLabelCategories(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
@@ -218,13 +218,14 @@ export function ConversationDetailPage() {
   const warmup = useWarmupGate(
     evalId,
     conv?.evaluation_ai_model_id ?? '',
-    Boolean(assignment?.warmup_enabled) && canWrite,
+    // A closed group refuses the probe too, so wait for its stage before probing.
+    Boolean(assignment?.warmup_enabled) && canWrite && lifecycleKnown && !promptsBlocked,
   )
   // The composer renders under the conversation query, but the warmup gate derives
-  // from the evaluation query (which carries the assignment + its warmup flag). Until
-  // that resolves we don't yet know whether the model needs warming, so hold sending —
+  // from the evaluation query (the assignment + its warmup flag) and the group's stage.
+  // Until both resolve we don't yet know whether the model needs warming, so hold sending —
   // otherwise a deep-link could fire the first message into a still-cold endpoint.
-  const composerBlocked = warmup.blocked || evaluation.isPending
+  const composerBlocked = warmup.blocked || !lifecycleKnown
 
   // Keep the latest message in view as the transcript grows / streams.
   useEffect(() => {
@@ -351,8 +352,10 @@ export function ConversationDetailPage() {
               placeholder={
                 warmup.blocked
                   ? 'Waiting for the model to warm up…'
-                  : evaluation.isPending
-                    ? 'Loading…'
+                  : !lifecycleKnown
+                    ? authority.error
+                      ? 'Couldn’t check whether this conversation takes prompts.'
+                      : 'Loading…'
                     : 'Type here to message the model.'
               }
               hint="Press return to send. Use shift + return for line breaks."
