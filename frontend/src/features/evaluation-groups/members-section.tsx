@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Mail, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useGroupMembers } from './queries'
+import { useGroupAssignableRoles, useGroupMembers } from './queries'
 import { useRemoveGroupMember, useUpdateGroupMember } from './mutations'
 import { BulkInviteDialog } from './bulk-invite-dialog'
 import { AddMembersDialog } from './add-members-dialog'
@@ -26,6 +26,7 @@ function EditMemberDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const update = useUpdateGroupMember(groupId)
+  const roles = useGroupAssignableRoles(groupId, { enabled: open })
   const [roleIds, setRoleIds] = useState<string[]>([])
 
   const canSubmit = roleIds.length > 0 && !update.isPending
@@ -40,7 +41,13 @@ function EditMemberDialog({
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label>Roles</Label>
-          <RolesPicker selected={roleIds} onChange={setRoleIds} objectAssignableOnly />
+          <RolesPicker
+            roles={roles.data?.items ?? []}
+            isPending={roles.isPending}
+            isError={roles.isError}
+            selected={roleIds}
+            onChange={setRoleIds}
+          />
         </div>
       </div>
       <div className="flex justify-end gap-2">
@@ -101,24 +108,17 @@ export function MembersSection({
   const members = useGroupMembers(groupId)
   const remove = useRemoveGroupMember(groupId)
   const { has: hasGlobal } = usePermissions()
-  // Member management is object-scoped: the server grants it via the in-group
-  // `manage_members` (owner) or break-glass `manage`. Gate on the group's
-  // effective permissions, not the caller's global union.
+  // Member management is object-scoped: the server takes the in-group `manage_members` or the
+  // global break-glass, whose effective group set carries `manage_members` too. An in-group
+  // `manage` alone is not enough there, so it isn't here.
   const groupPerms = useObjectPermissions(userPermissions)
-  const canManageMembers = groupPerms.hasAny([
-    'evaluation_groups:manage',
-    'evaluation_groups:manage_members',
-  ])
+  const canManageMembers = groupPerms.has('evaluation_groups:manage_members')
   // "Add existing user" additionally needs the global user picker (`/auth/users`,
   // gated on `users:read`); invite-by-email doesn't.
   const canPickUsers = hasGlobal('users:read')
   // Organization members come from `/organizations/{id}/members` (`organizations:read`).
   const canPickOrganization = hasGlobal('organizations:read') && !!organizationId
-  // Every role dialog (add, edit, invite) lists roles from `/roles`, which is gated on the global
-  // `roles:read` — an in-group owner without it would open a dialog that can only 403.
-  const canAssignRoles = hasGlobal('roles:read')
-  const canAddExisting = canManageMembers && canAssignRoles && (canPickUsers || canPickOrganization)
-  const canEditRoles = canManageMembers && canAssignRoles
+  const canAddExisting = canManageMembers && (canPickUsers || canPickOrganization)
   const [addOpen, setAddOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<ObjectMemberResponse | null>(null)
@@ -130,7 +130,7 @@ export function MembersSection({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Members ({members.data?.total ?? 0})</h2>
-        {canManageMembers && canAssignRoles && (
+        {canManageMembers && (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
               <Mail className="size-4" /> Invite by email
@@ -165,16 +165,14 @@ export function MembersSection({
             </div>
             {canManageMembers && (
               <>
-                {canEditRoles && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Edit roles"
-                    onClick={() => setEditTarget(m)}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit roles"
+                  onClick={() => setEditTarget(m)}
+                >
+                  <Pencil className="size-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -214,7 +212,7 @@ export function MembersSection({
         />
       )}
       <BulkInviteDialog groupId={groupId} open={inviteOpen} onOpenChange={setInviteOpen} />
-      {canEditRoles && (
+      {canManageMembers && (
         <EditMemberDialog
           groupId={groupId}
           member={editTarget}

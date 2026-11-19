@@ -1,12 +1,17 @@
-import { useRoles } from './queries'
-
+// The caller loads the roles: the whole catalog for a global assignment, or what the group
+// accepts (`useGroupAssignableRoles`) for an in-group one.
 export function RolesPicker({
+  roles,
+  isPending,
+  isError = false,
   selected,
   onChange,
-  objectAssignableOnly,
   describedBy,
   invalid,
 }: {
+  roles: { id: string; display_name: string }[]
+  isPending: boolean
+  isError?: boolean
   selected: string[]
   onChange: (ids: string[]) => void
   // A checkbox group carries its description and validity on the group, not on each box, so these
@@ -14,22 +19,13 @@ export function RolesPicker({
   // prop list and would swallow them.
   describedBy?: string
   invalid?: boolean
-  // In-group pickers offer exactly what object-role assignment accepts — the catalog
-  // filtered server-side on `is_object_assignable`. The backend owns that policy
-  // (code-managed for system roles, an operator opt-in for custom ones), so the
-  // platform-only admin drops out without the FE naming or re-deriving it.
-  objectAssignableOnly?: boolean
 }) {
-  // `false` and omitted both mean "whole catalog" — only `true` narrows.
-  const { data, isPending } = useRoles({
-    objectAssignable: objectAssignableOnly ? true : undefined,
-  })
-  const roles = data?.items ?? []
-
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
 
   if (isPending) return <p className="text-muted-foreground text-xs">Loading roles…</p>
+  // Not the empty state: an unreadable list says nothing about which roles exist.
+  if (isError) return <p className="text-destructive text-xs">Couldn’t load the roles to assign.</p>
 
   return (
     <div

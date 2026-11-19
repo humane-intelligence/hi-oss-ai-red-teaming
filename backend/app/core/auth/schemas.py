@@ -442,6 +442,25 @@ class RoleSummary(RoleBase):
         return [cls.from_role(role) for role in roles if role.is_active and role.deleted_at is None]
 
 
+class AssignableRoleResponse(RoleSummary):
+    """A role offered by an in-group role picker: the slim projection plus the self-join default flag."""
+
+    is_participant_default: bool = Field(
+        description="Whether this is the role a user gets on joining a group themselves — a picker's starting choice.",
+        examples=[True],
+    )
+
+    @classmethod
+    def from_role(cls, role: Role) -> AssignableRoleResponse:
+        """Project a `Role` ORM row; still no `permissions`."""
+        return cls(
+            id=role.id,
+            name=role.name,
+            display_name=role.label,
+            is_participant_default=role.is_participant_default,
+        )
+
+
 class RoleCreate(BaseModel):
     """Payload for `POST /v1/roles` — creates an operator-defined (custom) role.
 

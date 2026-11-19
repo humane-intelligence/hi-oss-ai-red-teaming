@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
-import { useUser } from './queries'
+import { useRoles, useUser } from './queries'
 import { useDeleteUser, useUpdateUser } from './mutations'
 import { RolesPicker } from './roles-picker'
 import { StatusPill } from '@/components/shared/status-pill'
@@ -49,6 +49,7 @@ export function UserEditPage() {
 function UserEditForm({ user, onDone }: { user: UserResponse; onDone: () => void }) {
   const update = useUpdateUser(user.id)
   const del = useDeleteUser()
+  const roles = useRoles()
   const [firstName, setFirstName] = useState(user.first_name ?? '')
   const [lastName, setLastName] = useState(user.last_name ?? '')
   const initialRoleIds = (user.roles ?? []).map((r) => r.id)
@@ -125,7 +126,13 @@ function UserEditForm({ user, onDone }: { user: UserResponse; onDone: () => void
         </div>
         <div className="space-y-1.5">
           <Label>Roles</Label>
-          <RolesPicker selected={roleIds} onChange={setRoleIds} />
+          <RolesPicker
+            roles={roles.data?.items ?? []}
+            isPending={roles.isPending}
+            isError={roles.isError}
+            selected={roleIds}
+            onChange={setRoleIds}
+          />
         </div>
         <div className="flex justify-between pt-2">
           <Button variant="outline" onClick={() => setDeleteOpen(true)}>

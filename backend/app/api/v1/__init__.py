@@ -11,6 +11,7 @@ from app.api.v1.chat import router as chat_router
 from app.api.v1.conversation_groups import router as conversation_groups_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.evaluation_group_annotators import router as evaluation_group_annotators_router
+from app.api.v1.evaluation_group_assignable_roles import router as evaluation_group_assignable_roles_router
 from app.api.v1.evaluation_group_invitations import router as evaluation_group_invitations_router
 from app.api.v1.evaluation_group_members import router as evaluation_group_members_router
 from app.api.v1.evaluation_group_metrics import router as evaluation_group_metrics_router
@@ -49,6 +50,7 @@ v1_router.include_router(evaluation_groups_router)
 v1_router.include_router(evaluation_group_members_router)
 v1_router.include_router(evaluation_group_invitations_router)
 v1_router.include_router(evaluation_group_annotators_router)
+v1_router.include_router(evaluation_group_assignable_roles_router)
 v1_router.include_router(evaluation_group_metrics_router)
 v1_router.include_router(scenarios_router)
 v1_router.include_router(conversations_router)
