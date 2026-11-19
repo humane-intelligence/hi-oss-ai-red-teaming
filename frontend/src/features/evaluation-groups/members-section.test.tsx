@@ -197,9 +197,12 @@ describe('MembersSection — RBAC gates', () => {
     expect(screen.queryByRole('button', { name: /remove/i })).toBeNull()
   })
 
-  it('with evaluation_groups:manage + users:read — Add member button present', async () => {
+  it('with manage_members + users:read — Add member button present', async () => {
     server.use(...baseHandlers())
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage', 'evaluation_groups:manage_members'],
+      ['users:read'],
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
@@ -223,10 +226,14 @@ describe('MembersSection — RBAC gates', () => {
       ),
       ...baseHandlers(),
     )
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['organizations:read'], {
-      accessLevel: 'organization',
-      organizationId: 'org-0001-0000-0000-000000000000',
-    })
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage', 'evaluation_groups:manage_members'],
+      ['organizations:read'],
+      {
+        accessLevel: 'organization',
+        organizationId: 'org-0001-0000-0000-000000000000',
+      },
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
@@ -263,12 +270,16 @@ describe('MembersSection — RBAC gates', () => {
     expect(catalogRead).toBe(false)
   })
 
-  it('with evaluation_groups:manage — Edit roles button present', async () => {
+  it('with an in-group evaluation_groups:manage alone — no management affordances', async () => {
+    // The member routes take `manage_members` or the global break-glass; a custom group role with
+    // `manage` but not `manage_members` would see buttons that all answer 403.
     server.use(...baseHandlers())
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], [])
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: /edit roles/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /edit roles/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /add member/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /invite by email/i })).toBeNull()
   })
 
   it('global manage without in-group authority — no management affordances (no over-granting)', async () => {
@@ -337,7 +348,7 @@ describe('MembersSection — add flow', () => {
   async function openDialog(globalPermissions: string[], withOrg = false) {
     const user = userEvent.setup()
     renderSection(
-      ['evaluation_groups:read', 'evaluation_groups:manage'],
+      ['evaluation_groups:read', 'evaluation_groups:manage', 'evaluation_groups:manage_members'],
       globalPermissions,
       withOrg ? { accessLevel: 'organization', organizationId: ORG_ID } : {},
     )
@@ -676,7 +687,10 @@ describe('MembersSection — add flow', () => {
 
   it('does not request users until the dialog opens', async () => {
     const { userQueries } = handlers()
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], ['users:read'])
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage', 'evaluation_groups:manage_members'],
+      ['users:read'],
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     expect(userQueries).toHaveLength(0)
@@ -746,7 +760,7 @@ describe('MembersSection — add flow', () => {
     )
     const user = userEvent.setup()
     const { unmount } = renderSection(
-      ['evaluation_groups:read', 'evaluation_groups:manage'],
+      ['evaluation_groups:read', 'evaluation_groups:manage', 'evaluation_groups:manage_members'],
       ['users:read'],
     )
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
@@ -810,7 +824,11 @@ describe('MembersSection — remove flow', () => {
     )
 
     const user = userEvent.setup()
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'])
+    renderSection([
+      'evaluation_groups:read',
+      'evaluation_groups:manage',
+      'evaluation_groups:manage_members',
+    ])
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
 
@@ -853,7 +871,10 @@ describe('MembersSection — edit flow', () => {
     )
 
     const user = userEvent.setup()
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'], [])
+    renderSection(
+      ['evaluation_groups:read', 'evaluation_groups:manage', 'evaluation_groups:manage_members'],
+      [],
+    )
 
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
 

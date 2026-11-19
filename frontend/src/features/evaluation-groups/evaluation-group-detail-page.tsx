@@ -70,10 +70,8 @@ export function EvaluationGroupDetailPage() {
   // Duplicate creates a *new* group, so it gates on the global create capability
   // rather than this group's per-object authority.
   const { has } = usePermissions()
-  const canManageMembers = groupPerms.hasAny([
-    'evaluation_groups:manage',
-    'evaluation_groups:manage_members',
-  ])
+  // As the member routes: the in-group `manage_members`, which the break-glass set carries too.
+  const canManageMembers = groupPerms.has('evaluation_groups:manage_members')
   // Whole-event metrics are gated server-side by the group's configured
   // `metrics_access_during` / `metrics_access_after` levels (the in-group `owner`
   // and `evaluation_groups:manage` break-glass always get the full aggregate; a

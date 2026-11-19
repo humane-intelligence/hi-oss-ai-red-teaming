@@ -101,14 +101,11 @@ export function MembersSection({
   const members = useGroupMembers(groupId)
   const remove = useRemoveGroupMember(groupId)
   const { has: hasGlobal } = usePermissions()
-  // Member management is object-scoped: the server grants it via the in-group
-  // `manage_members` (owner) or break-glass `manage`. Gate on the group's
-  // effective permissions, not the caller's global union.
+  // Member management is object-scoped: the server takes the in-group `manage_members` or the
+  // global break-glass, whose effective group set carries `manage_members` too. An in-group
+  // `manage` alone is not enough there, so it isn't here.
   const groupPerms = useObjectPermissions(userPermissions)
-  const canManageMembers = groupPerms.hasAny([
-    'evaluation_groups:manage',
-    'evaluation_groups:manage_members',
-  ])
+  const canManageMembers = groupPerms.has('evaluation_groups:manage_members')
   // "Add existing user" additionally needs the global user picker (`/auth/users`,
   // gated on `users:read`); invite-by-email doesn't.
   const canPickUsers = hasGlobal('users:read')
