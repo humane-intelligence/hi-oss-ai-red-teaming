@@ -1551,6 +1551,38 @@ describe('ConversationGroupPage — conversation labels', () => {
     await waitFor(() => expect(captured).toEqual({ labels: { 'cat-lang': ['polish', 'english'] } }))
   })
 
+  it('keeps a category picked on its own after it gained tags, and sends it back as a blank entry', async () => {
+    let captured: unknown = null
+    const marked = {
+      ...group(),
+      labels: [
+        { category_id: 'cat-lang', name: 'language', value: null },
+        { category_id: 'cat-lang', name: 'language', value: 'english' },
+      ],
+    }
+    server.use(
+      http.get(groupUrl, () => HttpResponse.json(marked)),
+      ...baseHandlers(),
+      http.get(categoriesUrl, () => HttpResponse.json(categories)),
+      http.patch(groupUrl, async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json(marked)
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit tags' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('language (not in the list)')).toBeChecked()
+    await user.click(within(dialog).getByLabelText('note'))
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+    await waitFor(() =>
+      expect(captured).toEqual({ labels: { 'cat-lang': ['', 'english'], 'cat-note': [''] } }),
+    )
+  })
+
   it('says why the server refused the labels instead of failing silently', async () => {
     server.use(
       http.get(groupUrl, () => HttpResponse.json(labelled)),

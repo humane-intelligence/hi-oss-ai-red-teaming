@@ -330,7 +330,7 @@ async def update_conversation_group_endpoint(
     ### Errors
 
     * **400 Bad Request** — a label with a value names a category that is not the evaluation's, or the value
-      is outside its list. A blank value is ignored whatever its category.
+      is outside its list. A blank entry stands for the category on its own.
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks `conversations:update`.
     * **404 Not Found** — no such group owned by the caller in this evaluation.

@@ -449,7 +449,7 @@ describe('GroupCreatePage', () => {
     await waitFor(() => expect(captured).not.toBeNull())
     expect((captured as { labels: unknown }).labels).toEqual({
       'cat-lang': ['polish', 'english'],
-      'cat-note': [],
+      'cat-note': [''],
     })
   })
 
@@ -485,7 +485,7 @@ describe('GroupCreatePage', () => {
     await user.click(screen.getByRole('button', { name: /start conversation/i }))
 
     await waitFor(() => expect(captured).not.toBeNull())
-    expect((captured as { labels: unknown }).labels).toEqual({ 'cat-lang': [] })
+    expect((captured as { labels: unknown }).labels).toEqual({ 'cat-lang': [''] })
   })
 
   it('shows no label fields when the evaluation defines no categories', async () => {

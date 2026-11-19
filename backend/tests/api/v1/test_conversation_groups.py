@@ -1375,7 +1375,48 @@ async def test_a_group_holds_several_values_in_one_category_and_a_bare_category_
         ("language", "Polish"),
     ]
     assert free_text.status_code == status.HTTP_400_BAD_REQUEST
+    assert "has no values" in free_text.json()["detail"]
     assert [(label["name"], label["value"]) for label in narrowed.json()["labels"]] == [("language", "Polish")]
+
+
+async def test_a_marker_survives_its_category_gaining_values_while_the_group_sends_it_back(
+    auth_db_client: AsyncClient, db_session: AsyncSession, red_teamer_role: Role
+) -> None:
+    caller = await _caller(db_session, red_teamer_role, email="labels-marker-kept@example.com")
+    evaluation, scenario, assignment, ids = await _labelled_setup(db_session)
+    marker = EvaluationLabelCategory(evaluation_id=evaluation.id, name="guardrail-violation")
+    db_session.add(marker)
+    await db_session.flush()
+    token = _token(caller)
+    created = await _create_group(
+        auth_db_client,
+        token,
+        scenario.id,
+        {
+            "name": "g",
+            "models": [{"evaluation_ai_model_id": str(assignment.id)}],
+            "labels": {str(marker.id): [""], ids["language"]: ["English"]},
+        },
+    )
+    url = f"/api/v1/evaluations/{evaluation.id}/conversation-groups/{created.json()['id']}"
+    marker.values = ["mild", "severe"]
+    await db_session.flush()
+
+    kept = await auth_db_client.patch(
+        url, json={"labels": {str(marker.id): [""], ids["language"]: ["English", "Polish"]}}, headers=_auth(token)
+    )
+    dropped = await auth_db_client.patch(url, json={"labels": {str(marker.id): ["mild"]}}, headers=_auth(token))
+    not_retaken = await auth_db_client.patch(url, json={"labels": {str(marker.id): [""]}}, headers=_auth(token))
+
+    assert created.status_code == status.HTTP_201_CREATED
+    assert [(label["name"], label["value"]) for label in kept.json()["labels"]] == [
+        ("guardrail-violation", None),
+        ("language", "English"),
+        ("language", "Polish"),
+    ]
+    assert [(label["name"], label["value"]) for label in dropped.json()["labels"]] == [("guardrail-violation", "mild")]
+    # Once let go, a category with values is not picked on its own again.
+    assert not_retaken.json()["labels"] == []
 
 
 @pytest.mark.parametrize("which", ["outside-list", "unknown-category", "other-evaluation"])

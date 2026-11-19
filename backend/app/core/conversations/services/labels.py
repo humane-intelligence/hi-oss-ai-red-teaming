@@ -46,9 +46,10 @@ async def set_group_labels(
     """Replace the group's labels with `labels` (category id → the values picked there).
 
     A category with values takes any number of them (matched ignoring case, stored as the category
-    spells them). One without values is a marker: listing it, with no values, selects it. Either
-    kind also accepts a value the group already holds there — a value later dropped from the
-    category's list, or free text from before markers — so an old label never blocks relabelling
+    spells them). One without values is a marker: listing it with no values, or with a blank
+    entry, selects it. Either kind also accepts what the group already holds there — a value later
+    dropped from the category's list, free text from before markers, or (as a blank entry) the
+    marker of a category that has since gained values — so an old label never blocks relabelling
     the rest. A category left out, or one with values listed with none, is cleared.
 
     Returns:
@@ -70,7 +71,8 @@ async def set_group_labels(
     visible = {(category_id, value) for category_id, value in stored.tuples() if category_id in categories}
     wanted: set[tuple[UUID, str]] = set()
     for category_id, raw_values in labels.items():
-        values = [value for value in (sanitise_single_line(raw) for raw in raw_values) if value]
+        entries = [sanitise_single_line(raw) for raw in raw_values]
+        values = [value for value in entries if value]
         category = categories.get(category_id)
         if category is None:
             # Nothing to store first: clearing a category that was deleted meanwhile is already true.
@@ -78,12 +80,19 @@ async def set_group_labels(
                 continue
             raise BadRequestError("A category is not defined on this evaluation; it may have been deleted.")
         held = [value for held_category, value in visible if held_category == category_id and value != _BARE]
-        if not category.values and not values:
+        # A blank entry is the category on its own; one that has gained tags keeps it only if already held.
+        if category.values:
+            bare = _BARE in entries and (category_id, _BARE) in visible
+        else:
+            bare = _BARE in entries or not values
+        if bare:
             wanted.add((category_id, _BARE))
         for value in values:
             match = next(
                 (allowed for allowed in [*category.values, *held] if allowed.casefold() == value.casefold()), None
             )
+            if match is None and not category.values:
+                raise BadRequestError(f"Label {category.name!r} has no values; it is selected on its own.")
             if match is None:
                 raise BadRequestError(f"{value!r} is not one of the values of label {category.name!r}.")
             wanted.add((category_id, match))
