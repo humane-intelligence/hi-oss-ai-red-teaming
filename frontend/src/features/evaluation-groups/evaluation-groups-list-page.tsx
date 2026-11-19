@@ -82,7 +82,7 @@ function buildColumns(orgName: (id: string) => string): Column<EvaluationGroupRe
       id: 'organization',
       label: 'Organization',
       header: 'Organization',
-      hideBelow: 'lg',
+      hideBelow: 'md',
       cell: (g) => (
         <span className="text-muted-foreground">
           {g.organization_id ? orgName(g.organization_id) : '—'}
