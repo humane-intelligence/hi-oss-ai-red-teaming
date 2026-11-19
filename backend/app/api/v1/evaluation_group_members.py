@@ -74,16 +74,21 @@ async def _add_member(
 
     The bulk route passes `audit=False` on a dry run: the bulk contract gates every
     side effect on `dry_run`, not only on the rollback that happens to undo it. A
-    deactivated account is refused, as by the group invitation, except that the single
+    deactivated account is refused by default, as by the group invitation; the single
     route passes `removed_since` (the restore window) so Undo can put back a member
-    recently removed from this group, whatever their account status.
+    recently removed from this group, and the bulk route passes nothing. A live member
+    is answered as one whatever their account status.
     """
     user = await get_user(session, payload.user_id)
     roles = await resolve_assignable_roles(session, _SCOPE_SPEC, payload.role_ids)
     # A pending account is fine, its roles wait for activation.
-    if user.status is UserStatus.INACTIVE and not (
-        removed_since is not None
-        and await was_member(session, _OBJECT_TYPE, group_id, user.id, removed_since=removed_since)
+    if (
+        user.status is UserStatus.INACTIVE
+        and not await held_roles(session, _OBJECT_TYPE, group_id, user.id)
+        and not (
+            removed_since is not None
+            and await was_member(session, _OBJECT_TYPE, group_id, user.id, removed_since=removed_since)
+        )
     ):
         raise UserDeactivatedError
     member = await add_member(session, _OBJECT_TYPE, group_id, user, roles)
