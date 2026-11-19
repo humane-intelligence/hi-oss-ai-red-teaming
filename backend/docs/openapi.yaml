@@ -2078,10 +2078,11 @@ paths:
       summary: List roles
       description: Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only
         by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles
-        assignable as in-group (object) roles — what an in-group role picker should offer, since assignment rejects anything
-        else. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default`
-        / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside
-        the restore window — the set `POST /{role_id}/restore` accepts.
+        flagged assignable as in-group (object) roles; an in-group picker reads `GET /evaluation-groups/{group_id}/assignable-roles`
+        instead, which applies the full assignment policy and needs no `roles:read`. Each entry carries the role's permissions
+        and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true`
+        (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore`
+        accepts.
       operationId: list_roles_endpoint_api_v1_roles_get
       parameters:
       - name: include_inactive
@@ -8278,6 +8279,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Page_AnnotatorResponse_'
+        '422':
+          description: Request failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Caller lacks permission to manage this group's members.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Evaluation group not found, or not visible to the caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/evaluation-groups/{group_id}/assignable-roles:
+    get:
+      tags:
+      - evaluation-groups
+      summary: List roles assignable in the group
+      description: Return a paginated list of the roles a member of this group can be given — the source for `role_ids` on
+        the group's member and invitation routes, which refuse any other role.
+      operationId: list_group_assignable_roles_endpoint_api_v1_evaluation_groups__group_id__assignable_roles_get
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_AssignableRoleResponse_'
         '422':
           description: Request failed validation.
           content:
@@ -17281,6 +17367,41 @@ components:
         id: a1b2c3d4-1111-2222-3333-444455556666
         last_name: Lovelace
         status: active
+    AssignableRoleResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+          description: Server-assigned role identifier.
+          examples:
+          - a1b2c3d4-1111-2222-3333-444455556666
+        name:
+          type: string
+          title: Name
+          description: Stable role slug — used as the machine identifier.
+          examples:
+          - red_teamer
+        display_name:
+          type: string
+          title: Display Name
+          description: Human-readable role label for display.
+          examples:
+          - Red Teamer
+        is_participant_default:
+          type: boolean
+          title: Is Participant Default
+          description: Whether this is the role a user gets on joining a group themselves — a picker's starting choice.
+          examples:
+          - true
+      type: object
+      required:
+      - id
+      - name
+      - display_name
+      - is_participant_default
+      title: AssignableRoleResponse
+      description: 'A role offered by an in-group role picker: the slim projection plus the self-join default flag.'
     AuditLogResponse:
       properties:
         id:
@@ -23532,6 +23653,39 @@ components:
       - limit
       - offset
       title: Page[AssignableReviewerResponse]
+    Page_AssignableRoleResponse_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AssignableRoleResponse'
+          type: array
+          title: Items
+          description: Items on this page.
+        total:
+          type: integer
+          title: Total
+          description: Total number of items across all pages.
+          examples:
+          - 42
+        limit:
+          type: integer
+          title: Limit
+          description: Max items per page (echo of the request).
+          examples:
+          - 20
+        offset:
+          type: integer
+          title: Offset
+          description: Zero-based offset of the first item on this page.
+          examples:
+          - 0
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: Page[AssignableRoleResponse]
     Page_AuditLogResponse_:
       properties:
         items:

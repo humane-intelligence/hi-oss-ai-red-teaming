@@ -6,45 +6,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/msw/server'
 import { authWrapper } from '@/lib/auth/auth.testutils'
 import { BulkInviteDialog } from './bulk-invite-dialog'
-import type { BulkGroupInviteResponse, RoleResponse } from '@/lib/api/types'
+import type { AssignableRoleResponse, BulkGroupInviteResponse } from '@/lib/api/types'
 
 const GROUP_ID = 'grp-0001-0000-0000-000000000000'
 const BULK_URL = `http://localhost/api/v1/evaluation-groups/${GROUP_ID}/invitations/bulk`
 
-const ROLE_TESTER: RoleResponse = {
+const ROLE_TESTER: AssignableRoleResponse = {
   id: 'role-tester',
   name: 'red_teamer',
   display_name: 'Red Teamer',
-  permissions: [],
-  is_system: true,
-  is_active: true,
-  is_default: false,
   is_participant_default: false,
-  is_object_assignable: true,
 }
 
-const ROLE_ADMIN: RoleResponse = {
-  id: 'role-admin',
-  name: 'admin',
-  display_name: 'Admin',
-  permissions: [],
-  is_system: true,
-  is_active: true,
-  is_default: false,
-  is_participant_default: false,
-  is_object_assignable: false,
-}
-
-// Stands in for the endpoint's `is_object_assignable` filter — the in-group picker asks
-// for that subset rather than filtering client-side.
+// The group lists what is assignable in it; the platform admin role is not, so the server
+// leaves it out and the picker never has to know which roles those are.
 function rolesHandler() {
-  const items = [ROLE_TESTER, ROLE_ADMIN]
-  return http.get('http://localhost/api/v1/roles', ({ request }) => {
-    const param = new URL(request.url).searchParams.get('is_object_assignable')
-    const filtered =
-      param === null ? items : items.filter((r) => r.is_object_assignable === (param === 'true'))
-    return HttpResponse.json({ items: filtered, total: filtered.length, limit: 100, offset: 0 })
-  })
+  return http.get(`http://localhost/api/v1/evaluation-groups/${GROUP_ID}/assignable-roles`, () =>
+    HttpResponse.json({ items: [ROLE_TESTER], total: 1, limit: 100, offset: 0 }),
+  )
 }
 
 function okRow(row_key: string, email: string, outcome: 'assigned' | 'invited') {
@@ -185,14 +164,23 @@ describe('evaluation-groups BulkInviteDialog — submit', () => {
 })
 
 describe('evaluation-groups BulkInviteDialog — role picker', () => {
-  it('omits the platform admin role (not assignable in a group)', async () => {
-    server.use(rolesHandler())
+  it('offers the roles the group lists as assignable, never reading the catalog', async () => {
+    // The default handler serves Red Teamer from `/roles` too, so the absence of a role cannot
+    // show which list the picker read; the flag does.
+    let catalogRead = false
+    server.use(
+      http.get('http://localhost/api/v1/roles', () => {
+        catalogRead = true
+        return HttpResponse.json({ title: 'Forbidden', status: 403 }, { status: 403 })
+      }),
+      rolesHandler(),
+    )
     renderDialog()
 
     await waitFor(() =>
       expect(screen.getByRole('checkbox', { name: /red teamer/i })).toBeInTheDocument(),
     )
-    expect(screen.queryByRole('checkbox', { name: /admin/i })).toBeNull()
+    expect(catalogRead).toBe(false)
   })
 })
 

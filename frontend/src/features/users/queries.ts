@@ -9,28 +9,15 @@ export type UserOrderBy = NonNullable<
   operations['list_users_endpoint_api_v1_auth_users_get']['parameters']['query']
 >['order_by']
 
-// `objectAssignable` only ever narrows: `is_object_assignable=false` would ask the API
-// for the *complement*, which no caller wants, so the option can't express it.
-export function useRoles(options?: { enabled?: boolean; objectAssignable?: true }) {
-  const objectAssignable = options?.objectAssignable
+export function useRoles(options?: { enabled?: boolean }) {
   return useQuery({
-    // Keyed on the filter: the in-group subset and the full catalog are different
-    // responses. Still prefix-matched by the `['roles']` invalidations on mutation.
-    queryKey: ['roles', objectAssignable ?? null],
+    queryKey: ['roles', 'catalog'],
     // GET /roles is gated on roles:read (global admin/owner). Callers whose authority is object-scoped
-    // must gate this on has('roles:read') to avoid a 403 + error toast.
+    // must gate this on has('roles:read') to avoid a 403 + error toast; a group's role pickers use
+    // `useGroupAssignableRoles` instead.
     enabled: options?.enabled ?? true,
     queryFn: async () =>
-      unwrap(
-        await apiClient.GET('/api/v1/roles', {
-          params: {
-            query: {
-              limit: 100,
-              ...(objectAssignable !== undefined && { is_object_assignable: objectAssignable }),
-            },
-          },
-        }),
-      ),
+      unwrap(await apiClient.GET('/api/v1/roles', { params: { query: { limit: 100 } } })),
   })
 }
 

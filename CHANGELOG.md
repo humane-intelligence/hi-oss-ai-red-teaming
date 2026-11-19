@@ -9,6 +9,12 @@ change between minor versions.
 
 ### Added
 
+- `GET /evaluation-groups/{group_id}/assignable-roles`: the roles a member of the group can be
+  given, for whoever manages its members (the in-group owner or an admin), without the global
+  `roles:read` the role catalog needs. Each entry is the role's id, name, label and self-join
+  default flag, not its permissions. The console's Add members, Edit roles and Invite by email
+  dialogs read it, so an in-group owner who is not a global admin has those three actions again.
+
 - `turn_count` on conversation responses, including the member conversations embedded in a
   conversation group: the number of turns sent so far, `0` for a conversation that was started and
   never used.

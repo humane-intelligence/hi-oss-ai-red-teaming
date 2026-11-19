@@ -1232,7 +1232,7 @@
                 }
               ]
             },
-            "description": "Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles assignable as in-group (object) roles — what an in-group role picker should offer, since assignment rejects anything else. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore` accepts.\n\n**Requires permission:** `roles:read`\n\n**Auth** · 🔒 Bearer token required.\n\n**Query parameters**\n- `include_inactive` (boolean, optional) _[default False]_ — Include deactivated roles (management view).\n- `is_object_assignable` (boolean | null, optional) — Narrow to roles assignable as in-group (object) roles. Omit for the whole catalog.\n- `deleted` (boolean, optional) _[default False]_ — List soft-deleted items instead of live ones. Bounded by the platform restore window; requires the same permission as deleting, and shows every actor's deletes — there is no per-deleter narrowing. This list has no `order_by` parameter; the deleted view is ordered most-recently-deleted first.\n- `limit` (integer, optional) _[≥1, ≤100, default 20]_\n- `offset` (integer, optional) _[≥0, default 0]_\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+            "description": "Return the catalog of roles — the source for `role_ids` when creating, updating, or inviting users. Active-only by default; pass `include_inactive=true` for the management view. `is_object_assignable=true` narrows to the roles flagged assignable as in-group (object) roles; an in-group picker reads `GET /evaluation-groups/{group_id}/assignable-roles` instead, which applies the full assignment policy and needs no `roles:read`. Each entry carries the role's permissions and its `is_system` / `is_active` / `is_default` / `is_participant_default` / `is_object_assignable` flags. Pass `deleted=true` (requires `roles:manage`) for the catalog's tombstones inside the restore window — the set `POST /{role_id}/restore` accepts.\n\n**Requires permission:** `roles:read`\n\n**Auth** · 🔒 Bearer token required.\n\n**Query parameters**\n- `include_inactive` (boolean, optional) _[default False]_ — Include deactivated roles (management view).\n- `is_object_assignable` (boolean | null, optional) — Narrow to roles assignable as in-group (object) roles. Omit for the whole catalog.\n- `deleted` (boolean, optional) _[default False]_ — List soft-deleted items instead of live ones. Bounded by the platform restore window; requires the same permission as deleting, and shows every actor's deletes — there is no per-deleter narrowing. This list has no `order_by` parameter; the deleted view is ordered most-recently-deleted first.\n- `limit` (integer, optional) _[≥1, ≤100, default 20]_\n- `offset` (integer, optional) _[≥0, default 0]_\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
           },
           "response": []
         },
@@ -3557,6 +3557,49 @@
               ]
             },
             "description": "Move a `pending_approval` evaluation group to `approved`. Authorized like the group edit: an in-group role granting `evaluation_groups:update` (the creator holds `owner` by default), or a holder of `evaluation_groups:manage` — so an owner may approve their own group.\n\n**Requires permission:** `evaluation_groups:update`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `group_id` (string<uuid>, required)\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks the required permission. |\n| 404 | Evaluation group does not exist or is not visible to the caller. |\n| 409 | Group is not in a state that allows this transition. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
+          },
+          "response": []
+        },
+        {
+          "name": "List roles assignable in the group",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/evaluation-groups/:group_id/assignable-roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "evaluation-groups",
+                ":group_id",
+                "assignable-roles"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}",
+                  "description": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Return a paginated list of the roles a member of this group can be given — the source for `role_ids` on the group's member and invitation routes, which refuse any other role.\n\n**Requires permission:** `evaluation_groups:manage_members`\n\n**Auth** · 🔒 Bearer token required.\n\n**Path parameters**\n- `group_id` (string<uuid>, required)\n\n**Query parameters**\n- `limit` (integer, optional) _[≥1, ≤100, default 20]_\n- `offset` (integer, optional) _[≥0, default 0]_\n\n**Responses**\n\n| Status | Meaning |\n|---|---|\n| 200 | Successful Response |\n| 401 | Missing or invalid bearer token. |\n| 403 | Caller lacks permission to manage this group's members. |\n| 404 | Evaluation group not found, or not visible to the caller. |\n| 422 | Request failed validation. |\n| 500 | Unexpected server error. |\n\n_Generated from `docs/openapi.yaml` by `make postmandump` — do not hand-edit._"
           },
           "response": []
         },
