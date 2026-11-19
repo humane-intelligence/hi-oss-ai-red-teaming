@@ -128,7 +128,7 @@ function groupsHandler(onRequest?: (url: URL) => void) {
   })
 }
 
-function oneEvaluationIn(groupId: string) {
+function oneEvaluationIn(groupId: string, coverImage: string | null = null) {
   return http.get('http://localhost/api/v1/evaluations', () =>
     HttpResponse.json({
       items: [
@@ -139,7 +139,7 @@ function oneEvaluationIn(groupId: string) {
           evaluation_group_id: groupId,
           created_by_id: 'u1',
           status: 'new',
-          cover_image: null,
+          cover_image: coverImage,
           mask_models_enabled: false,
           tags_enabled: false,
           tags_restricted: false,
@@ -289,6 +289,21 @@ describe('EvaluationsListPage — row cells', () => {
     expect(title).toHaveAttribute('href', '/evaluations/ev-1')
     expect(screen.getByText('Aug 11, 2026')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Models' })).toHaveClass('text-center')
+  })
+
+  it('shows a thumbnail of the cover image', async () => {
+    server.use(oneEvaluationIn(GROUP_ON_PAGE_TWO, 'covers/a.png'), groupsHandler())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    const img = await screen.findByRole('img', { name: 'Prompt injection cover' })
+    expect(img).toHaveAttribute('src', expect.stringContaining('/api/v1/images/covers/a.png'))
+  })
+
+  it('shows a placeholder for an evaluation without a cover', async () => {
+    server.use(oneEvaluationIn(GROUP_ON_PAGE_TWO), groupsHandler())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByRole('img', { name: 'No cover image' })).toBeInTheDocument()
   })
 })
 
