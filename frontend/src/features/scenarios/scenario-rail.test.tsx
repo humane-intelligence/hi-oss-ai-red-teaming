@@ -144,12 +144,19 @@ describe('ScenarioRail rollup mode', () => {
     member({ conversationId: 'c2', canToggle: false }),
   ]
 
-  it('shows one checkbox per task beside the K/N roll-up, with no per-model rows', () => {
+  it('shows one checkbox per task with the roll-up for screen readers only, no per-model rows', () => {
     renderRollupRail(PARTIAL)
 
     expect(screen.getAllByRole('checkbox')).toHaveLength(1)
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Completed for 1 of 2 models')).toHaveTextContent('1/2')
+    expect(screen.getByText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(screen.queryByText('1/2')).not.toBeInTheDocument()
+    expect(screen.getByText('Completed for 1 of 2 models')).toHaveClass('sr-only')
+    expect(screen.getByRole('checkbox')).toHaveAccessibleDescription('Completed for 1 of 2 models')
+    expect(screen.getByText('Completed for 1 of 2 models').closest('li')).toHaveAttribute(
+      'title',
+      'Completed for 1 of 2 models',
+    )
     expect(screen.getByText(ALL_MODELS_NOTE)).toBeInTheDocument()
   })
 
@@ -184,7 +191,8 @@ describe('ScenarioRail rollup mode', () => {
       member({ conversationId: 'c2', completedTaskIds: done() }),
     ])
 
-    expect(screen.getByLabelText('Completed for 2 of 2 models')).toHaveTextContent('2/2')
+    expect(screen.getByText('Completed for 2 of 2 models')).toBeInTheDocument()
+    expect(screen.queryByText('2/2')).not.toBeInTheDocument()
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100')
   })
 
@@ -196,7 +204,7 @@ describe('ScenarioRail rollup mode', () => {
 
     // The box sets c1 only, so c2's missing check-off must not make it read as partial.
     expect(screen.getByRole('checkbox')).toBeChecked()
-    expect(screen.getByLabelText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(screen.getByText('Completed for 1 of 2 models')).toBeInTheDocument()
     expect(screen.getByText(OWNED_MODELS_NOTE)).toBeInTheDocument()
   })
 
@@ -205,7 +213,7 @@ describe('ScenarioRail rollup mode', () => {
 
     // The block must NOT unmount: adding a model mounts a new query.
     expect(screen.getByText(task.name)).toBeInTheDocument()
-    expect(screen.getByLabelText('Loading completion counts')).toHaveTextContent('…')
+    expect(screen.getByText('Loading completion counts')).toBeInTheDocument()
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
     // Transient and self-clearing, so a real disabled is honest.
@@ -216,7 +224,7 @@ describe('ScenarioRail rollup mode', () => {
     renderRollupRail(PARTIAL, { countsState: 'error' })
 
     // Silently reading a failed member as "nothing completed" would under-report K.
-    expect(screen.getByLabelText('Completion counts unavailable')).toHaveTextContent('—')
+    expect(screen.getByText('Completion counts unavailable')).toBeInTheDocument()
     // Inline too, not only on activation — a sighted mouse user must not have to click a
     // seemingly-live checkbox to find out why nothing happens.
     expect(screen.getByText('Completion counts unavailable — reload to retry.')).toBeInTheDocument()
@@ -252,7 +260,8 @@ describe('ScenarioRail rollup mode', () => {
     renderRollupRail(PARTIAL.map((m) => ({ ...m, canToggle: false })))
 
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
-    expect(screen.getByLabelText('Completed for 1 of 2 models')).toHaveTextContent('1/2')
+    expect(screen.getByText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(screen.queryByText('1/2')).not.toBeInTheDocument()
     expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
   })
 
@@ -264,7 +273,7 @@ describe('ScenarioRail rollup mode', () => {
 
     // The reads a supervisor can make are author-scoped and so structurally empty; a badge
     // off them would report the owner's work as 0/2.
-    expect(screen.queryByLabelText(/Completed for/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Completed for/)).not.toBeInTheDocument()
     expect(screen.queryByText('1/2')).not.toBeInTheDocument()
     // Not an indeterminate bar either — that still promises a number is coming.
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
@@ -290,7 +299,7 @@ describe('ScenarioRail rollup mode', () => {
     expect(box).not.toBeDisabled()
     await userEvent.click(box)
     expect(onToggle).toHaveBeenCalledWith(TASK_ID, false)
-    expect(screen.queryByLabelText(/Completed for/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Completed for/)).not.toBeInTheDocument()
   })
 
   it('still disables the owned box while its read is in flight, roll-up hidden or not', () => {
@@ -298,7 +307,7 @@ describe('ScenarioRail rollup mode', () => {
 
     // An enabled box reading unchecked would assert "not completed" from a set still in flight.
     expect(screen.getByRole('checkbox')).toBeDisabled()
-    expect(screen.queryByLabelText('Loading completion counts')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loading completion counts')).not.toBeInTheDocument()
   })
 
   it('blames a failed read rather than ownership when the roll-up is unreadable', async () => {
@@ -319,7 +328,8 @@ describe('ScenarioRail rollup mode', () => {
   it('renders an empty group as 0/0 with nothing to check', () => {
     renderRollupRail([])
 
-    expect(screen.getByLabelText('Completed for 0 of 0 models')).toHaveTextContent('0/0')
+    expect(screen.getByText('Completed for 0 of 0 models')).toBeInTheDocument()
+    expect(screen.queryByText('0/0')).not.toBeInTheDocument()
     // No members means no checkbox and no read-only claim — the group is empty, not blocked.
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
     expect(screen.queryByText('Read-only — not your conversation.')).not.toBeInTheDocument()

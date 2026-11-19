@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { toast } from 'sonner'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
@@ -181,8 +182,8 @@ function TaskRow({ task, completion }: { task: TaskResponse; completion: TaskCom
 }
 
 // A group's task row: one checkbox for the whole comparison, applied to every member the
-// caller owns, plus the K/N badge counting all members. The checkbox reflects only the members
-// it changes, so a mixed group's box can't claim a state it would not set.
+// caller owns, plus a K/N roll-up over all members for screen readers and on hover. The checkbox
+// reflects only the members it changes, so a mixed group's box can't claim a state it would not set.
 function RollupTaskRow({
   task,
   completion,
@@ -191,6 +192,7 @@ function RollupTaskRow({
   completion: Extract<TaskCompletionUI, { mode: 'rollup' }>
 }) {
   const { members, countsState, countsReadable } = completion
+  const rollupId = useId()
   const count = completedCount(task.id, members)
   // Struck through only once every conversation has it and the counts are settled. The
   // readability conjunct is belt-and-braces — an unreadable member reads as empty, so `count`
@@ -202,27 +204,20 @@ function RollupTaskRow({
     loading: 'Loading completion counts',
     error: 'Completion counts unavailable',
   }[countsState]
-  const rollupText = { ready: `${count}/${members.length}`, loading: '…', error: '—' }[countsState]
-
-  // Absent when the caller may not read the counts — the inline note carries the reason once
-  // for the list instead of every row repeating it.
+  // Not shown: a visible "1/2" read as unexplained numbers to the client.
   const badge = countsReadable ? (
-    <span
-      className="text-muted-foreground mt-0.5 shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-[10px] tabular-nums"
-      // `aria-label` is ignored on a generic element, so the badge needs a role to carry
-      // it — otherwise a screen reader announces the bare "1/2".
-      role="img"
-      title={rollup}
-      aria-label={rollup}
-    >
-      {rollupText}
+    <span id={rollupId} className="sr-only">
+      {rollup}
     </span>
   ) : null
 
   const owned = members.filter((m) => m.canToggle)
   if (owned.length === 0) {
     return (
-      <li className={cn(tileClass(done), 'justify-between')}>
+      <li
+        className={cn(tileClass(done), 'justify-between')}
+        title={countsReadable ? rollup : undefined}
+      >
         <TaskLabel task={task} done={done} />
         {badge}
       </li>
@@ -233,7 +228,10 @@ function RollupTaskRow({
   const checked = ownedDone === 0 ? false : ownedDone === owned.length ? true : 'indeterminate'
   const countsFailed = countsState === 'error'
   return (
-    <li className={cn(tileClass(done), !countsFailed && 'hover:border-border')}>
+    <li
+      className={cn(tileClass(done), !countsFailed && 'hover:border-border')}
+      title={countsReadable ? rollup : undefined}
+    >
       <label
         className={cn(
           'flex min-w-0 flex-1 items-start gap-2',
@@ -250,6 +248,7 @@ function RollupTaskRow({
           // explanation elsewhere. That one stays reachable and says so.
           disabled={countsState === 'loading' || completion.togglingTaskIds.has(task.id)}
           aria-disabled={countsFailed || undefined}
+          aria-describedby={countsReadable ? rollupId : undefined}
           onCheckedChange={(next) => {
             if (countsFailed) {
               toast.info(COUNTS_UNAVAILABLE_NOTE, { id: 'task-counts-unavailable' })
