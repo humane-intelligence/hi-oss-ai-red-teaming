@@ -5266,8 +5266,8 @@ paths:
       tags:
       - evaluations
       summary: Define a conversation-label category
-      description: Add a label category, optionally with its allowed values (none means free text). Needs an in-group role
-        granting `evaluations:update`, or `evaluation_groups:manage`.
+      description: Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an
+        in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
       operationId: create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post
       parameters:
       - name: evaluation_id
@@ -7887,7 +7887,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: The user is already a member of this group, or is deactivated and was never a member of it.
+          description: The user is already a member of this group, or is deactivated and was not removed from it within the
+            restore window.
           content:
             application/problem+json:
               schema:
@@ -20528,8 +20529,8 @@ components:
           type: array
           maxItems: 50
           title: Values
-          description: Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free
-            text.
+          description: Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the category is picked
+            on its own, with no value.
       type: object
       required:
       - name
@@ -20561,7 +20562,7 @@ components:
             type: string
           type: array
           title: Values
-          description: Allowed values, in the order defined; empty means free text.
+          description: Allowed values, in the order defined; empty means the category is picked on its own.
         created_at:
           type: string
           format: date-time

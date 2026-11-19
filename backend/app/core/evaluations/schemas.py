@@ -1591,7 +1591,7 @@ class EvaluationLabelCategoryCreate(BaseModel):
     values: LabelValues = Field(
         default_factory=list,
         description=f"Allowed values (each ≤100 chars, at most {MAX_LABEL_VALUES}, unique ignoring case). "
-        "Empty means the label takes free text.",
+        "Empty means the category is picked on its own, with no value.",
     )
 
 
@@ -1632,7 +1632,9 @@ class EvaluationLabelCategoryResponse(BaseModel):
     id: UUID = Field(description="Server-assigned identifier.")
     evaluation_id: UUID = Field(description="Evaluation the category belongs to.")
     name: str = Field(description="Category name.")
-    values: list[str] = Field(description="Allowed values, in the order defined; empty means free text.")
+    values: list[str] = Field(
+        description="Allowed values, in the order defined; empty means the category is picked on its own."
+    )
     created_at: datetime = Field(description="UTC timestamp the category was created.")
 
     @classmethod

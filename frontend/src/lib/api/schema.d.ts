@@ -1158,7 +1158,7 @@ export interface paths {
         put?: never;
         /**
          * Define a conversation-label category
-         * @description Add a label category, optionally with its allowed values (none means free text). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
+         * @description Add a label category, optionally with its allowed values (none means it is picked on its own). Needs an in-group role granting `evaluations:update`, or `evaluation_groups:manage`.
          */
         post: operations["create_label_category_endpoint_api_v1_evaluations__evaluation_id__label_categories_post"];
         delete?: never;
@@ -6546,7 +6546,7 @@ export interface components {
             name: string;
             /**
              * Values
-             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the label takes free text.
+             * @description Allowed values (each ≤100 chars, at most 50, unique ignoring case). Empty means the category is picked on its own, with no value.
              */
             values?: string[];
         };
@@ -6584,7 +6584,7 @@ export interface components {
             name: string;
             /**
              * Values
-             * @description Allowed values, in the order defined; empty means free text.
+             * @description Allowed values, in the order defined; empty means the category is picked on its own.
              */
             values: string[];
             /**
@@ -20117,7 +20117,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The user is already a member of this group, or is deactivated and was never a member of it. */
+            /** @description The user is already a member of this group, or is deactivated and was not removed from it within the restore window. */
             409: {
                 headers: {
                     [name: string]: unknown;
