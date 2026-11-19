@@ -7886,7 +7886,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '409':
-          description: The user is already a member of this group.
+          description: The user is already a member of this group, or is deactivated and was never a member of it.
           content:
             application/problem+json:
               schema:
@@ -9815,7 +9815,7 @@ paths:
         '409':
           description: client_message_id already used in another conversation; or the evaluation group is not open for prompts
             (not published yet for a caller who may not edit the evaluation, or finished), or the evaluation is rejected or
-            completed.
+            completed. A replay of an already-accepted turn is never refused for the group's state.
           content:
             application/problem+json:
               schema:
@@ -18344,8 +18344,8 @@ components:
           maxProperties: 20
           title: Labels
           description: Labels, keyed by a label category of the evaluation, each with the list of values picked there. A category
-            with values takes any number of them; one without is selected by listing it with an empty list. Labels are never
-            sent to the model.
+            with values takes any number of them; one without is selected by listing it with an empty list or a blank entry.
+            Labels are never sent to the model.
       additionalProperties: false
       type: object
       required:
@@ -18558,8 +18558,9 @@ components:
           title: Labels
           description: Replacement label set, keyed by label category, each with the list of values picked there; a category
             left out is cleared, and so is one with values listed with none. A category without values is selected by listing
-            it with an empty list. A value the group already holds is accepted even after it was dropped from its category's
-            list.
+            it with an empty list or a blank entry. A value the group already holds is accepted even after it was dropped
+            from its category's list, and a blank entry keeps a category the group holds on its own after the category gained
+            values.
       type: object
       title: ConversationGroupUpdate
       description: 'Payload for `PATCH /v1/evaluations/{evaluation_id}/conversation-groups/{id}`.
@@ -19291,9 +19292,11 @@ components:
 
         fields (`provider`, `provider_model_id`) are withheld as `null` — except on the
 
-        evaluation detail and model list reads for a caller who may edit the evaluation,
+        evaluation detail and model list reads for a caller who may edit the evaluation
 
-        which surface the real identity (`may_see_model_identities`). The
+        (the global `evaluations:update` plus write access to its group), which surface
+
+        the real identity. The
 
         `assignment_id` is always present — it addresses the assignment without
 
