@@ -2191,7 +2191,7 @@ export interface paths {
         put?: never;
         /**
          * Warm up a model endpoint
-         * @description Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or `error` (a fault a retry won't fix, e.g. bad credentials).
+         * @description Fire a single lightweight probe at an assigned model and report whether it is ready to serve. Intended for models backed by scale-to-zero endpoints, which reject the first request while a replica wakes: poll this until `ready` (or `error`) before sending the first message — the probe itself triggers the wake. Returns `ready` (send now), `starting` (still waking — retry), or `error` (a fault a retry won't fix, e.g. bad credentials). Refused with 409 once the evaluation takes no prompts, by the same rule as sending one: the probe is a call to the model.
          */
         post: operations["warmup_model_endpoint_api_v1_evaluations__evaluation_id__models__assignment_id__warmup_post"];
         delete?: never;
@@ -22794,6 +22794,16 @@ export interface operations {
             };
             /** @description Evaluation or assignment does not exist or is not visible. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The evaluation's group is not open for prompts (finished, or not published yet for a caller who may not edit the evaluation), or the evaluation is closed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

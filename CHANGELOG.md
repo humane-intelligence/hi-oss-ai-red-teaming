@@ -50,8 +50,9 @@ change between minor versions.
 
 ### Changed
 
-- Starting a conversation and sending, regenerating or continuing a prompt now need the
-  evaluation's group to be open for them, and answer 409 otherwise: a published group takes them
+- Starting a conversation, sending, regenerating or continuing a prompt, and warming a model up
+  (`POST /evaluations/{id}/models/{assignment_id}/warmup`) now need the evaluation's group to be
+  open for them, and answer 409 otherwise: a published group takes them
   from anyone who can reach it; before publication only from a caller who may edit the evaluation
   (to try a scenario out); a finished group and a rejected or completed evaluation from nobody.
   Conversations already recorded stay readable, and a retried send of an already-accepted turn is

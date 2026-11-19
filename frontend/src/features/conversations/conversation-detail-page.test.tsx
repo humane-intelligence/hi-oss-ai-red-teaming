@@ -1534,6 +1534,41 @@ describe('ConversationDetailPage — composer warmup gate', () => {
     await user.type(await screen.findByLabelText('Message'), 'hello')
     expect(screen.getByRole('button', { name: /send/i })).toBeDisabled()
   })
+
+  it('does not probe the model once the group is finished', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`, () =>
+        HttpResponse.json({
+          id: evaluation.evaluation_group_id,
+          title: 'Engagement',
+          description: '',
+          status: 'inactive',
+          access_level: 'invitation_only',
+          start_date: '2026-01-01',
+          end_date: null,
+          created_by_id: 'user-000-0000-0000-000000000000',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          evaluations: [],
+          user_permissions: [],
+        }),
+      ),
+      http.get(`http://localhost/api/v1/scenarios/${SCENARIO_ID}/tasks`, () =>
+        HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0 }),
+      ),
+      ...baseHandlers(conversationWithScenario),
+    )
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        'This evaluation group is finished, so its conversations no longer take prompts.',
+      ),
+    ).toBeInTheDocument()
+    // The server refuses the probe with a 409, which the badge would report as the model failing.
+    expect(warmupCalls).toBe(0)
+    expect(screen.queryByText(/model ready|waking|unavailable/i)).toBeNull()
+  })
 })
 
 describe('ConversationDetailPage — the way back to the evaluation group', () => {

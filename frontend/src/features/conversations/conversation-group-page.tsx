@@ -61,7 +61,7 @@ export function ConversationGroupPage() {
   const gid = groupId ?? ''
 
   const authority = useGroupAuthority(evalId, 'conversations:read')
-  const { allows, canManage, groupPermissions, promptsBlocked } = authority
+  const { allows, canManage, groupPermissions, lifecycleKnown, promptsBlocked } = authority
   const evaluation = useEvaluation(evalId)
   const conversationTagsEnabled = useConversationTagsEnabled()
   const groupQuery = useConversationGroup(evalId, gid, { groupPermissions })
@@ -310,7 +310,8 @@ export function ConversationGroupPage() {
                     assignmentId={c.evaluation_ai_model_id}
                     modelName={modelName(c.evaluation_ai_model_id)}
                     nameSuffix={nameSuffixes[i]}
-                    warmupEnabled={warmupEnabled(c.evaluation_ai_model_id)}
+                    // Until the group's stage is known a pane would warm a model a closed group refuses.
+                    warmupEnabled={lifecycleKnown && warmupEnabled(c.evaluation_ai_model_id)}
                     webAccess={webAccess(c.evaluation_ai_model_id)}
                     acceptsImages={acceptsImages(c.evaluation_ai_model_id)}
                     showTags={conversationTagsEnabled}
