@@ -156,6 +156,23 @@ describe('EvaluationDetailPage — summary', () => {
   })
 })
 
+describe('EvaluationDetailPage — cover', () => {
+  it('shows the cover image when the evaluation has one', async () => {
+    server.use(...baseHandlers({ ...baseEvaluation, cover_image: 'covers/a.png' }))
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    const img = await screen.findByRole('img', { name: 'Test evaluation cover' })
+    expect(img).toHaveAttribute('src', expect.stringContaining('/api/v1/images/covers/a.png'))
+  })
+
+  it('shows a placeholder when the evaluation has no cover', async () => {
+    server.use(...baseHandlers())
+    renderPage(['evaluations:read', 'evaluation_groups:read'])
+
+    expect(await screen.findByRole('img', { name: 'No cover image' })).toBeInTheDocument()
+  })
+})
+
 describe('EvaluationDetailPage — settings row', () => {
   it('groups models, tags, labels and other details under Evaluation settings', async () => {
     server.use(...baseHandlers())
