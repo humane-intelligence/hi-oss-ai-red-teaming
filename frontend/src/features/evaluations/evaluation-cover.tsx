@@ -6,12 +6,13 @@ import { cn } from '@/lib/utils'
 
 type Props = {
   imageKey: string | null | undefined
-  alt: string
+  alt?: string
   className?: string
-  placeholderLabel?: string
+  // A list thumbnail sits next to the title link, so announcing it on every row adds nothing.
+  decorative?: boolean
 }
 
-export function EvaluationCover({ imageKey, alt, className, placeholderLabel }: Props) {
+export function EvaluationCover({ imageKey, alt = '', className, decorative = false }: Props) {
   const [brokenKey, setBrokenKey] = useState<string | null>(null)
   const showImage = !!imageKey && brokenKey !== imageKey
   return (
@@ -24,19 +25,21 @@ export function EvaluationCover({ imageKey, alt, className, placeholderLabel }: 
       {showImage ? (
         <img
           src={publicImageUrl(imageKey)}
-          alt={alt}
-          loading="lazy"
+          alt={decorative ? '' : alt}
+          loading={decorative ? 'lazy' : 'eager'}
           className="max-h-full max-w-full object-contain"
           onError={() => setBrokenKey(imageKey)}
         />
+      ) : decorative ? (
+        <ImageIcon className="text-muted-foreground size-4" aria-hidden="true" />
       ) : (
         <div
           role="img"
-          aria-label={placeholderLabel ?? 'No cover image'}
+          aria-label="No cover image"
           className="text-muted-foreground flex flex-col items-center gap-1 text-xs"
         >
           <ImageIcon className="size-5" aria-hidden="true" />
-          {placeholderLabel}
+          No cover image
         </div>
       )}
     </div>

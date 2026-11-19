@@ -291,19 +291,22 @@ describe('EvaluationsListPage — row cells', () => {
     expect(screen.getByRole('columnheader', { name: 'Models' })).toHaveClass('text-center')
   })
 
-  it('shows a thumbnail of the cover image', async () => {
+  it('shows the cover as a thumbnail screen readers skip', async () => {
     server.use(oneEvaluationIn(GROUP_ON_PAGE_TWO, 'covers/a.png'), groupsHandler())
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    const img = await screen.findByRole('img', { name: 'Prompt injection cover' })
+    await screen.findByRole('link', { name: 'Prompt injection' })
+    const img = document.querySelector('td img')
     expect(img).toHaveAttribute('src', expect.stringContaining('/api/v1/images/covers/a.png'))
+    expect(img).toHaveAttribute('alt', '')
   })
 
-  it('shows a placeholder for an evaluation without a cover', async () => {
+  it('does not announce a missing cover on every row', async () => {
     server.use(oneEvaluationIn(GROUP_ON_PAGE_TWO), groupsHandler())
     renderPage(['evaluations:read', 'evaluation_groups:read'])
 
-    expect(await screen.findByRole('img', { name: 'No cover image' })).toBeInTheDocument()
+    await screen.findByRole('link', { name: 'Prompt injection' })
+    expect(screen.queryByRole('img', { name: 'No cover image' })).toBeNull()
   })
 })
 

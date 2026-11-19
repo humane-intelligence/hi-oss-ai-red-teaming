@@ -20,4 +20,11 @@ describe('EvaluationCover', () => {
     fireEvent.error(screen.getByRole('img', { name: 'Medication advice cover' }))
     expect(screen.getByRole('img', { name: 'No cover image' })).toBeInTheDocument()
   })
+
+  it('hides a decorative cover and its placeholder from screen readers', () => {
+    const { rerender } = render(<EvaluationCover decorative imageKey="covers/a.png" />)
+    expect(document.querySelector('img')).toHaveAttribute('alt', '')
+    rerender(<EvaluationCover decorative imageKey={null} />)
+    expect(screen.queryByRole('img')).toBeNull()
+  })
 })

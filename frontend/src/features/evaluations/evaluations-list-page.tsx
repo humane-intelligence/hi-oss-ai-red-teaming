@@ -70,9 +70,7 @@ export function EvaluationsContent() {
       label: 'Cover',
       header: <span className="sr-only">Cover</span>,
       hideBelow: 'sm',
-      cell: (e) => (
-        <EvaluationCover imageKey={e.cover_image} alt={`${e.title} cover`} className="h-10 w-15" />
-      ),
+      cell: (e) => <EvaluationCover decorative imageKey={e.cover_image} className="h-10 w-15" />,
     },
     {
       id: 'title',
