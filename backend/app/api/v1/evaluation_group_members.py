@@ -7,6 +7,7 @@ gated on group visibility; writes on the object-scope
 break-glass admin — never a member holding a lesser role, per the override rule).
 """
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -40,12 +41,14 @@ from app.core.bulk import apply_bulk
 from app.core.dependencies import CurrentUserDep
 from app.core.dependencies import DbSession
 from app.core.dependencies import PaginationDep
+from app.core.dependencies import SettingsDep
 from app.core.dependencies import transactional
 from app.core.evaluations.dependencies import GroupReadDep
 from app.core.evaluations.dependencies import ManageMembersDep
 from app.core.evaluations.schemas import GroupMemberBulkRequest
 from app.core.openapi import COMMON_ERROR_RESPONSES
 from app.core.openapi import problem_response
+from app.core.restore import restore_cutoff
 from app.core.schemas import Page
 
 router = APIRouter(prefix="/evaluation-groups/{group_id}/members", tags=["evaluation-groups"])
@@ -65,21 +68,22 @@ async def _add_member(
     caller: SessionUser,
     *,
     audit: bool = True,
-    allow_removed_member: bool = False,
+    removed_since: datetime | None = None,
 ) -> ObjectMember:
     """Add one member and audit it — shared by the single and the bulk route.
 
     The bulk route passes `audit=False` on a dry run: the bulk contract gates every
     side effect on `dry_run`, not only on the rollback that happens to undo it. A
     deactivated account is refused, as by the group invitation, except that the single
-    route passes `allow_removed_member` so Undo can put back a member removed from this
-    group, whatever their account status.
+    route passes `removed_since` (the restore window) so Undo can put back a member
+    recently removed from this group, whatever their account status.
     """
     user = await get_user(session, payload.user_id)
     roles = await resolve_assignable_roles(session, _SCOPE_SPEC, payload.role_ids)
     # A pending account is fine, its roles wait for activation.
     if user.status is UserStatus.INACTIVE and not (
-        allow_removed_member and await was_member(session, _OBJECT_TYPE, group_id, user.id)
+        removed_since is not None
+        and await was_member(session, _OBJECT_TYPE, group_id, user.id, removed_since=removed_since)
     ):
         raise UserDeactivatedError
     member = await add_member(session, _OBJECT_TYPE, group_id, user, roles)
@@ -164,7 +168,8 @@ async def list_group_members_endpoint(
         status.HTTP_403_FORBIDDEN: _FORBIDDEN,
         status.HTTP_404_NOT_FOUND: _NOT_FOUND,
         status.HTTP_409_CONFLICT: problem_response(
-            "The user is already a member of this group, or is deactivated and was never a member of it."
+            "The user is already a member of this group, or is deactivated and was not removed from it "
+            "within the restore window."
         ),
     },
 )
@@ -175,12 +180,14 @@ async def add_group_member_endpoint(
     caller: CurrentUserDep,
     db: DbSession,
     response: Response,
+    settings: SettingsDep,
 ) -> ObjectMemberResponse:
     """Add a member to an evaluation group with one or more roles.
 
     Held roles become the member's *entire* effective permission set on the group
     — never combined with their global permissions. A deactivated user is refused,
-    unless they were removed from this group before, so that Undo can put them back.
+    unless they were removed from this group within the restore window, so that Undo
+    can put them back.
 
     ### Errors
 
@@ -188,10 +195,10 @@ async def add_group_member_endpoint(
     * **401 Unauthorized** — bearer token missing/invalid.
     * **403 Forbidden** — caller lacks the `evaluation_groups:manage_members` permission for this group.
     * **404 Not Found** — the group or the target user does not exist.
-    * **409 Conflict** — the user is already a member of this group, or is deactivated and was never
-      a member of it (`type: urn:redteam:error:user-deactivated`).
+    * **409 Conflict** — the user is already a member of this group, or is deactivated and was not
+      removed from it within the restore window (`type: urn:redteam:error:user-deactivated`).
     """
-    member = await _add_member(db, context.group.id, payload, caller, allow_removed_member=True)
+    member = await _add_member(db, context.group.id, payload, caller, removed_since=restore_cutoff(settings))
     response.headers["Location"] = f"/api/v1/evaluation-groups/{context.group.id}/members/{payload.user_id}"
     return ObjectMemberResponse.from_member(member)
 

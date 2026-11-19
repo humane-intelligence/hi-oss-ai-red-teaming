@@ -6,13 +6,17 @@ object-role *override* (a global manager demoted by a lesser in-group role) and
 the *break-glass* admin that survives it.
 """
 
+from datetime import UTC
 from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
 from fastapi import status
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -28,6 +32,7 @@ from app.core.auth.object_roles.service import remove_member
 from app.core.auth.roles import Permission
 from app.core.auth.schemas import MAX_INVITE_ROWS
 from app.core.auth.services.users import create_user
+from app.core.config import get_settings
 from app.core.evaluations.enums import EvaluationGroupAccessLevel
 from app.core.evaluations.enums import PublicationStatus
 from app.core.evaluations.models import EvaluationGroup
@@ -652,6 +657,33 @@ async def test_single_add_puts_a_removed_deactivated_member_back(
     assert removed.status_code == status.HTTP_204_NO_CONTENT
     assert restored.status_code == status.HTTP_201_CREATED
     assert [role["name"] for role in restored.json()["roles"]] == ["viewer"]
+
+
+async def test_single_add_refuses_a_deactivated_member_removed_before_the_restore_window(
+    async_client_with_db: AsyncClient, db_session: AsyncSession, system_roles: dict[str, Role]
+) -> None:
+    # Undo is a recent removal; one from long ago is a new add, which a deactivated account never gets.
+    owner = await _user(db_session)
+    group = await _owned_group(db_session, system_roles, owner)
+    member = await _user(db_session)
+    body = {"user_id": str(member.id), "role_ids": [str(system_roles["viewer"].id)]}
+    with as_user(owner):
+        await async_client_with_db.post(_members_url(group), json=body)
+        await async_client_with_db.delete(f"{_members_url(group)}/{member.id}")
+    member.status = UserStatus.INACTIVE
+    window = get_settings().restore_window_days
+    await db_session.execute(
+        update(ObjectRoleAssignment)
+        .where(col(ObjectRoleAssignment.user_id) == member.id)
+        .values(deleted_at=datetime.now(UTC) - timedelta(days=window + 1))
+    )
+    await db_session.flush()
+
+    with as_user(owner):
+        response = await async_client_with_db.post(_members_url(group), json=body)
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["type"] == "urn:redteam:error:user-deactivated"
 
 
 async def test_single_add_refuses_a_deactivated_user_who_was_never_a_member(

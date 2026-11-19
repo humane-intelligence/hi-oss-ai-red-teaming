@@ -8,6 +8,7 @@ itself are the owning domain's concern; this layer never loads the object.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_
@@ -255,13 +256,15 @@ async def _live_assignments(
     return list((await session.execute(statement)).scalars().all())
 
 
-async def was_member(session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID) -> bool:
-    """Whether the user once held a role on the object that has since been removed."""
+async def was_member(
+    session: AsyncSession, object_type: ObjectType, object_id: UUID, user_id: UUID, *, removed_since: datetime
+) -> bool:
+    """Whether the user held a role on the object that was removed at or after `removed_since`."""
     statement = select(col(ObjectRoleAssignment.id)).where(
         col(ObjectRoleAssignment.object_type) == object_type,
         col(ObjectRoleAssignment.object_id) == object_id,
         col(ObjectRoleAssignment.user_id) == user_id,
-        col(ObjectRoleAssignment.deleted_at).is_not(None),
+        col(ObjectRoleAssignment.deleted_at) >= removed_since,
     )
     return (await session.execute(statement.limit(1))).first() is not None
 
