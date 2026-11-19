@@ -50,6 +50,9 @@ change between minor versions.
 
 ### Changed
 
+- `POST /evaluation-groups/{group_id}/members/bulk` loads the envelope's users once and resolves
+  each accepted set of `role_ids` once, instead of both per row: about half the statements of an
+  "add all members" (10 per row down to 5, savepoints included). Per-row outcomes are unchanged.
 - Starting a conversation, sending, regenerating or continuing a prompt, and warming a model up
   (`POST /evaluations/{id}/models/{assignment_id}/warmup`) now need the evaluation's group to be
   open for them, and answer 409 otherwise: a published group takes them

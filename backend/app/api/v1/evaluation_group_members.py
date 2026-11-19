@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit.enums import AuditAction
 from app.core.audit.service import record_audit
+from app.core.auth.models import Role
+from app.core.auth.models import User
 from app.core.auth.models import UserStatus
 from app.core.auth.object_roles.registry import OBJECT_ROLE_REGISTRY
 from app.core.auth.object_roles.registry import ObjectType
@@ -37,6 +39,7 @@ from app.core.auth.object_roles.service import was_member
 from app.core.auth.schemas import SessionUser
 from app.core.auth.services.users import UserDeactivatedError
 from app.core.auth.services.users import get_user
+from app.core.auth.services.users import get_users_by_ids
 from app.core.bulk import BulkResponse
 from app.core.bulk import apply_bulk
 from app.core.dependencies import CurrentUserDep
@@ -47,6 +50,7 @@ from app.core.dependencies import transactional
 from app.core.evaluations.dependencies import GroupReadDep
 from app.core.evaluations.dependencies import ManageMembersDep
 from app.core.evaluations.schemas import GroupMemberBulkRequest
+from app.core.exceptions import NotFoundError
 from app.core.openapi import COMMON_ERROR_RESPONSES
 from app.core.openapi import problem_response
 from app.core.restore import restore_cutoff
@@ -65,7 +69,8 @@ _NOT_FOUND = problem_response("Evaluation group not found, or not visible to the
 async def _add_member(
     session: AsyncSession,
     group_id: UUID,
-    payload: ObjectMemberCreate,
+    user: User,
+    roles: list[Role],
     caller: SessionUser,
     *,
     audit: bool = True,
@@ -73,15 +78,15 @@ async def _add_member(
 ) -> ObjectMember:
     """Add one member and audit it — shared by the single and the bulk route.
 
-    The bulk route passes `audit=False` on a dry run: the bulk contract gates every
-    side effect on `dry_run`, not only on the rollback that happens to undo it. A
-    deactivated account is refused by default, as by the group invitation; the single
-    route passes `removed_since` (the restore window) so Undo can put back a member
-    recently removed from this group, and the bulk route passes nothing. A live member
-    is answered as one whatever their account status.
+    Takes the user and roles already resolved: the single route resolves them per call,
+    the bulk route loads the users once and resolves each accepted role set once. The
+    bulk route passes `audit=False` on a dry run: the bulk contract gates every side
+    effect on `dry_run`, not only on the rollback that happens to undo it. A deactivated
+    account is refused by default, as by the group invitation; the single route passes
+    `removed_since` (the restore window) so Undo can put back a member recently removed
+    from this group, and the bulk route passes nothing. A live member is answered as one
+    whatever their account status.
     """
-    user = await get_user(session, payload.user_id)
-    roles = await resolve_assignable_roles(session, _SCOPE_SPEC, payload.role_ids)
     # A pending account is fine, its roles wait for activation.
     if (
         user.status is UserStatus.INACTIVE
@@ -100,7 +105,7 @@ async def _add_member(
             actor_email=caller.email,
             action=AuditAction.MEMBER_ADD,
             object_type="evaluation_group_member",
-            object_id=payload.user_id,
+            object_id=user.id,
             after={"roles": sorted(role.name for role in member.roles)},
             context={"group_id": str(group_id)},
         )
@@ -204,7 +209,9 @@ async def add_group_member_endpoint(
     * **409 Conflict** — the user is already a member of this group, or is deactivated and was not
       removed from it within the restore window (`type: urn:redteam:error:user-deactivated`).
     """
-    member = await _add_member(db, context.group.id, payload, caller, removed_since=restore_cutoff(settings))
+    user = await get_user(db, payload.user_id)
+    roles = await resolve_assignable_roles(db, _SCOPE_SPEC, payload.role_ids)
+    member = await _add_member(db, context.group.id, user, roles, caller, removed_since=restore_cutoff(settings))
     response.headers["Location"] = f"/api/v1/evaluation-groups/{context.group.id}/members/{payload.user_id}"
     return ObjectMemberResponse.from_member(member)
 
@@ -238,10 +245,10 @@ async def bulk_add_group_members_endpoint(
 ) -> BulkResponse[ObjectMemberResponse]:
     """Add members to an evaluation group in bulk, one row per user.
 
-    Each row is the single-add body and goes through the same path, audit
-    included except on a dry run, without the single add's Undo exception: a
-    deactivated user is refused even right after a removal. Group visibility and
-    `manage_members` are checked once for the envelope. No `@transactional` — `apply_bulk` owns the
+    Each row goes through `_add_member` like the single add, without its Undo
+    exception: a deactivated user is refused even right after a removal. Group
+    visibility and `manage_members` are checked once for the envelope. No
+    `@transactional` — `apply_bulk` owns the
     transaction (commit, or rollback on dry-run).
 
     ### Errors
@@ -252,8 +259,21 @@ async def bulk_add_group_members_endpoint(
     * **422 Unprocessable Entity** — duplicate `row_key` or `user_id`, empty `rows`, or over the row cap.
     """
 
+    # An "add all" sends a whole organization, so users are loaded once for the envelope and each
+    # accepted role set is resolved once; a refused set raises before it is cached, so it is retried per row.
+    users = await get_users_by_ids(db, [row.data.user_id for row in payload.rows])
+    resolved_roles: dict[tuple[UUID, ...], list[Role]] = {}
+
     async def processor(session: AsyncSession, data: ObjectMemberCreate) -> ObjectMemberResponse:
-        member = await _add_member(session, context.group.id, data, caller, audit=not payload.dry_run)
+        user = users.get(data.user_id)
+        if user is None:
+            raise NotFoundError(f"User {data.user_id} not found.")
+        key = tuple(data.role_ids)
+        if key not in resolved_roles:
+            resolved_roles[key] = await resolve_assignable_roles(session, _SCOPE_SPEC, data.role_ids)
+        member = await _add_member(
+            session, context.group.id, user, resolved_roles[key], caller, audit=not payload.dry_run
+        )
         return ObjectMemberResponse.from_member(member)
 
     return await apply_bulk(db, payload, processor)

@@ -6,6 +6,7 @@ object-role *override* (a global manager demoted by a lesser in-group role) and
 the *break-glass* admin that survives it.
 """
 
+from collections.abc import Iterator
 from datetime import UTC
 from datetime import date
 from datetime import datetime
@@ -15,6 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+from sqlalchemy import event
 from sqlalchemy import select
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -564,6 +566,46 @@ async def test_bulk_add_reports_failed_rows_and_keeps_the_rest(
     roles_by_user = {m["user"]["id"]: {r["name"] for r in m["roles"]} for m in listed.json()["items"]}
     assert roles_by_user[str(existing_id)] == {"viewer"}
     assert roles_by_user[str(fresh_id)] == {"red_teamer"}
+
+
+@pytest.fixture
+def statements(db_session: AsyncSession) -> Iterator[list[str]]:
+    seen: list[str] = []
+    engine = db_session.bind.engine.sync_engine
+
+    def record(conn: object, cursor: object, statement: str, *args: object) -> None:
+        seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    yield seen
+    event.remove(engine, "before_cursor_execute", record)
+
+
+async def test_bulk_add_looks_users_and_roles_up_once_for_the_envelope(
+    async_client_with_db: AsyncClient,
+    db_session: AsyncSession,
+    system_roles: dict[str, Role],
+    statements: list[str],
+) -> None:
+    # "Add all members" sends a whole organization, so the lookups must not grow with the rows.
+    owner = await _user(db_session, _READ)
+
+    async def lookups(rows: int) -> tuple[int, int]:
+        group = await _owned_group(db_session, system_roles, owner)
+        user_ids = [(await _user(db_session)).id for _ in range(rows)]
+        payload = {"rows": [_row(str(i), user_id, system_roles["red_teamer"]) for i, user_id in enumerate(user_ids)]}
+        statements.clear()
+        with as_user(owner):
+            response = await async_client_with_db.post(_bulk_url(group), json=payload)
+        assert response.json()["succeeded"] == rows
+        selects = [sql for sql in statements if sql.lstrip().startswith("SELECT")]
+        return sum("FROM users" in sql for sql in selects), sum("FROM roles" in sql for sql in selects)
+
+    few, many = await lookups(2), await lookups(6)
+
+    # Both counters must hit, or a changed FROM clause would make the comparison pass at (0, 0).
+    assert all(few)
+    assert many == few
 
 
 async def test_bulk_add_dry_run_writes_nothing(
