@@ -79,6 +79,18 @@ export function ConversationGroupsListPage() {
       },
     },
     {
+      id: 'prompts',
+      label: 'Prompts',
+      header: 'Prompts',
+      hideBelow: 'lg',
+      // Turns of the busiest model; a pane can be prompted alone, so not a count of distinct prompts.
+      cell: (g) => (
+        <span className="text-muted-foreground tabular-nums">
+          {Math.max(0, ...(g.conversations ?? []).map((c) => c.turn_count))}
+        </span>
+      ),
+    },
+    {
       id: 'created_at',
       label: 'Started',
       header: 'Started',
