@@ -893,7 +893,7 @@ describe('MembersSection — removing the last row of a page', () => {
       ...baseHandlers(),
     )
     const user = userEvent.setup()
-    renderSection(['evaluation_groups:read', 'evaluation_groups:manage'])
+    renderSection(['evaluation_groups:read', 'evaluation_groups:manage_members'])
 
     expect(await screen.findByText('1–50 of 51')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Next' }))
