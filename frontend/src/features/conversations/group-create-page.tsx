@@ -185,7 +185,14 @@ export function GroupCreatePage() {
 
       {evaluation.isPending && <p className="text-muted-foreground">Loading…</p>}
 
-      {evaluation.data && (
+      {/* Reached by link as well as from the evaluation page, so say why before the form, not after Start. */}
+      {authority.promptsBlocked && (
+        <p className="bg-card text-muted-foreground rounded-lg border p-4 text-sm">
+          {authority.promptsBlocked}
+        </p>
+      )}
+
+      {evaluation.data && !authority.promptsBlocked && (
         <div className="bg-card space-y-5 rounded-lg border p-4">
           <p className="text-muted-foreground text-sm">
             Start a conversation with a model. Add more models to run them side by side — or repeat
