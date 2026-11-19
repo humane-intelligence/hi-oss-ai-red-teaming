@@ -102,7 +102,7 @@ export function MembersSection({
   userPermissions: readonly string[]
 }) {
   const [offset, setOffset] = useState(0)
-  const members = useGroupMembers(groupId, { limit: PAGE_SIZE, offset })
+  const members = useGroupMembers(groupId, { limit: PAGE_SIZE, offset, keepPrevious: true })
   const remove = useRemoveGroupMember(groupId)
   const { has: hasGlobal } = usePermissions()
   // Member management is object-scoped: the server grants it via the in-group
@@ -191,7 +191,8 @@ export function MembersSection({
             )}
           </div>
         ))}
-        {members.data && members.data.total > PAGE_SIZE && (
+        {/* Past the first page the pager stays, so removing the last row there can step back. */}
+        {members.data && (members.data.total > PAGE_SIZE || offset > 0) && (
           <Pagination
             offset={offset}
             limit={PAGE_SIZE}

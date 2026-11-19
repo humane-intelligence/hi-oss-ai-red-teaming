@@ -152,12 +152,10 @@ export function SearchSelect({
             const text = event.target.value
             // After a pick the box holds its label, which no search matches: keep only what was
             // typed after it, so Backspace empties the box and a new letter starts a new search.
-            // Text that replaced the label (select-all and type, or a paste) is the new search.
-            const afterPick = text.startsWith(term)
-              ? text.slice(term.length)
-              : term.startsWith(text)
-                ? ''
-                : text
+            // Text that replaced the label (select-all and type, or a paste) is the new search, even
+            // when it happens to be a prefix of the label — only a deletion empties the box.
+            const deleting = (event.nativeEvent as InputEvent).inputType?.startsWith('delete')
+            const afterPick = deleting ? '' : text.startsWith(term) ? text.slice(term.length) : text
             setTerm(value ? afterPick : text)
             if (listRef.current) listRef.current.scrollTop = 0 // a new term starts from its first page
             setOpen(true)

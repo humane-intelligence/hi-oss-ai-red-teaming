@@ -48,9 +48,8 @@ import type {
 } from '@/lib/api/types'
 import { useConversationTagsEnabled } from '@/features/system-preferences/queries'
 import { TagsUnknownNote } from './tags-unknown-note'
+import { MAX_MODELS } from './limits'
 
-// Mirrors the server's cap, which otherwise answers with a 409.
-const MAX_MODELS = 4
 const ADD_MODEL_LOCKED =
   'Models can only be added before the first prompt, so a new model never joins mid-conversation.'
 
@@ -243,7 +242,7 @@ export function ConversationGroupPage() {
                 <p className="text-muted-foreground text-xs">{ADD_MODEL_LOCKED}</p>
               )}
               <GroupLabels labels={group.labels} className="pt-1" />
-              <TagsUnknownNote evaluationAllowsTags={tagsEnabled} />
+              <TagsUnknownNote evaluationAllowsTags={evaluation.data?.tags_enabled === true} />
             </div>
             <PageActions
               secondary={[

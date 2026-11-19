@@ -627,6 +627,77 @@ describe('ConversationGroupPage', () => {
     expect(await screen.findByText(/can only be added before the first prompt/)).toBeInTheDocument()
   })
 
+  it('locks Add model while a reply is still streaming', async () => {
+    // The turn exists server-side from the first byte, so a model added now would miss it.
+    server.use(
+      http.post(
+        `http://localhost/api/v1/evaluations/${EVAL_ID}/conversations/:convId/messages`,
+        () =>
+          new HttpResponse(new ReadableStream({ start() {} }), {
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+      ),
+      ...baseHandlers(),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    const add = await screen.findByRole('button', { name: /add model/i })
+    expect(add).toBeEnabled()
+    await user.type(screen.getByLabelText(/message all models/i), 'hello')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send to all' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Send to all' }))
+
+    await waitFor(() => expect(add).toBeDisabled())
+    expect(add).toHaveAttribute('title', expect.stringMatching(/before the first prompt/))
+  })
+
+  it('replaces every composer with the reason once the group is finished', async () => {
+    server.use(
+      http.get(`http://localhost/api/v1/evaluation-groups/${evaluation.evaluation_group_id}`, () =>
+        HttpResponse.json({
+          id: evaluation.evaluation_group_id,
+          title: 'Engagement',
+          description: '',
+          status: 'inactive',
+          access_level: 'invitation_only',
+          start_date: '2026-01-01',
+          end_date: null,
+          created_by_id: 'user-000-0000-0000-000000000000',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          evaluations: [],
+          user_permissions: [],
+        }),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        'This evaluation group is finished, so its conversations no longer take prompts.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText(/message all models/i)).toBeNull()
+    expect(screen.queryByLabelText('Message gpt-4o')).toBeNull()
+    expect(screen.getByRole('button', { name: /add model/i })).toBeDisabled()
+  })
+
+  it('says context tags are hidden when the instance setting cannot be read', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/platform-settings/public', () =>
+        HttpResponse.json({ detail: 'boom' }, { status: 500 }),
+      ),
+      ...baseHandlers(),
+    )
+    renderPage()
+
+    expect(
+      await screen.findByText(/Couldn’t check whether context tags are on for this instance/),
+    ).toBeInTheDocument()
+  })
+
   it('offers Add model before the first prompt', async () => {
     server.use(...baseHandlers())
     renderPage()

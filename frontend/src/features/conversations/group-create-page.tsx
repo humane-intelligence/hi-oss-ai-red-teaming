@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { MAX_MODELS } from './limits'
 
 type Row = {
   key: string
@@ -48,9 +49,8 @@ function startedStamp(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-// Both mirror the server's caps, which otherwise answer with a 422.
+// Mirrors the server's cap, which otherwise answers with a 422.
 const NAME_MAX = 255
-const MAX_MODELS = 4
 
 let rowSeq = 0
 function emptyRow(modelId: string): Row {
@@ -111,7 +111,7 @@ export function GroupCreatePage() {
   // would double-notify with it.
   const fieldErrors =
     createGroup.error instanceof ApiError
-      ? Object.values(fieldErrorsFromProblem(createGroup.error.problem))
+      ? Object.entries(fieldErrorsFromProblem(createGroup.error.problem))
       : []
 
   const canStart =
@@ -362,8 +362,8 @@ export function GroupCreatePage() {
             </p>
           )}
 
-          {fieldErrors.map((message) => (
-            <p key={message} role="alert" className="text-destructive text-sm">
+          {fieldErrors.map(([field, message]) => (
+            <p key={field} role="alert" className="text-destructive text-sm">
               {message}
             </p>
           ))}

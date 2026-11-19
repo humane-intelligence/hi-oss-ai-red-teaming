@@ -238,7 +238,7 @@ export function ConversationDetailPage() {
 
   const chatColumn = (
     <div className="space-y-3">
-      <TagsUnknownNote evaluationAllowsTags={tagsEnabled} />
+      <TagsUnknownNote evaluationAllowsTags={evaluation.data?.tags_enabled === true} />
       {selectMode && canFlag && (
         <div className="border-primary/40 bg-primary/5 flex items-center justify-between rounded-md border px-3 py-2 text-sm">
           <span className="font-medium">{selected.length} selected</span>
