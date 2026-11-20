@@ -70,6 +70,23 @@ describe('LabelsCard', () => {
     expect(await screen.findByText('polish')).toBeInTheDocument()
   })
 
+  it('explains removal only when editing an existing category', async () => {
+    server.use(http.get(url, () => HttpResponse.json([category('language', ['english'])])))
+    const user = userEvent.setup()
+    renderWithProviders(<LabelsCard evaluationId={EVAL} canManage />)
+    const removal = /Tags deleted here do not remove the tag from previous conversations/
+
+    await user.click(await screen.findByRole('button', { name: 'Add tag category' }))
+    let dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/^Write one tag per line\./)).toBeInTheDocument()
+    expect(within(dialog).queryByText(removal)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+    await user.click(await screen.findByRole('button', { name: 'Edit language' }))
+    dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(removal)).toBeInTheDocument()
+  })
+
   it('refuses a value listed twice before sending', async () => {
     let posted = false
     server.use(

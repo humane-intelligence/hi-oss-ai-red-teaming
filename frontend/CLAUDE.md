@@ -100,8 +100,9 @@ Two heavy runtime dependencies, treated differently:
   one-step ghost "Back" button; lists don't. Outside an evaluation group that trail is a single
   `Section / leaf` `<Breadcrumbs>` in the page body — the group trail below applies only inside
   a group. Resolve ids to names in the UI (`useUserLookup`, `useEvaluationLookup`) —
-  never show a raw UUID. One exception: a conversation card shows its group's ID as the first
-  8 characters (full ID on hover, copy button), because that ID is what people quote to each other.
+  never show a raw UUID. One exception: a conversation group's ID, shown as the first 8 characters
+  (full ID on hover) on its card (plus a copy button) and in the Conversations list, because that
+  ID is what people quote to each other and default names repeat.
 - **One trail inside an evaluation group.** Pages under a group carry a single line,
   `<GroupIdentity>` from `features/evaluation-groups/group-trail.tsx`, in one of two shapes:
   - **Group-level pages** (the group's own page, its edit form): the *identity* —
