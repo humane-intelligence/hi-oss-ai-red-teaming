@@ -18,7 +18,7 @@ export function EvaluationCover({ imageKey, alt = '', className, decorative = fa
   return (
     <div
       className={cn(
-        'bg-muted flex shrink-0 items-center justify-center overflow-hidden rounded-md border',
+        'bg-muted ring-border flex shrink-0 items-center justify-center overflow-hidden rounded-md ring-1',
         className,
       )}
     >
