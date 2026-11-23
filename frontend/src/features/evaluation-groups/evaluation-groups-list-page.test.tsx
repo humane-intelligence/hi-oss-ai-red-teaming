@@ -129,8 +129,15 @@ describe('EvaluationGroupsListPage — organization column', () => {
     await screen.findByText('Org group')
     expect(screen.queryByRole('columnheader', { name: 'Organization' })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Toggle columns' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Organization' }))
+    const toggle = screen.getByRole('checkbox', { name: 'Organization' })
+    // jsdom ignores media queries, so assert the breakpoint class.
+    expect(toggle.closest('label')).toHaveClass('hidden', 'md:flex')
+    await user.click(toggle)
     expect(await screen.findByText('Acme Corp')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Organization' })).toHaveClass(
+      'hidden',
+      'md:table-cell',
+    )
   })
 })
 
