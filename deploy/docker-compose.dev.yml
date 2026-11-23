@@ -33,6 +33,9 @@ services:
     env_file: .env
     # --proxy-headers so the app trusts Caddy's X-Forwarded-* (real client scheme/IP).
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    # Uploaded images (local media backend) must outlive the container recreated on every deploy.
+    volumes:
+      - media_data:/src/var/media
     # Gate Caddy on readiness: urllib is stdlib (no curl in the image), raises on non-200.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -53,6 +56,9 @@ services:
     environment:
       SERVICE_NAME: ai-red-teaming-worker
     command: celery -A app.workers.celery_app worker
+    # Reads attached images for prompts and deletes orphaned ones; same store as the app.
+    volumes:
+      - media_data:/src/var/media
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME -t 10 || exit 1"]
       interval: 30s
@@ -159,6 +165,7 @@ services:
 
 volumes:
   db_data:
+  media_data:
   redis_data:
   caddy_data:
   caddy_config:
