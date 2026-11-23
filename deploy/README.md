@@ -344,5 +344,5 @@ Debugging a failed deploy:
   serving. Fix forward and redeploy.
 - **Rollback** — redeploy pinned to a previous image:
   `sudo bash deploy/deploy.sh ghcr.io/humane-intelligence/hi-oss-ai-red-teaming-backend:<old-sha>`
-- **Data** lives in the `db_data` volume (Postgres) and `caddy_data` (TLS certs);
-  both survive redeploys. Back up by snapshotting the instance's EBS volume.
+- **Data** lives in the `db_data` volume (Postgres), `media_data` (uploaded images)
+  and `caddy_data` (TLS certs); all survive redeploys. Back up by snapshotting the instance's EBS volume.
