@@ -290,7 +290,8 @@ describe('ConversationGroupPage', () => {
     renderPage()
 
     // K comes from the members' own completion reads, not a separate group roll-up call.
-    expect(await screen.findByLabelText('Completed for 1 of 2 models')).toHaveTextContent('1/2')
+    expect(await screen.findByText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(screen.queryByText('1/2')).not.toBeInTheDocument()
   })
 
   it('checks the task off in every member conversation from one box', async () => {
@@ -467,7 +468,7 @@ describe('ConversationGroupPage', () => {
     expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
     // Reads *are* lifted by the break-glass, so the roll-up stays real here — this viewer is
     // not the one the counts are hidden from.
-    expect(await screen.findByLabelText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(await screen.findByText('Completed for 1 of 2 models')).toBeInTheDocument()
   })
 
   it('shows no roll-up to a read_any supervisor, and reads no member completions', async () => {
@@ -497,7 +498,7 @@ describe('ConversationGroupPage', () => {
 
     expect(await screen.findByText('Extract secret')).toBeInTheDocument()
     // "0/2" here would report this red-teamer's work as nothing done.
-    expect(screen.queryByLabelText(/Completed for/)).toBeNull()
+    expect(screen.queryByText(/Completed for/)).toBeNull()
     expect(screen.queryByRole('progressbar')).toBeNull()
     expect(
       screen.getByText("Completion progress isn't shown for conversations you don't own."),
@@ -551,7 +552,7 @@ describe('ConversationGroupPage', () => {
 
     expect(await screen.findByText('Extract secret')).toBeInTheDocument()
     // The group number stays hidden — CONV_B's completions are not the caller's to read.
-    expect(screen.queryByLabelText(/Completed for/)).toBeNull()
+    expect(screen.queryByText(/Completed for/)).toBeNull()
     // But their own member must not be collateral: skipping the read would render the box
     // unchecked against a real completion, with an optimistic patch that has no observer.
     const box = screen.getByRole('checkbox')

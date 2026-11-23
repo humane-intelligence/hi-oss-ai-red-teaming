@@ -118,6 +118,24 @@ describe('ConversationGroupsListPage', () => {
     expect(screen.getByText('2 models')).toBeInTheDocument()
   })
 
+  it('shows the short conversation ID, with the full ID on hover', async () => {
+    server.use(...handlers([groupRow]))
+    renderPage()
+
+    const id = await screen.findByText('grp-0001')
+    expect(id).toHaveAttribute('title', GROUP_ID)
+  })
+
+  it('counts prompts as the most turns any of the group’s models has', async () => {
+    server.use(...handlers([{ ...groupRow, conversations: [member('c1', 3), member('c2', 5)] }]))
+    renderPage()
+
+    const row = (await screen.findByText('GPT-4o vs Claude')).closest('tr')
+    if (!row) throw new Error('row not found')
+    const header = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(within(row).getAllByRole('cell')[header.indexOf('Prompts')]).toHaveTextContent(/^5$/)
+  })
+
   it('marks a group as empty only when none of its members has a turn', async () => {
     server.use(
       ...handlers([
@@ -168,8 +186,10 @@ describe('ConversationGroupsListPage', () => {
     await user.click(screen.getByRole('button', { name: 'Toggle columns' }))
     expect(screen.getAllByRole('checkbox').map((c) => c.closest('label')?.textContent)).toEqual([
       'Name',
+      'ID',
       'Evaluation',
       'Models',
+      'Prompts',
       'Started',
     ])
   })

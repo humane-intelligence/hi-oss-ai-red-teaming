@@ -101,6 +101,7 @@ export function EvaluationGroupDetailPage() {
   const reject = useRejectGroup(id ?? '')
   const duplicate = useDuplicateGroup()
   const [rejectOpen, setRejectOpen] = useState(false)
+  const [finishOpen, setFinishOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   // Export gates on the same in-group owner / admin authority the server enforces
   // (`assert_export_authority` → `evaluation_groups:update`, `:manage` break-glass),
@@ -215,7 +216,11 @@ export function EvaluationGroupDetailPage() {
                       </Button>
                     )}
                     {groupPerms.has('evaluation_groups:update') && group.status === 'published' && (
-                      <Button size="sm" disabled={finish.isPending} onClick={() => finish.mutate()}>
+                      <Button
+                        size="sm"
+                        disabled={finish.isPending}
+                        onClick={() => setFinishOpen(true)}
+                      >
                         Finish
                       </Button>
                     )}
@@ -411,6 +416,17 @@ export function EvaluationGroupDetailPage() {
               <ExportsSection scope={{ evaluation_group_id: group.id }} />
             </div>
           )}
+
+          <ConfirmDialog
+            open={finishOpen}
+            onOpenChange={setFinishOpen}
+            title="Finish group"
+            description={`No one can send prompts in this group's evaluations any more, and metrics switch to the "Analytics (after finish)" setting. This can't be undone.`}
+            confirmLabel="Finish"
+            destructive
+            pending={finish.isPending}
+            onConfirm={() => finish.mutate(undefined, { onSuccess: () => setFinishOpen(false) })}
+          />
 
           <ConfirmDialog
             open={rejectOpen}
