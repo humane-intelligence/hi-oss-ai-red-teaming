@@ -421,7 +421,7 @@ export function EvaluationGroupDetailPage() {
             open={finishOpen}
             onOpenChange={setFinishOpen}
             title="Finish group"
-            description="No one can send prompts in this group's evaluations any more, and metrics switch to the after-the-event access level. This can't be undone."
+            description={`No one can send prompts in this group's evaluations any more, and metrics switch to the "Analytics (after finish)" setting. This can't be undone.`}
             confirmLabel="Finish"
             destructive
             pending={finish.isPending}
