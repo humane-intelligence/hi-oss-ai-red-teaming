@@ -307,6 +307,7 @@ describe('EvaluationsListPage — row cells', () => {
 
     await screen.findByRole('link', { name: 'Prompt injection' })
     expect(screen.queryByRole('img', { name: 'No cover image' })).toBeNull()
+    expect(document.querySelector('td svg.lucide-image')).toBeInTheDocument()
   })
 })
 

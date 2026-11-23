@@ -21,6 +21,18 @@ describe('EvaluationCover', () => {
     expect(screen.getByRole('img', { name: 'No cover image' })).toBeInTheDocument()
   })
 
+  it('tries the image again once the key changes after a failure', () => {
+    const { rerender } = render(
+      <EvaluationCover imageKey="covers/gone.png" alt="Medication advice cover" />,
+    )
+    fireEvent.error(screen.getByRole('img', { name: 'Medication advice cover' }))
+    rerender(<EvaluationCover imageKey="covers/new.png" alt="Medication advice cover" />)
+    expect(screen.getByRole('img', { name: 'Medication advice cover' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/api/v1/images/covers/new.png'),
+    )
+  })
+
   it('hides a decorative cover and its placeholder from screen readers', () => {
     const { rerender } = render(<EvaluationCover decorative imageKey="covers/a.png" />)
     expect(document.querySelector('img')).toHaveAttribute('alt', '')
