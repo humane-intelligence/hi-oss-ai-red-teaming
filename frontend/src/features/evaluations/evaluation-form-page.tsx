@@ -362,7 +362,8 @@ export function EvaluationFormPage() {
               <ImageUploadField
                 alt="Cover image"
                 noun="cover"
-                previewClassName="h-32 w-56 object-cover"
+                previewClassName="aspect-[3/2] w-56 object-scale-down"
+                surfaceClassName="bg-muted"
                 labelId={coverLabelId}
                 value={coverImage}
                 onChange={(key) => setValue('cover_image', key, { shouldDirty: true })}

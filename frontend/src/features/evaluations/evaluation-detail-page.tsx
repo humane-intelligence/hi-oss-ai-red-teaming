@@ -17,6 +17,7 @@ import {
   useRejectEvaluation,
   useUnassignModel,
 } from './mutations'
+import { EvaluationCover } from './evaluation-cover'
 import { EvaluationStatusBadge } from './status-badge'
 import { EvaluationMetricsPanel } from './metrics-section'
 import { AssignModelDialog } from './assign-model-dialog'
@@ -174,11 +175,18 @@ export function EvaluationDetailPage() {
           <GroupIdentity groupId={groupId} path={[{ label: evaluation.title }]} />
 
           <header className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-display text-2xl font-semibold tracking-tight">
-                {evaluation.title}
-              </h1>
-              <EvaluationStatusBadge status={evaluation.status} />
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <h1 className="font-display text-2xl font-semibold tracking-tight break-words">
+                  {evaluation.title}
+                </h1>
+                <EvaluationStatusBadge status={evaluation.status} />
+              </div>
+              <EvaluationCover
+                imageKey={evaluation.cover_image}
+                alt={`${evaluation.title} cover`}
+                className="aspect-[3/2] w-full max-w-[300px]"
+              />
             </div>
 
             <Card>

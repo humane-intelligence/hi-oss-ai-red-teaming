@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 import { useEvaluations, type EvaluationOrderBy } from './queries'
 import { formatTimestamp } from '@/lib/format-date'
 import { EvaluationStatusBadge } from './status-badge'
+import { EvaluationCover } from './evaluation-cover'
 import { useGroupLookup } from '@/features/evaluation-groups/queries'
 import { ListViewControls, ResetViewButton } from '@/features/saved-views/list-view-controls'
 import { useListViewState } from '@/features/saved-views/use-list-view-state'
@@ -64,6 +65,13 @@ export function EvaluationsContent() {
   const filtered = !!view.search || Object.values(view.filters).some(Boolean)
 
   const columns: Column<EvaluationResponse>[] = [
+    {
+      id: 'cover',
+      label: 'Cover',
+      header: <span className="sr-only">Cover</span>,
+      hideBelow: 'sm',
+      cell: (e) => <EvaluationCover decorative imageKey={e.cover_image} className="h-10 w-15" />,
+    },
     {
       id: 'title',
       label: 'Title',
