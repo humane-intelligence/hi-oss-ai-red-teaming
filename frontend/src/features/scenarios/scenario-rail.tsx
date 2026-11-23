@@ -204,22 +204,15 @@ function RollupTaskRow({
     loading: 'Loading completion counts',
     error: 'Completion counts unavailable',
   }[countsState]
-  // Not shown: a visible "1/2" read as unexplained numbers to the client.
-  const badge = countsReadable ? (
-    <span id={rollupId} className="sr-only">
-      {rollup}
-    </span>
-  ) : null
+  // sr-only: a bare K/N read as unexplained numbers; omitted when unreadable (the list note says why).
+  const rollupNote = countsReadable ? <span className="sr-only">{rollup}</span> : null
 
   const owned = members.filter((m) => m.canToggle)
   if (owned.length === 0) {
     return (
-      <li
-        className={cn(tileClass(done), 'justify-between')}
-        title={countsReadable ? rollup : undefined}
-      >
+      <li className={tileClass(done)} title={countsReadable ? rollup : undefined}>
         <TaskLabel task={task} done={done} />
-        {badge}
+        {rollupNote}
       </li>
     )
   }
@@ -259,7 +252,12 @@ function RollupTaskRow({
         />
         <TaskLabel task={task} done={done} />
       </label>
-      {badge}
+      {/* `hidden`, not `sr-only`: the checkbox's description already reads it once. */}
+      {countsReadable && (
+        <span id={rollupId} hidden>
+          {rollup}
+        </span>
+      )}
     </li>
   )
 }

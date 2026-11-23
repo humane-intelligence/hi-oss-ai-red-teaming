@@ -149,10 +149,10 @@ describe('ScenarioRail rollup mode', () => {
 
     expect(screen.getAllByRole('checkbox')).toHaveLength(1)
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
-    expect(screen.getByText('Completed for 1 of 2 models')).toBeInTheDocument()
     expect(screen.queryByText('1/2')).not.toBeInTheDocument()
-    expect(screen.getByText('Completed for 1 of 2 models')).toHaveClass('sr-only')
     expect(screen.getByRole('checkbox')).toHaveAccessibleDescription('Completed for 1 of 2 models')
+    // Hidden from the reading order, so browse mode doesn't repeat the description.
+    expect(screen.getByText('Completed for 1 of 2 models')).not.toBeVisible()
     expect(screen.getByText('Completed for 1 of 2 models').closest('li')).toHaveAttribute(
       'title',
       'Completed for 1 of 2 models',
@@ -260,7 +260,7 @@ describe('ScenarioRail rollup mode', () => {
     renderRollupRail(PARTIAL.map((m) => ({ ...m, canToggle: false })))
 
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
-    expect(screen.getByText('Completed for 1 of 2 models')).toBeInTheDocument()
+    expect(screen.getByText('Completed for 1 of 2 models')).toHaveClass('sr-only')
     expect(screen.queryByText('1/2')).not.toBeInTheDocument()
     expect(screen.getByText('Read-only — not your conversation.')).toBeInTheDocument()
   })
