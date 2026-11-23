@@ -175,7 +175,7 @@ export function EvaluationDetailPage() {
           <GroupIdentity groupId={groupId} path={[{ label: evaluation.title }]} />
 
           <header className="space-y-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
                 <h1 className="font-display text-2xl font-semibold tracking-tight break-words">
                   {evaluation.title}
